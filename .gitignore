@@ -36,3 +36,12 @@ Thumbs.db
 # Secrets
 .env
 *.env.local
+
+# Tool artifacts
+.codesearch.db/
+.playwright-mcp/
+memory/
+
+# Debug screenshots
+heatmap-*.png
+replay-*.png
