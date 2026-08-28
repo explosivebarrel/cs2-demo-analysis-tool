@@ -26,14 +26,17 @@ const LAYER_COLORS: Record<string, string> = {
   positions: '150,150,255',
 }
 
-const LAYER_LABELS: Record<string, string> = {
-  kills: 'Убийства', deaths: 'Смерти', damage: 'Урон нанесённый',
-  damage_taken: 'Урон полученный', shots: 'Выстрелы',
-  flash_throws: 'Броски флешки', flash_hits: 'Ослепления',
-  smokes: 'Смоки', molotovs: 'Молотовы/Зажигательные',
-  hes: 'HE гранаты', plants: 'Закладки', defuses: 'Разминирования',
-  opening_duels: 'Первые дуэли', clutches: 'Клатчи',
-  holds: 'Долгие позиции', positions: 'Позиции',
+function layerLabel(key: string): string {
+  const map: Record<string, string> = {
+    kills: t('layerKills'), deaths: t('layerDeaths'), damage: t('layerDmg'),
+    damage_taken: t('layerDmgTaken'), shots: t('layerShots'),
+    flash_throws: t('layerFlashThrows'), flash_hits: t('layerFlashHits'),
+    smokes: t('layerSmokes'), molotovs: t('layerMolotovs'),
+    hes: t('layerHEs'), plants: t('layerPlants'), defuses: t('layerDefuses'),
+    opening_duels: t('layerOpeningDuels'), clutches: t('layerClutches'),
+    holds: t('layerHolds'), positions: t('layerPositions'),
+  }
+  return map[key] ?? key
 }
 
 // Decode compact array → {x, y, v?, dur?, pIdx, tick}
@@ -248,7 +251,7 @@ export default function HeatmapsPage() {
                   color: layer === l ? '#fff' : 'var(--text)',
                   border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
                 }}>
-                  {LAYER_LABELS[l] ?? l}
+                  {layerLabel(l)}
                   <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
                 </button>
               ))}

@@ -111,7 +111,27 @@ def _round_phase(tick, r, tickrate):
     return "late"
 
 
-def _player_payload(p, rb, fb, ctx):
+def _rws(p, rb, all_players):
+    """Round Win Share: avg(player_dmg / team_dmg * 100) over rounds the team won."""
+    samples = []
+    for r in rb.rounds:
+        if r.get("winnerTeam") != p.team:
+            continue
+        pr = p.rounds.get(r["n"])
+        if pr is None:
+            continue
+        player_dmg = pr["dmg"]
+        team_dmg = sum(
+            op.rounds[r["n"]]["dmg"]
+            for op in all_players.values()
+            if op.team == p.team and r["n"] in op.rounds
+        )
+        if team_dmg > 0:
+            samples.append(player_dmg / team_dmg * 100)
+    return round(sum(samples) / len(samples), 1) if samples else 0.0
+
+
+def _player_payload(p, rb, fb, ctx, all_players=None):
     rounds = rb.rounds
     R = max(1, len(rounds))
     kills = sum(pr["kills"] for pr in p.rounds.values())
@@ -163,7 +183,13 @@ def _player_payload(p, rb, fb, ctx):
             "dmg": int(pr["dmg"]), "sv": 1 if pr["survived"] else 0,
             "kast": 1 if r["n"] in p.kastRounds else 0,
             "opening": pr["opening"], "mk": pr["kills"] >= 2,
+            "pistol": 1 if r.get("isPistol") else 0,
+            "mvp": 1 if r.get("mvp") == p.steamid else 0,
+            "won": 1 if r.get("winnerTeam") == p.team else 0,
         })
+
+    # RWS: round win share
+    rws = _rws(p, rb, all_players) if all_players else 0.0
 
     first_side = rb.rounds[0]["sides"].get(p.steamid, "?") if rb.rounds else "?"
     return {
@@ -213,6 +239,7 @@ def _player_payload(p, rb, fb, ctx):
         "weapons": weapons,
         "bySide": by_side,
         "series": series,
+        "rws": rws,
         "holdsCount": len(p.holds),
     }
 
@@ -257,7 +284,7 @@ def _build_analysis(ctx, rb, fb, players):
     for sid in fb.players:
         p = players.get(sid)
         if p:
-            players_payload.append(_player_payload(p, rb, fb, ctx))
+            players_payload.append(_player_payload(p, rb, fb, ctx, all_players=players))
     players_payload.sort(key=lambda x: -x["rating"])
 
     # team aggregates

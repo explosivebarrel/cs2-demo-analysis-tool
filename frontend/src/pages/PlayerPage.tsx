@@ -79,8 +79,76 @@ function SeriesChart({ series }: { series: PlayerData['series'] }) {
         })}
       </div>
       <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4 }}>
-        {t('seriesLegend')} · ★ MVP · P пистолетка
+        {t('seriesLegend')} · ★ MVP · P {t('pistolRound')}
       </div>
+    </div>
+  )
+}
+
+function SeriesTable({ series }: { series: PlayerData['series'] }) {
+  if (!series.length) return null
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <table>
+        <thead>
+          <tr>
+            <th style={{ width: 32 }}>{t('colRound')}</th>
+            <th>{t('colResult')}</th>
+            <th>{t('kills')}</th>
+            <th>{t('deaths')}</th>
+            <th>{t('assists')}</th>
+            <th>{t('dmg')}</th>
+            <th>KAST</th>
+            <th>{t('colOpening')}</th>
+            <th>MVP</th>
+          </tr>
+        </thead>
+        <tbody>
+          {series.map(s => {
+            const rowColor = s.won ? 'rgba(80,200,120,0.07)' : 'rgba(220,80,80,0.07)'
+            const resultColor = s.won ? 'var(--green)' : 'var(--red)'
+            return (
+              <tr key={s.n} style={{ background: rowColor }}>
+                <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {s.mvp ? <span style={{ color: 'var(--accent2)', fontWeight: 700 }}>★{s.n}</span>
+                    : s.pistol ? <span style={{ color: 'var(--accent)', fontWeight: 700 }}>P{s.n}</span>
+                    : s.n}
+                </td>
+                <td style={{ fontWeight: 700, color: resultColor }}>{s.won ? t('resultWon') : t('resultLost')}</td>
+                <td style={{ fontWeight: s.k >= 3 ? 700 : 400, color: s.k >= 3 ? 'var(--accent2)' : undefined }}>{s.k}</td>
+                <td>{s.d}</td>
+                <td style={{ color: s.a > 0 ? 'var(--text)' : 'var(--text2)' }}>{s.a}</td>
+                <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: s.dmg >= 100 ? 700 : 400 }}>{s.dmg}</td>
+                <td style={{ color: s.kast ? 'var(--green)' : 'var(--text2)' }}>{s.kast ? '✓' : '—'}</td>
+                <td style={{ fontSize: 11, color: 'var(--text2)' }}>{s.opening ?? '—'}</td>
+                <td>{s.mvp ? '★' : '—'}</td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+
+function SeriesView({ series }: { series: PlayerData['series'] }) {
+  const [view, setView] = useState<'chart' | 'table'>('chart')
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button onClick={() => setView('chart')} style={{
+          background: view === 'chart' ? 'var(--accent)' : 'var(--bg3)',
+          color: view === 'chart' ? '#fff' : 'var(--text2)',
+          border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: 12,
+        }}>{t('viewChart')}</button>
+        <button onClick={() => setView('table')} style={{
+          background: view === 'table' ? 'var(--accent)' : 'var(--bg3)',
+          color: view === 'table' ? '#fff' : 'var(--text2)',
+          border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: 12,
+        }}>{t('viewTable')}</button>
+      </div>
+      {view === 'chart' ? <SeriesChart series={series} /> : <SeriesTable series={series} />}
     </div>
   )
 }
@@ -133,6 +201,7 @@ export default function PlayerPage() {
             </div>
             <div className="flex gap-16 wrap">
               <Kv label={t('rating')} value={p.rating.toFixed(2)} accent />
+              <Kv label="RWS" value={p.rws?.toFixed(1) ?? '—'} />
               <Kv label={t('kd')} value={p.kd.toFixed(2)} />
               <Kv label={t('adr')} value={p.adr.toFixed(1)} />
               <Kv label={t('kast')} value={p.kast.toFixed(1) + '%'} />
@@ -267,7 +336,7 @@ export default function PlayerPage() {
       </div>
 
       <Section title={t('seriesTitle')}>
-        <SeriesChart series={p.series} />
+        <SeriesView series={p.series} />
       </Section>
 
       {/* weapons */}

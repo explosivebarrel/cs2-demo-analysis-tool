@@ -89,13 +89,13 @@ export default function DemosPage() {
 
   async function deletDemo(id: string, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm('Удалить демо?')) return
+    if (!confirm(t('confirmDeleteDemo'))) return
     await api.delete(id)
     refresh()
   }
 
   async function uploadFile(file: File) {
-    if (!file.name.endsWith('.dem')) { setUploadErr('Только .dem файлы'); return }
+    if (!file.name.endsWith('.dem')) { setUploadErr(t('onlyDemFiles')); return }
     setUploadErr('')
     setUploading(true)
     try {

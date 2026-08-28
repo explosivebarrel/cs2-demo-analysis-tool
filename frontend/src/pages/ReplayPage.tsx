@@ -220,14 +220,16 @@ function drawFrame(
 
 const SPEEDS = [0.5, 1, 2, 4, 8]
 
-const HOTKEYS = [
-  { key: 'Space', label: 'Space', desc: 'Пауза / Воспроизведение' },
-  { key: ',', label: ',', desc: 'Замедлить' },
-  { key: '.', label: '.', desc: 'Ускорить' },
-  { key: '0', label: '0', desc: 'Сбросить зум' },
-  { key: 'Scroll', label: 'Scroll', desc: 'Зум' },
-  { key: 'Drag', label: 'Drag', desc: 'Перемещение' },
-]
+function getHotkeys() {
+  return [
+    { key: 'Space', label: 'Space', desc: t('hotPause') },
+    { key: ',', label: ',', desc: t('slowDown') },
+    { key: '.', label: '.', desc: t('speedUp') },
+    { key: '0', label: '0', desc: t('zoomReset') },
+    { key: 'Scroll', label: 'Scroll', desc: t('hotZoom') },
+    { key: 'Drag', label: 'Drag', desc: t('hotPan') },
+  ]
+}
 
 export default function ReplayPage() {
   useLang()
@@ -464,7 +466,7 @@ export default function ReplayPage() {
               })}
             </div>
             <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
-              {HOTKEYS.map(hk => (
+              {getHotkeys().map(hk => (
                 <div key={hk.key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text2)' }}>
                   <kbd style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 6px', fontFamily: 'monospace', fontSize: 11 }}>{hk.label}</kbd>
                   <span>{hk.desc}</span>
