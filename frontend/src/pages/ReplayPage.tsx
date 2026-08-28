@@ -29,10 +29,10 @@ const SIZE = 600
 
 interface Transform { scale: number; ox: number; oy: number }
 
-function worldToCanvas(wx: number, wy: number, ov: MapOverview): [number, number] {
+function worldToCanvas(wx: number, wy: number, ov: MapOverview, sz = SIZE): [number, number] {
   const px = (wx - ov.pos_x) / ov.scale
   const py = (ov.pos_y - wy) / ov.scale
-  const ratio = SIZE / 1024
+  const ratio = sz / 1024
   return [px * ratio, py * ratio]
 }
 
@@ -64,9 +64,9 @@ function drawFrame(
   tx: Transform,
 ) {
   const ctx = canvas.getContext('2d')!
-  ctx.clearRect(0, 0, SIZE, SIZE)
+  const SZ = canvas.width
+  ctx.clearRect(0, 0, SZ, SZ)
 
-  // visual scale factor for player dots — shrink as zoom increases (sqrt keeps it gentle)
   const dotScale = 1 / Math.sqrt(tx.scale)
 
   ctx.save()
@@ -74,15 +74,15 @@ function drawFrame(
   ctx.scale(tx.scale, tx.scale)
 
   if (radarImg?.complete && radarImg.naturalWidth > 0) {
-    ctx.drawImage(radarImg, 0, 0, SIZE, SIZE)
+    ctx.drawImage(radarImg, 0, 0, SZ, SZ)
   } else {
     ctx.fillStyle = '#1a1c20'
-    ctx.fillRect(0, 0, SIZE, SIZE)
+    ctx.fillRect(0, 0, SZ, SZ)
     ctx.strokeStyle = '#2a2d35'
     ctx.lineWidth = 1
-    for (let i = 0; i <= SIZE; i += 40) {
-      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, SIZE); ctx.stroke()
-      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(SIZE, i); ctx.stroke()
+    for (let i = 0; i <= SZ; i += 40) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, SZ); ctx.stroke()
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(SZ, i); ctx.stroke()
     }
   }
 
@@ -127,7 +127,7 @@ function drawFrame(
   }
 
   for (const z of [...activeZones, ...recentDet]) {
-    const [cx, cy] = worldToCanvas(z.x, z.y, ov)
+    const [cx, cy] = worldToCanvas(z.x, z.y, ov, SZ)
     const r = NADE_RADIUS[z.ty] ?? 10
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
     grad.addColorStop(0, NADE_COLORS[z.ty] ?? 'rgba(200,200,200,0.6)')
@@ -141,7 +141,7 @@ function drawFrame(
     const [stTick, pidx, sx, sy] = shot
     if (stTick > curTick || curTick - stTick > tracerWindow) continue
     const syaw = shot[4]
-    const [scx, scy] = worldToCanvas(sx, sy, ov)
+    const [scx, scy] = worldToCanvas(sx, sy, ov, SZ)
     const rad = (syaw * Math.PI) / 180
     const tracerLen = 40
     const fade = 1 - (curTick - stTick) / tracerWindow
@@ -166,7 +166,7 @@ function drawFrame(
     const hp = replay.data[base + F_HP]
     const team = replay.data[base + F_TEAM]
     const flags = replay.data[base + F_FLAGS]
-    const [cx, cy] = worldToCanvas(x, y, ov)
+    const [cx, cy] = worldToCanvas(x, y, ov, SZ)
     const hasBomb = (flags & 1) !== 0
     const color = TEAM_COLORS[team] ?? '#ccc'
     const r = 8 * dotScale
@@ -247,6 +247,26 @@ export default function ReplayPage() {
   const dragRef = useRef<{ startX: number; startY: number; startOx: number; startOy: number } | null>(null)
   const touchRef = useRef<{ dist: number; cx: number; cy: number } | null>(null)
 
+  const [leftWidth, setLeftWidth] = useState(600)
+  const resizerRef = useRef<{ startX: number; startW: number } | null>(null)
+
+  function onResizerMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    resizerRef.current = { startX: e.clientX, startW: leftWidth }
+  }
+
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizerRef.current) return
+      const delta = e.clientX - resizerRef.current.startX
+      setLeftWidth(Math.max(300, Math.min(900, resizerRef.current.startW + delta)))
+    }
+    function onUp() { resizerRef.current = null }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const radarRef = useRef<HTMLImageElement>(null)
   const rafRef = useRef<number>(0)
@@ -271,7 +291,7 @@ export default function ReplayPage() {
   useEffect(() => {
     if (!canvasRef.current || !replay || !overview) return
     drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx)
-  }, [frameIdx, replay, overview, tx])
+  }, [frameIdx, replay, overview, tx, leftWidth])
 
   useEffect(() => {
     if (!playing || !replay) return
@@ -305,9 +325,9 @@ export default function ReplayPage() {
   }, [])
 
   const clampTx = useCallback((t: Transform): Transform => {
-    // clamp scale first, then compute bounds from the clamped scale
     const sc = Math.max(1, Math.min(8, t.scale))
-    const maxOff = SIZE * (sc - 1)
+    const sz = canvasRef.current?.width ?? SIZE
+    const maxOff = sz * (sc - 1)
     return { scale: sc, ox: Math.max(-maxOff, Math.min(0, t.ox)), oy: Math.max(-maxOff, Math.min(0, t.oy)) }
   }, [])
 
@@ -326,7 +346,7 @@ export default function ReplayPage() {
       const sc = Math.max(1, Math.min(8, rawScale))
       const ox = mx - (mx - cur.ox) * (sc / cur.scale)
       const oy = my - (my - cur.oy) * (sc / cur.scale)
-      const maxOff = SIZE * (sc - 1)
+      const maxOff = (el!.width ?? SIZE) * (sc - 1)
       setTx({ scale: sc, ox: Math.max(-maxOff, Math.min(0, ox)), oy: Math.max(-maxOff, Math.min(0, oy)) })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
@@ -396,14 +416,14 @@ export default function ReplayPage() {
   return (
     <div className="page">
       <MatchNav id={id!} />
-      <div style={{ display: 'grid', gridTemplateColumns: `${SIZE}px 1fr`, gap: 16, alignItems: 'start' }}>
-        <div>
+      <div style={{ display: 'grid', gridTemplateColumns: `${leftWidth}px 8px 1fr`, gap: 0, alignItems: 'start' }}>
+        <div style={{ minWidth: 0 }}>
           <div className="card" style={{ padding: 8, position: 'relative' }}>
             <img ref={radarRef} src={api.radarUrl(mapName)} alt="" style={{ display: 'none' }}
               onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current) }} />
             <canvas
-              ref={canvasRef} width={SIZE} height={SIZE}
-              style={{ display: 'block', borderRadius: 4, cursor }}
+              ref={canvasRef} width={leftWidth} height={leftWidth}
+              style={{ display: 'block', borderRadius: 4, cursor, width: '100%', height: 'auto' }}
               onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
               onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
             />
@@ -476,7 +496,18 @@ export default function ReplayPage() {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* resizer */}
+        <div
+          onMouseDown={onResizerMouseDown}
+          style={{ cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', minHeight: 400, userSelect: 'none', padding: '0 2px' }}
+        >
+          <div style={{ width: 4, height: '100%', background: 'var(--border)', borderRadius: 2, transition: 'background 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
+          />
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 0 }}>
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', color: 'var(--text2)' }}>{t('players')}</div>
             {replay.players.map((pl, i) => {
@@ -502,9 +533,9 @@ export default function ReplayPage() {
 
           {currentRound && (
             <div className="card">
-              <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, color: 'var(--text2)', textTransform: 'uppercase' }}>Раунд {currentRound.n}</div>
+              <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, color: 'var(--text2)', textTransform: 'uppercase' }}>{t('replayRound')} {currentRound.n}</div>
               <div style={{ fontSize: 13 }}>
-                <div>Счёт: {currentRound.scoreTeam0}:{currentRound.scoreTeam1}</div>
+                <div>{t('replayScore')}: {currentRound.scoreTeam0}:{currentRound.scoreTeam1}</div>
                 <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 4 }}>
                   {analysis?.teams[0].name}: <span className={`tag tag-${currentRound.sideTeam0}`}>{currentRound.sideTeam0}</span>
                 </div>

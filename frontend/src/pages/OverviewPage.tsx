@@ -43,11 +43,20 @@ function ScoreBoard({ data, id }: { data: AnalysisData; id: string }) {
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: 8, fontSize: 13, color: 'var(--text2)', marginBottom: 16 }}>
-        {(['adr', 'kast', 'rating', 'hsPct', 'utilDmg', 'pistolRoundsWon', 'firstKills'] as const).map(k => (
+        {([
+          ['adr', t('adr')],
+          ['kast', t('kast')],
+          ['rating', t('rating')],
+          ['hsPct', t('hs')],
+          ['utilDmg', t('utilDmg')],
+          ['pistolRoundsWon', t('pistolRounds')],
+          ['firstKills', t('firstKills')],
+          ['clutchesWon', t('clutchesWon')],
+        ] as [string, string][]).map(([k, label]) => (
           <div key={k} className="flex items-center justify-between" style={{ gridColumn: '1/-1', display: 'grid', gridTemplateColumns: '1fr auto 1fr' }}>
-            <span style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{t0[k]}</span>
-            <span style={{ padding: '0 12px', color: 'var(--text2)', fontSize: 11 }}>{(t as (k: string) => string)(k)}</span>
-            <span style={{ fontWeight: 600, color: 'var(--text)' }}>{t1[k]}</span>
+            <span style={{ textAlign: 'right', fontWeight: 600, color: 'var(--text)' }}>{t0[k as keyof typeof t0]}</span>
+            <span style={{ padding: '0 12px', color: 'var(--text2)', fontSize: 11 }}>{label}</span>
+            <span style={{ fontWeight: 600, color: 'var(--text)' }}>{t1[k as keyof typeof t1]}</span>
           </div>
         ))}
       </div>

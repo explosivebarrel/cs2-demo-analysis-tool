@@ -312,7 +312,8 @@ def compute_players(ctx, rb, fb):
         for (sid, w), c in guns.groupby(["user_steamid", "weapon"]).size().items():
             p = players.get(str(sid))
             if p:
-                p.weapons[str(w)]["shots"] += int(c)
+                key = str(w).removeprefix("weapon_")
+                p.weapons[key]["shots"] += int(c)
 
     # ---------------------------------------------------------- bomb actions
     for rr in rb.rounds:

@@ -131,6 +131,24 @@ export default function HeatmapsPage() {
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
+  // resizer
+  const [leftWidth, setLeftWidth] = useState(512)
+  const resizerRef = useRef<{ startX: number; startW: number } | null>(null)
+  function onResizerMouseDown(e: React.MouseEvent) {
+    e.preventDefault()
+    resizerRef.current = { startX: e.clientX, startW: leftWidth }
+  }
+  useEffect(() => {
+    function onMove(e: MouseEvent) {
+      if (!resizerRef.current) return
+      setLeftWidth(Math.max(300, Math.min(900, resizerRef.current.startW + e.clientX - resizerRef.current.startX)))
+    }
+    function onUp() { resizerRef.current = null }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+  }, [])
+
   useEffect(() => { scaleRef.current = scale }, [scale])
   useEffect(() => { offsetRef.current = offset }, [offset])
 
@@ -151,7 +169,7 @@ export default function HeatmapsPage() {
     const img = new Image()
     img.onload = () => { cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height) }
     img.src = api.radarUrl(analysis.meta.map)
-  }, [analysis, overview])
+  }, [analysis, overview, leftWidth])
 
   useEffect(() => {
     const cv = canvasRef.current
@@ -159,7 +177,7 @@ export default function HeatmapsPage() {
     const raw = (heatmap.layers[layer] ?? []) as unknown as number[][]
     const playerFilter = selectedPlayers.size > 0 ? selectedPlayers : null
     drawHeatmap(cv, raw, layer, overview, playerFilter, pointAlpha)
-  }, [heatmap, layer, overview, selectedPlayers, pointAlpha])
+  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, leftWidth])
 
   const togglePlayer = useCallback((idx: number) => {
     setSelectedPlayers(prev => {
@@ -214,17 +232,17 @@ export default function HeatmapsPage() {
   if (!analysis || !heatmap || !overview) return <div className="page"><div className="text-muted">{t('loading')}</div></div>
 
   const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
-  const SIZE = 512
+  const SIZE = leftWidth
   const cur = scale > 1 ? 'grab' : 'default'
 
   return (
     <div className="page">
       <MatchNav id={id!} />
-      <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div className="card" style={{ padding: 8, flexShrink: 0, position: 'relative', overflow: 'hidden', width: SIZE + 16, height: SIZE + 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: `${leftWidth}px 8px 1fr`, gap: 0, alignItems: 'start' }}>
+        <div className="card" style={{ padding: 8, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
           <div
             ref={containerRef}
-            style={{ position: 'relative', width: SIZE, height: SIZE, cursor: cur, userSelect: 'none' }}
+            style={{ position: 'relative', width: SIZE, height: SIZE, cursor: cur, userSelect: 'none', margin: '0 auto' }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
           >
             <div style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: '0 0', width: SIZE, height: SIZE }}>
@@ -241,7 +259,18 @@ export default function HeatmapsPage() {
           )}
         </div>
 
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 220, flex: 1, padding: 16 }}>
+        {/* resizer */}
+        <div
+          onMouseDown={onResizerMouseDown}
+          style={{ cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', minHeight: 400, userSelect: 'none', padding: '0 2px' }}
+        >
+          <div style={{ width: 4, height: '100%', background: 'var(--border)', borderRadius: 2, transition: 'background 0.15s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
+          />
+        </div>
+
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 220, padding: 16 }}>
           <div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

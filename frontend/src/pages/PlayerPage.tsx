@@ -175,7 +175,13 @@ export default function PlayerPage() {
   if (!p) return <div className="page"><div className="tag tag-red">Player not found</div></div>
 
   const totalHG = Object.values(p.hitgroups).reduce((a, b) => a + b, 0) || 1
-  const hgLabels: Record<string, string> = { head: t('head'), chest: t('chest'), stomach: t('stomach'), arms: t('arms'), legs: t('legs') }
+  const hgLabels: Record<string, string> = {
+    head: t('head'), chest: t('chest'), stomach: t('stomach'),
+    arms: t('arms'), legs: t('legs'),
+    left_arm: t('left_arm'), right_arm: t('right_arm'),
+    left_leg: t('left_leg'), right_leg: t('right_leg'),
+    generic: t('generic'), neck: t('neck'),
+  }
 
   return (
     <div className="page">
