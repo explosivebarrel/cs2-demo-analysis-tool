@@ -131,6 +131,22 @@ def _rws(p, rb, all_players):
     return round(sum(samples) / len(samples), 1) if samples else 0.0
 
 
+def _imp_round(pr, r_won, opening, is_clutch_won):
+    """Simplified impact score for a single round."""
+    score = 0.0
+    if opening in ("kill", "k"):
+        score += 2.0 if r_won else 0.5
+    elif opening in ("death", "d"):
+        score += -0.5 if r_won else -1.0
+    extra_kills = max(0, pr["kills"] - 1)
+    score += extra_kills * 0.5
+    if is_clutch_won:
+        score += 1.5
+    if pr["survived"] and not r_won:
+        score += 0.2
+    return round(score, 2)
+
+
 def _player_payload(p, rb, fb, ctx, all_players=None):
     rounds = rb.rounds
     R = max(1, len(rounds))
@@ -173,11 +189,14 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
     by_side = {"T": _side_summary(p, rb, "T"), "CT": _side_summary(p, rb, "CT")}
 
     # per-round series for graphs
+    clutch_won_rounds = {c["round"] for c in p.clutchAttempts if c["won"]}
     series = []
     for r in rounds:
         pr = p.rounds.get(r["n"])
         if pr is None:
             continue
+        r_won = r.get("winnerTeam") == p.team
+        imp = _imp_round(pr, r_won, pr["opening"], r["n"] in clutch_won_rounds)
         series.append({
             "n": r["n"], "k": pr["kills"], "d": pr["deaths"], "a": pr["assists"],
             "dmg": int(pr["dmg"]), "sv": 1 if pr["survived"] else 0,
@@ -185,8 +204,11 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
             "opening": pr["opening"], "mk": pr["kills"] >= 2,
             "pistol": 1 if r.get("isPistol") else 0,
             "mvp": 1 if r.get("mvp") == p.steamid else 0,
-            "won": 1 if r.get("winnerTeam") == p.team else 0,
+            "won": 1 if r_won else 0,
+            "imp": imp,
         })
+
+    overall_imp = round(sum(s["imp"] for s in series) / len(series), 2) if series else 0.0
 
     # RWS: round win share
     rws = _rws(p, rb, all_players) if all_players else 0.0
@@ -240,6 +262,7 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
         "bySide": by_side,
         "series": series,
         "rws": rws,
+        "imp": overall_imp,
         "holdsCount": len(p.holds),
     }
 

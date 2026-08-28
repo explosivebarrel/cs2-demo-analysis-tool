@@ -6,6 +6,7 @@ import OverviewPage from './pages/OverviewPage'
 import PlayerPage from './pages/PlayerPage'
 import HeatmapsPage from './pages/HeatmapsPage'
 import ReplayPage from './pages/ReplayPage'
+import AboutPage from './pages/AboutPage'
 
 export const LangCtx = createContext<{ lang: Lang; toggle: () => void }>({
   lang: 'ru', toggle: () => {},
@@ -18,6 +19,7 @@ function AppNav() {
     <nav style={{ background: 'var(--bg2)', borderBottom: '1px solid var(--border)', padding: '0 20px', display: 'flex', alignItems: 'center', gap: 24, height: 48 }}>
       <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--accent)', letterSpacing: '.05em' }}>CS2·ANA</span>
       <NavLink to="/" end style={navStyle}>{t('demos')}</NavLink>
+      <NavLink to="/about" style={navStyle}>{t('about')}</NavLink>
       <div style={{ marginLeft: 'auto' }}>
         <button className="btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={toggle}>
           {lang === 'ru' ? 'EN' : 'RU'}
@@ -41,6 +43,7 @@ export default function App() {
           <Route path="/match/:id/player/:steamid" element={<PlayerPage />} />
           <Route path="/match/:id/heatmaps" element={<HeatmapsPage />} />
           <Route path="/match/:id/replay" element={<ReplayPage />} />
+          <Route path="/about" element={<AboutPage />} />
         </Routes>
       </BrowserRouter>
     </LangCtx.Provider>

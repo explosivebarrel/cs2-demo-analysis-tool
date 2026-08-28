@@ -100,6 +100,7 @@ function SeriesTable({ series }: { series: PlayerData['series'] }) {
             <th>{t('dmg')}</th>
             <th>KAST</th>
             <th>{t('colOpening')}</th>
+            <th>{t('colImp')}</th>
             <th>MVP</th>
           </tr>
         </thead>
@@ -107,6 +108,7 @@ function SeriesTable({ series }: { series: PlayerData['series'] }) {
           {series.map(s => {
             const rowColor = s.won ? 'rgba(80,200,120,0.07)' : 'rgba(220,80,80,0.07)'
             const resultColor = s.won ? 'var(--green)' : 'var(--red)'
+            const impColor = s.imp > 0 ? 'var(--green)' : s.imp < 0 ? 'var(--red)' : 'var(--text2)'
             return (
               <tr key={s.n} style={{ background: rowColor }}>
                 <td style={{ fontVariantNumeric: 'tabular-nums' }}>
@@ -121,6 +123,7 @@ function SeriesTable({ series }: { series: PlayerData['series'] }) {
                 <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: s.dmg >= 100 ? 700 : 400 }}>{s.dmg}</td>
                 <td style={{ color: s.kast ? 'var(--green)' : 'var(--text2)' }}>{s.kast ? '✓' : '—'}</td>
                 <td style={{ fontSize: 11, color: 'var(--text2)' }}>{s.opening ?? '—'}</td>
+                <td style={{ fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: impColor }}>{s.imp > 0 ? '+' : ''}{s.imp}</td>
                 <td>{s.mvp ? '★' : '—'}</td>
               </tr>
             )
@@ -202,6 +205,7 @@ export default function PlayerPage() {
             <div className="flex gap-16 wrap">
               <Kv label={t('rating')} value={p.rating.toFixed(2)} accent />
               <Kv label="RWS" value={p.rws?.toFixed(1) ?? '—'} />
+              <Kv label={t('impLabel')} value={p.imp != null ? (p.imp > 0 ? '+' : '') + p.imp.toFixed(2) : '—'} />
               <Kv label={t('kd')} value={p.kd.toFixed(2)} />
               <Kv label={t('adr')} value={p.adr.toFixed(1)} />
               <Kv label={t('kast')} value={p.kast.toFixed(1) + '%'} />
@@ -342,17 +346,25 @@ export default function PlayerPage() {
       {/* weapons */}
       <Section title={t('weapons')}>
         <div style={{ overflowX: 'auto' }}>
-          <table>
+          <table style={{ width: 'auto', minWidth: '100%', whiteSpace: 'nowrap' }}>
             <thead>
               <tr>
-                <th>{t('weaponCol')}</th><th>{t('kills')}</th><th>HS%</th>
-                <th>{t('shots')}</th><th>{t('hits')}</th><th>{t('accuracy')}</th><th>{t('dmg')}</th>
+                <th style={{ minWidth: 120 }}>{t('weaponCol')}</th>
+                <th>{t('kills')}</th>
+                <th>HS%</th>
+                <th>{t('shots')}</th>
+                <th>{t('hits')}</th>
+                <th>{t('accuracy')}</th>
+                <th>{t('dmg')}</th>
               </tr>
             </thead>
             <tbody>
               {p.weapons.map(w => (
                 <tr key={w.raw}>
-                  <td><span style={{ fontSize: 11, color: 'var(--text2)', marginRight: 6 }}>{w.cls}</span>{w.ru || w.en}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text2)', marginRight: 6 }}>{w.cls}</span>
+                    {w.ru || w.en}
+                  </td>
                   <td style={{ fontWeight: 700 }}>{w.kills}</td>
                   <td>{w.hsPct !== null ? w.hsPct.toFixed(1) + '%' : '—'}</td>
                   <td>{w.shots}</td>

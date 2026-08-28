@@ -65,6 +65,7 @@ export interface PlayerData {
   bySide: { T: SideSummary; CT: SideSummary }
   series: SeriesPoint[]
   rws: number
+  imp: number
   holdsCount: number
 }
 
@@ -78,7 +79,7 @@ export interface SideSummary {
   rounds: number; kills: number; deaths: number; assists: number; adr: number; kd: number
 }
 
-export interface SeriesPoint { n: number; k: number; d: number; a: number; dmg: number; sv: number; kast: number; opening: string | null; mk: boolean; pistol: number; mvp: number; won: number }
+export interface SeriesPoint { n: number; k: number; d: number; a: number; dmg: number; sv: number; kast: number; opening: string | null; mk: boolean; pistol: number; mvp: number; won: number; imp: number }
 
 export interface ClutchEntry { round: number; enemies: number; won: boolean; kills: number }
 
