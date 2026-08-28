@@ -235,22 +235,26 @@ class RoundBuilder:
     def _buys(self, rounds):
         for r in rounds:
             spend = self.tv.col_at_tick(r["freezeEndTick"], "cash_spent_this_round")
-            s0 = sum(int(v) for sid, v in spend.items()
-                     if self.team_of(sid) == 0 and isinstance(v, (int, float, np.integer)))
-            s1 = sum(int(v) for sid, v in spend.items()
-                     if self.team_of(sid) == 1 and isinstance(v, (int, float, np.integer)))
-            r["spendTeam0"] = s0
-            r["spendTeam1"] = s1
-            r["buyTeam0"] = self._buy_type(s0)
-            r["buyTeam1"] = self._buy_type(s1)
+            vals = {0: [], 1: []}
+            for sid, v in spend.items():
+                if isinstance(v, (int, float, np.integer, np.floating)):
+                    t = self.team_of(sid)
+                    if t in vals:
+                        vals[t].append(int(v))
+            for t in (0, 1):
+                arr = vals[t]
+                avg = int(sum(arr) / len(arr)) if arr else 0
+                r[f"spendTeam{t}"] = sum(arr)
+                r[f"avgSpendTeam{t}"] = avg
+                r[f"buyTeam{t}"] = self._buy_type(avg)
 
     @staticmethod
-    def _buy_type(spend: int) -> str:
-        if spend <= 500:
+    def _buy_type(avg_spend: int) -> str:
+        if avg_spend <= 1000:
             return "pistol"
-        if spend < config.BUY_FORCE_MIN * 5:
+        if avg_spend < config.BUY_FORCE_MIN:
             return "eco"
-        if spend < config.BUY_FULL_MIN * 5:
+        if avg_spend < config.BUY_FULL_MIN:
             return "force"
         return "full"
 

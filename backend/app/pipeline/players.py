@@ -32,7 +32,7 @@ class PlayerStats:
             "postPlantTaken": 0.0, "enemyFlashed": 0, "blindSec": 0.0,
             "effectiveFlashes": 0, "plant": 0, "defuse": 0, "defuseAttempt": 0,
             "tradedDeath": False, "tradedKill": False, "opening": None,
-            "shots": 0, "hits": 0,
+            "shots": 0, "hits": 0, "survived": False,
         })
         self.weapons: dict[str, dict] = defaultdict(lambda: {
             "kills": 0, "hs": 0, "shots": 0, "hits": 0, "dmg": 0.0})

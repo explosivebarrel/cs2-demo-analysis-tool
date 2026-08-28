@@ -26,10 +26,8 @@ def _gz_write(path, payload):
 
 
 def _team_name(rb, team, players):
-    clans = defaultdict(int)
-    for p in players:
-        if p.team == team and p.clan:
-            clans[p.clan] += 1
+    from collections import Counter
+    clans = Counter(p.clan for p in players if p.team == team and p.clan)
     if clans:
         return clans.most_common(1)[0][0]
     sids = [s for s, t in rb.steamid_team.items() if t == team]
@@ -290,6 +288,7 @@ def _build_analysis(ctx, rb, fb, players):
             "isPistol": r["isPistol"],
             "buyTeam0": r["buyTeam0"], "buyTeam1": r["buyTeam1"],
             "spendTeam0": r["spendTeam0"], "spendTeam1": r["spendTeam1"],
+            "avgSpendTeam0": r.get("avgSpendTeam0", 0), "avgSpendTeam1": r.get("avgSpendTeam1", 0),
             "bombPlanted": r["bombPlanted"], "bombSite": r.get("bombSite"),
             "planter": r.get("planter"), "defuser": r.get("defuser"),
             "mvp": r.get("mvp"),

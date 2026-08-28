@@ -31,6 +31,14 @@ def _flags(row, inventory) -> int:
     return f
 
 
+def _safe_int(v, default=0) -> int:
+    try:
+        f = float(v)
+        return default if (f != f) else int(f)  # NaN check: NaN != NaN
+    except (TypeError, ValueError):
+        return default
+
+
 def _norm_yaw(y) -> float:
     try:
         a = float(y)
@@ -177,8 +185,8 @@ class FrameBuilder:
                 wid = weapon_id(row["active_weapon_name"])
                 flags = _flags(row, row.get("inventory"))
                 per_player[idx] = [round(pos[0]), round(pos[1]), round(pos[2]),
-                                   round(_norm_yaw(row["yaw"])), int(row["health"]),
-                                   int(row["armor_value"]), 1 if alive else 0, wid, flags, team]
+                                   _safe_int(_norm_yaw(row["yaw"])), _safe_int(row["health"]),
+                                   _safe_int(row["armor_value"]), 1 if alive else 0, wid, flags, team]
                 self._update_player_stats(sid, idx, pos, alive, row, r, dt)
 
             for i in range(self.n):

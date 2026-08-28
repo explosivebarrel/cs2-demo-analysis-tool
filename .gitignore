@@ -1,2 +1,38 @@
-.venv
-.zcode
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE / tools
+.zcode/
+.vscode/
+.idea/
+*.suo
+*.user
+
+# Data / demos (large binary files, generated artifacts)
+data/
+demo-examples/
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.env.local

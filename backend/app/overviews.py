@@ -15,6 +15,8 @@ class OverviewError(Exception):
 
 
 def _kv_tokenize(text: str):
+    # strip // line comments before tokenising
+    text = re.sub(r'//[^\n]*', '', text)
     for m in re.finditer(r'"([^"]*)"|([{}])|([^\s{}"]+)', text):
         if m.group(1) is not None:
             yield ("str", m.group(1))
@@ -127,6 +129,11 @@ def load_overview(map_name: str) -> dict:
     try:
         txt = _download(config.RADAR_INFO_URL.format(map=map_name)).decode("utf-8", "replace")
         kv = parse_kv(txt)
+        # data is nested under the map name key — find first dict value
+        for _v in kv.values():
+            if isinstance(_v, dict) and "pos_x" in _v:
+                kv = _v
+                break
         px, py, sc = _num(kv.get("pos_x")), _num(kv.get("pos_y")), _num(kv.get("scale"))
         if px is not None:
             ov["pos_x"] = px

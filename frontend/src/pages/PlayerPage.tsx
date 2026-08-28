@@ -1,0 +1,288 @@
+import { useState, useEffect } from 'react'
+import { useParams, useNavigate, NavLink } from 'react-router-dom'
+import { api, AnalysisData, PlayerData } from '../api'
+import { t } from '../i18n'
+import { useLang } from '../App'
+
+function MatchNav({ id }: { id: string }) {
+  useLang()
+  const base = `/match/${id}`
+  const s = (active: boolean) => ({ color: active ? 'var(--accent)' : 'var(--text2)', fontWeight: active ? 700 : 400, textDecoration: 'none', fontSize: 13 })
+  return (
+    <div className="flex gap-16 items-center" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 20 }}>
+      <NavLink to={base} end style={({ isActive }) => s(isActive)}>{t('overview')}</NavLink>
+      <NavLink to={`${base}/heatmaps`} style={({ isActive }) => s(isActive)}>{t('heatmaps')}</NavLink>
+      <NavLink to={`${base}/replay`} style={({ isActive }) => s(isActive)}>{t('replay')}</NavLink>
+    </div>
+  )
+}
+
+function Kv({ label, value, accent }: { label: string; value: React.ReactNode; accent?: boolean }) {
+  return (
+    <div className="kv">
+      <span className="kv-label">{label}</span>
+      <span className="kv-value" style={accent ? { color: 'var(--accent)' } : {}}>{value ?? '—'}</span>
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="card mt-12">
+      <div style={{ fontWeight: 700, marginBottom: 12, color: 'var(--text2)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>{title}</div>
+      {children}
+    </div>
+  )
+}
+
+function RatingSub({ parts }: { parts: Record<string, number> }) {
+  const keys = Object.keys(parts)
+  if (!keys.length) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 8 }}>
+      {keys.map(k => (
+        <div key={k} style={{ minWidth: 80 }}>
+          <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase' }}>{k}</div>
+          <div style={{ fontWeight: 700, color: 'var(--accent2)' }}>{typeof parts[k] === 'number' ? parts[k].toFixed(2) : parts[k]}</div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function SeriesChart({ series }: { series: PlayerData['series'] }) {
+  if (!series.length) return null
+  const maxDmg = Math.max(...series.map(s => s.dmg), 1)
+  return (
+    <div style={{ overflowX: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 80, padding: '4px 0' }}>
+        {series.map(s => {
+          const h = Math.max(4, (s.dmg / maxDmg) * 72)
+          const color = s.k > s.d ? 'var(--green)' : s.k < s.d ? 'var(--red)' : 'var(--text2)'
+          return (
+            <div key={s.n} title={`R${s.n}: K${s.k} D${s.d} DMG${s.dmg}`}
+              style={{ flex: '0 0 10px', height: h, background: color, borderRadius: 2, opacity: s.kast ? 1 : 0.4 }} />
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>Раунды (зелёный = K&gt;D, красный = D&gt;K, полупрозрачный = не в KAST)</div>
+    </div>
+  )
+}
+
+export default function PlayerPage() {
+  useLang()
+  const { id, steamid } = useParams<{ id: string; steamid: string }>()
+  const nav = useNavigate()
+  const [data, setData] = useState<AnalysisData | null>(null)
+  const [err, setErr] = useState('')
+
+  useEffect(() => {
+    if (!id) return
+    api.analysis(id).then(setData).catch(e => setErr(e.message))
+  }, [id])
+
+  if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
+  if (!data) return <div className="page"><span className="spinner" /> <span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span></div>
+
+  const p = data.players.find(x => x.steamid === steamid)
+  if (!p) return <div className="page"><div className="tag tag-red">Player not found</div></div>
+
+  const totalHG = Object.values(p.hitgroups).reduce((a, b) => a + b, 0) || 1
+  const hgLabels: Record<string, string> = { head: t('head'), chest: t('chest'), stomach: t('stomach'), arms: t('arms'), legs: t('legs') }
+
+  return (
+    <div className="page">
+      <MatchNav id={id!} />
+
+      {/* player selector */}
+      <div className="flex items-center gap-8 mb-12" style={{ flexWrap: 'wrap' }}>
+        <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => nav(`/match/${id}`)}>← {t('overview')}</button>
+        {data.players.map(pl => (
+          <button key={pl.steamid}
+            className={pl.steamid === steamid ? 'btn-primary' : 'btn-ghost'}
+            style={{ fontSize: 12, padding: '4px 10px' }}
+            onClick={() => nav(`/match/${id}/player/${pl.steamid}`)}>
+            {pl.name}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+        {/* header card */}
+        <div className="card" style={{ gridColumn: '1/-1' }}>
+          <div className="flex items-center justify-between wrap gap-12">
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 800 }}>{p.name}</div>
+              {p.clan && <div style={{ color: 'var(--text2)', fontSize: 13 }}>[{p.clan}]</div>}
+            </div>
+            <div className="flex gap-16 wrap">
+              <Kv label={t('rating')} value={p.rating.toFixed(2)} accent />
+              <Kv label={t('kd')} value={p.kd.toFixed(2)} />
+              <Kv label={t('adr')} value={p.adr.toFixed(1)} />
+              <Kv label={t('kast')} value={p.kast.toFixed(1) + '%'} />
+              <Kv label={t('hs')} value={p.hsPct !== null ? p.hsPct.toFixed(1) + '%' : '—'} />
+            </div>
+          </div>
+          <RatingSub parts={p.ratingParts} />
+        </div>
+
+        {/* base stats */}
+        <Section title={t('kills') + ' / ' + t('deaths') + ' / ' + t('assists')}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            <Kv label={t('kills')} value={p.kills} />
+            <Kv label={t('deaths')} value={p.deaths} />
+            <Kv label={t('assists')} value={p.assists} />
+            <Kv label="FA" value={p.flashAssists} />
+            <Kv label={t('kpr')} value={p.kpr.toFixed(2)} />
+            <Kv label={t('dpr')} value={p.dpr.toFixed(2)} />
+            <Kv label="APR" value={p.apr.toFixed(2)} />
+            <Kv label="ADR" value={p.adr.toFixed(1)} />
+          </div>
+        </Section>
+
+        {/* opening */}
+        <Section title={t('opening')}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <Kv label={t('kills')} value={p.opening.kills} />
+            <Kv label={t('deaths')} value={p.opening.deaths} />
+            <Kv label="Win%" value={p.opening.success !== null ? p.opening.success.toFixed(1) + '%' : '—'} />
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginTop: 12 }}>
+            <Kv label={t('tradeKills')} value={p.trades.tradeKills} />
+            <Kv label={t('tradedDeaths')} value={p.trades.tradedDeaths} />
+          </div>
+        </Section>
+
+        {/* multikills & clutches */}
+        <Section title={t('multiKills')}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+            {(['2k', '3k', '4k', '5k'] as const).map(k => (
+              <Kv key={k} label={k.toUpperCase()} value={p.multiKills[k]} />
+            ))}
+            <Kv label="Раундов" value={p.multiKills.rounds} />
+          </div>
+          <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>{t('clutches')}</div>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              {Object.entries(p.clutches.byX).map(([k, v]) => (
+                <div key={k} style={{ background: 'var(--bg3)', borderRadius: 6, padding: '6px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>1v{k}</div>
+                  <div style={{ fontWeight: 700 }}>{v.won}/{v.played}</div>
+                </div>
+              ))}
+              {p.clutches.played === 0 && <span className="text-muted">{t('noData')}</span>}
+            </div>
+          </div>
+        </Section>
+
+        {/* utility */}
+        <Section title={t('utility')}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+            <Kv label={t('flashThrown')} value={p.flashes.thrown} />
+            <Kv label={t('enemiesFlashed')} value={p.flashes.enemiesFlashed} />
+            <Kv label={t('blindSec')} value={p.flashes.blindSec.toFixed(1)} />
+            <Kv label={t('effectiveFlash')} value={p.flashes.effective} />
+            <Kv label="FF" value={p.flashes.friendly} />
+            <Kv label="Smokes" value={p.grenades.smokes} />
+            <Kv label="HE" value={p.grenades.he} />
+            <Kv label="Fire" value={p.grenades.fire} />
+            <Kv label="Decoy" value={p.grenades.decoys} />
+          </div>
+        </Section>
+
+        {/* bomb */}
+        <Section title="Bomb">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            <Kv label={t('plants')} value={p.bomb.plants} />
+            <Kv label={t('defuses')} value={p.bomb.defuses} />
+            <Kv label="Attempts" value={p.bomb.defuseAttempts} />
+            <Kv label="Kit" value={p.bomb.kits} />
+          </div>
+        </Section>
+
+        {/* economy */}
+        <Section title={t('economy')}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+            <Kv label={t('avgSpend')} value={'$' + p.eco.avgSpend.toLocaleString()} />
+            <Kv label={t('totalSpend')} value={'$' + p.eco.totalSpend.toLocaleString()} />
+          </div>
+        </Section>
+
+        {/* movement */}
+        <Section title={t('movement')}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            <Kv label={t('distKm')} value={p.movement.distanceKm.toFixed(2)} />
+            <Kv label="Alive/R (s)" value={p.movement.aliveSecPerRound.toFixed(1)} />
+            <Kv label={t('survival')} value={p.movement.survivalPct.toFixed(1) + '%'} />
+            <Kv label={t('saves')} value={p.movement.saves} />
+          </div>
+        </Section>
+
+        {/* by side */}
+        <Section title={t('bySide')}>
+          {(['T', 'CT'] as const).map(side => {
+            const s = p.bySide[side]
+            return (
+              <div key={side} style={{ marginBottom: 12 }}>
+                <span className={`tag tag-${side}`} style={{ marginBottom: 8, display: 'inline-block' }}>{side} ({s.rounds} rounds)</span>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                  <Kv label={t('kills')} value={s.kills} />
+                  <Kv label={t('deaths')} value={s.deaths} />
+                  <Kv label={t('kd')} value={s.kd.toFixed(2)} />
+                  <Kv label={t('adr')} value={s.adr.toFixed(1)} />
+                  <Kv label={t('assists')} value={s.assists} />
+                </div>
+              </div>
+            )
+          })}
+        </Section>
+
+        {/* hitgroups */}
+        <Section title={t('hitgroups')}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {Object.entries(p.hitgroups).map(([hg, cnt]) => (
+              <div key={hg} style={{ background: 'var(--bg3)', borderRadius: 6, padding: '6px 12px', textAlign: 'center', minWidth: 64 }}>
+                <div style={{ fontSize: 11, color: 'var(--text2)' }}>{hgLabels[hg] ?? hg}</div>
+                <div style={{ fontWeight: 700 }}>{cnt}</div>
+                <div style={{ fontSize: 11, color: 'var(--text2)' }}>{(cnt / totalHG * 100).toFixed(0)}%</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      </div>
+
+      {/* series */}
+      <Section title="Статистика по раундам">
+        <SeriesChart series={p.series} />
+      </Section>
+
+      {/* weapons */}
+      <Section title={t('weapons')}>
+        <div style={{ overflowX: 'auto' }}>
+          <table>
+            <thead>
+              <tr>
+                <th>Оружие</th><th>{t('kills')}</th><th>HS%</th>
+                <th>{t('shots')}</th><th>{t('hits')}</th><th>{t('accuracy')}</th><th>{t('dmg')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.weapons.map(w => (
+                <tr key={w.raw}>
+                  <td><span style={{ fontSize: 11, color: 'var(--text2)', marginRight: 6 }}>{w.cls}</span>{w.ru || w.en}</td>
+                  <td style={{ fontWeight: 700 }}>{w.kills}</td>
+                  <td>{w.hsPct !== null ? w.hsPct.toFixed(1) + '%' : '—'}</td>
+                  <td>{w.shots}</td>
+                  <td>{w.hits}</td>
+                  <td>{w.acc !== null ? w.acc.toFixed(1) + '%' : '—'}</td>
+                  <td>{w.dmg}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+    </div>
+  )
+}
