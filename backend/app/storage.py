@@ -112,6 +112,9 @@ def list_demos():
         entry["phase"] = st.get("phase", "")
         entry["error"] = st.get("error")
         entry["ready"] = os.path.exists(os.path.join(analysis_dir(did), "analysis.json.gz"))
+        entry["map"] = st.get("map", "")
+        entry["score"] = st.get("score", [])
+        entry["teamNames"] = st.get("teamNames", [])
         result.append(entry)
     result.sort(key=lambda x: -x["mtime"])
     return result

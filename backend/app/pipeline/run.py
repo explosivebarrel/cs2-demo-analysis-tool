@@ -88,8 +88,15 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
 
     prog("done", 100)
-    return {"rounds": len(rb.rounds), "players": len(players),
-            "seconds": round(time.time() - t0, 1)}
+    return {
+        "rounds": len(rb.rounds),
+        "players": len(players),
+        "seconds": round(time.time() - t0, 1),
+        "map": ctx.header.get("map_name", ""),
+        "score": list(rb.final_score),
+        "teamNames": [_team_name(rb, 0, list(players.values())),
+                      _team_name(rb, 1, list(players.values()))],
+    }
 
 
 # ---------------------------------------------------------------- helpers

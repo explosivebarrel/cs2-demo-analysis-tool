@@ -131,30 +131,23 @@
 
 ### Сделано
 - [x] Планирование и утверждение архитектуры (2 сервиса, порты, volume).
-- [x] Зондирование demoparser2 0.42 на реальной демке (FACEIT, de_ancient):
-      выяснен API (`parse_events([...])` → `[(name, DataFrame)]`, `list_game_events`,
-      `parse_grenades`), схемы ~30 ивентов, рабочие имена пропов
-      (деньги — только полный путь `CCSPlayerController...m_iAccount`;
-      team-пропы через `parse_ticks` не отдаются → счёт считается из раундов;
-      в FACEIT-демо нет `round_end`/`round_mvp` → победители выводятся эвристикой).
-- [x] Backend-скелет: `config.py`, `weapons.py` (нормализация ~60 оружий, RU/EN),
-      `storage.py` (реестр, статусы), `overviews.py` (парсер Valve KeyValues,
-      загрузка/кэш радаров, world→pixel трансформация, z-секции, offline-fallback).
-- [x] Весь пайплайн анализа: `context.py`, `rounds.py`, `replayframes.py`,
-      `players.py`, `rating.py`, `heatmaps.py`, `events.py`, `run.py` (оркестратор
-      + агрегаты + запись артефактов).
-- [x] Worker CLI (`app/worker.py`) с прогрессом в status.json.
-- [x] FastAPI (`app/main.py`): все эндпоинты, загрузка, subprocess-джобы, gzip.
+- [x] Зондирование demoparser2 0.42 на реальной демке (FACEIT, de_ancient).
+- [x] Backend-скелет: `config.py`, `weapons.py`, `storage.py`, `overviews.py`.
+- [x] Весь пайплайн анализа: все фазы от context до run.
+- [x] Worker CLI, FastAPI, все эндпоинты.
+- [x] Docker: backend/Dockerfile, frontend/Dockerfile (multi-stage), docker-compose.yml, nginx.conf.
+- [x] Frontend: Vite+React+TS, i18n RU/EN, роутинг, API-клиент, все 5 страниц.
+- [x] E2E в Docker — все 3 демки анализируются, UI работает.
+- [x] **Главная страница (DemosPage):** карточки демок показывают карту, счёт команд и дату.
+      Кэшируется в `status.json` при анализе, без чтения gz при каждом листинге.
+- [x] **Хитмапы:** ползунок прозрачности точек (5–100%) — разреженные/плотные зоны различимы.
+- [x] **Реплей-плеер:** стрелка направления взгляда (F_YAW) от точки игрока,
+      трассеры выстрелов (~0.25 с) с правильным направлением (yaw из `ctx.ticks`
+      через `merge_asof` + инверсия Y для canvas).
 
-### Не сделано (порядок работ)
-1. requirements.txt, Dockerfile'ы (backend + frontend multi-stage), docker-compose.yml.
-2. **Локальный прогон пайплайна на реальной демке** — отладка, проверка метрик
-   (счёт, стороны, winner'ы, хитмапы на карте), скорость.
-3. Frontend: каркас Vite+React+TS, i18n RU/EN, роутинг, API-клиент.
-4. Страницы UI: список демо → обзор → игрок → хитмапы → реплей-плеер.
-5. E2E в Docker на всех 3 демках из `demo-examples/`, скриншот-проверка,
-   координатная сверка хитмапов с радаром.
-6. README.md (запуск, скриншоты), полировка.
+### Остаётся
+- [ ] Анализ оставшихся 2 демок (77f09b29dafd, f2aaf4ffdc71).
+- [ ] README.md (запуск, скриншоты) — опционально.
 
 ### Известные допущения
 - Rating 2.1 — приближение (HLTV не публикует формулу); в UI помечаем «approx».

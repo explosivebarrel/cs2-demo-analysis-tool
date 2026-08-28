@@ -10,6 +10,18 @@ function fmtSize(b: number) {
   return (b / 1e3).toFixed(0) + ' KB'
 }
 
+function fmtDate(mtime?: number) {
+  if (!mtime) return ''
+  const d = new Date(mtime * 1000)
+  return d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' })
+}
+
+function mapShortName(map?: string) {
+  if (!map) return ''
+  // strip de_ / cs_ prefix for compact display
+  return map.replace(/^(de_|cs_)/, '')
+}
+
 function StatusBadge({ d }: { d: DemoEntry }) {
   useLang()
   const s = d.status || 'new'
@@ -157,6 +169,27 @@ export default function DemosPage() {
                   )}
                 </div>
               </div>
+              {d.status === 'ready' && (d.map || d.score?.length) && (
+                <div className="flex items-center gap-12" style={{ marginTop: 6, fontSize: 12, color: 'var(--text2)' }}>
+                  {d.map && (
+                    <span style={{ background: 'var(--bg3)', borderRadius: 4, padding: '1px 6px', fontWeight: 600, color: 'var(--text)' }}>
+                      {mapShortName(d.map)}
+                    </span>
+                  )}
+                  {d.teamNames?.[0] && d.score?.length === 2 && (
+                    <span>
+                      <span style={{ color: 'var(--accent)' }}>{d.teamNames[0]}</span>
+                      {' '}
+                      <span style={{ fontWeight: 700, color: 'var(--text)' }}>{d.score[0]}:{d.score[1]}</span>
+                      {' '}
+                      <span style={{ color: 'var(--accent2)' }}>{d.teamNames[1]}</span>
+                    </span>
+                  )}
+                  {d.mtime && (
+                    <span style={{ marginLeft: 'auto' }}>{fmtDate(d.mtime)}</span>
+                  )}
+                </div>
+              )}
               <ProgressRow d={d} />
             </div>
           ))}

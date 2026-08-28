@@ -15,6 +15,10 @@ export interface DemoEntry {
   progress?: number
   phase?: string
   error?: string
+  mtime?: number
+  map?: string
+  score?: number[]
+  teamNames?: string[]
 }
 
 export interface AnalysisData {
@@ -110,7 +114,7 @@ export interface ReplayData {
   data: number[]  // flat: frame * nPlayers * FIELDS + playerIdx * FIELDS + field
   bomb: (number | null)[][]
   events: ReplayEvent[]
-  shots: ShotEvent[]
+  shots: number[][]  // compact: [tick, playerIdx, x, y, yaw]
   weapons: Record<number, WeaponInfo>
 }
 
@@ -120,7 +124,7 @@ export interface ReplayEvent {
 }
 
 export interface ShotEvent {
-  tick: number; sid: string; x: number; y: number; ex: number; ey: number; wid: number
+  tick: number; pidx: number; x: number; y: number; yaw: number
 }
 
 export interface StatusData {

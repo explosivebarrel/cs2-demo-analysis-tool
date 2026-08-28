@@ -130,6 +130,25 @@ function drawFrame(
     ctx.fillStyle = grad; ctx.fill()
   }
 
+  // shot tracers: visible for ~0.25s after the shot tick
+  const tracerWindow = replay.tickrate * 0.25
+  for (const shot of replay.shots) {
+    const [stTick, pidx, sx, sy] = shot
+    if (stTick > curTick || curTick - stTick > tracerWindow) continue
+    const syaw = shot[4]
+    const [scx, scy] = worldToCanvas(sx, sy, ov)
+    const rad = (syaw * Math.PI) / 180
+    const tracerLen = 40
+    const fade = 1 - (curTick - stTick) / tracerWindow
+    const playerColor = TEAM_COLORS[replay.data[frameIdx * replay.players.length * FIELDS + pidx * FIELDS + F_TEAM] ?? 0] ?? '#fff'
+    ctx.beginPath()
+    ctx.moveTo(scx, scy)
+    ctx.lineTo(scx + Math.cos(rad) * tracerLen, scy - Math.sin(rad) * tracerLen)
+    ctx.strokeStyle = playerColor + Math.round(fade * 0xcc).toString(16).padStart(2, '0')
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+  }
+
   // players
   const n = replay.players.length
   const frameBase = frameIdx * n * FIELDS
@@ -161,6 +180,30 @@ function drawFrame(
     ctx.fillStyle = '#fff'
     ctx.textAlign = 'center'
     ctx.fillText(name.slice(0, 8), cx, cy - r - 2)
+
+    // aim direction arrow (canvas Y is flipped vs world Y, so negate sin)
+    const yaw = replay.data[base + F_YAW]
+    const rad = (yaw * Math.PI) / 180
+    const arrowLen = 14
+    const ax = cx + Math.cos(rad) * arrowLen
+    const ay = cy - Math.sin(rad) * arrowLen
+    ctx.beginPath()
+    ctx.moveTo(cx, cy)
+    ctx.lineTo(ax, ay)
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.5
+    ctx.stroke()
+    // arrowhead
+    const headLen = 4
+    const headAngle = Math.PI / 6
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(ax - headLen * Math.cos(rad - headAngle), ay + headLen * Math.sin(rad - headAngle))
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(ax - headLen * Math.cos(rad + headAngle), ay + headLen * Math.sin(rad + headAngle))
+    ctx.strokeStyle = color
+    ctx.lineWidth = 1.5
+    ctx.stroke()
 
     const bw = 20, bh = 3
     const bx = cx - bw / 2, by = cy + r + 2

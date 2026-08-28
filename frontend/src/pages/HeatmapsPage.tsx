@@ -77,6 +77,7 @@ function drawHeatmap(
   layer: string,
   ov: MapOverview,
   playerIdxSet: Set<number> | null,
+  pointAlpha: number,
 ) {
   const size = canvas.width
   const ctx = canvas.getContext('2d')!
@@ -89,16 +90,16 @@ function drawHeatmap(
     if (!arr || arr.length < 2) continue
     const pt = decodePoint(layer, arr)
 
-    // player filter
     if (playerIdxSet !== null && !playerIdxSet.has(pt.pIdx)) continue
 
     const [cx, cy] = worldToCanvas(pt.x, pt.y, ov, size)
     if (!isFinite(cx) || !isFinite(cy)) continue
     if (cx < -radius || cx > size + radius || cy < -radius || cy > size + radius) continue
 
-    const intensity = pt.v != null ? Math.min(1, pt.v / 100) : 0.7
+    // pointAlpha replaces the old hardcoded intensity — lower alpha → only dense areas stay visible
+    const alpha = pointAlpha
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius)
-    grad.addColorStop(0, `rgba(${color},${intensity})`)
+    grad.addColorStop(0, `rgba(${color},${alpha})`)
     grad.addColorStop(1, `rgba(${color},0)`)
     ctx.beginPath()
     ctx.arc(cx, cy, radius, 0, Math.PI * 2)
@@ -116,6 +117,7 @@ export default function HeatmapsPage() {
   const [overview, setOverview] = useState<MapOverview | null>(null)
   const [layer, setLayer] = useState('kills')
   const [selectedPlayers, setSelectedPlayers] = useState<Set<number>>(new Set())
+  const [pointAlpha, setPointAlpha] = useState(0.35)
   const [error, setError] = useState('')
 
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -151,8 +153,8 @@ export default function HeatmapsPage() {
     if (!cv || !heatmap || !overview) return
     const raw = (heatmap.layers[layer] ?? []) as unknown as number[][]
     const playerFilter = selectedPlayers.size > 0 ? selectedPlayers : null
-    drawHeatmap(cv, raw, layer, overview, playerFilter)
-  }, [heatmap, layer, overview, selectedPlayers])
+    drawHeatmap(cv, raw, layer, overview, playerFilter, pointAlpha)
+  }, [heatmap, layer, overview, selectedPlayers, pointAlpha])
 
   const togglePlayer = useCallback((idx: number) => {
     setSelectedPlayers(prev => {
@@ -205,6 +207,20 @@ export default function HeatmapsPage() {
                 </button>
               ))}
             </div>
+          </div>
+
+          {/* opacity slider */}
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
+              Прозрачность точек
+              <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pointAlpha * 100)}%</span>
+            </div>
+            <input
+              type="range" min={5} max={100} step={5}
+              value={Math.round(pointAlpha * 100)}
+              onChange={e => setPointAlpha(Number(e.target.value) / 100)}
+              style={{ width: '100%', accentColor: 'var(--accent)' }}
+            />
           </div>
 
           {/* player filter */}

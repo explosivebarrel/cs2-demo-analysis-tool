@@ -47,10 +47,41 @@ def build_events(ctx, rb, fb):
     wf = ctx.ev("weapon_fire")
     if len(wf):
         wcls = wf["weapon"].astype(str).map(lambda w: canon(w)[2])
-        m = wf[wcls.isin(GUN_CLASSES)]
+        m = wf[wcls.isin(GUN_CLASSES)].copy()
+        # weapon_fire has no yaw — find nearest tick in ctx.ticks per player
+        ticks = ctx.ticks
+        if ticks is not None and "yaw" in ticks.columns and "steamid" in ticks.columns:
+            import pandas as pd
+            yaw_df = ticks[["tick", "steamid", "yaw"]].copy()
+            yaw_df["steamid"] = yaw_df["steamid"].astype(str)
+            yaw_df = yaw_df.drop_duplicates(subset=["tick", "steamid"]).sort_values("tick")
+            m["user_steamid"] = m["user_steamid"].astype(str)
+            m_sorted = m.sort_values("tick")
+            # merge_asof per player: for each shot find nearest tick entry
+            parts = []
+            for sid, grp in m_sorted.groupby("user_steamid", sort=False):
+                player_yaw = yaw_df[yaw_df["steamid"] == sid].sort_values("tick")
+                if len(player_yaw) == 0:
+                    grp = grp.copy(); grp["yaw"] = 0
+                else:
+                    grp = pd.merge_asof(grp, player_yaw[["tick", "yaw"]],
+                                        on="tick", direction="nearest")
+                parts.append(grp)
+            m = pd.concat(parts) if parts else m
+            yaw_col = "yaw"
+        else:
+            m["yaw"] = 0
+            yaw_col = "yaw"
+        def _yaw(v):
+            try:
+                f = float(v)
+                return int(f) % 360 if f == f else 0  # f==f is False for NaN
+            except (TypeError, ValueError):
+                return 0
         events.append({"ty": "__shots", "rows": [
             [int(row["tick"]), idx(row.get("user_steamid")),
-             _f(row.get("user_X")), _f(row.get("user_Y")), int(float(row.get("yaw") or 0)) % 360]
+             _f(row.get("user_X")), _f(row.get("user_Y")),
+             _yaw(row.get(yaw_col))]
             for _, row in m.iterrows() if row.get("user_steamid") is not None]})
 
     # grenade trails -----------------------------------------------------

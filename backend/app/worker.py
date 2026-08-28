@@ -19,10 +19,13 @@ def main():
     storage.write_status(did, status="parsing", progress=0, phase="start")
     try:
         info = analyze_demo(demo_path, did, progress)
-        st = storage.write_status(did, status="ready", progress=100, phase="done")
-        st.pop("error", None)
-        storage.write_status(did, status="ready", progress=100, phase="done",
-                             result=info)
+        storage.write_status(
+            did, status="ready", progress=100, phase="done",
+            result=info,
+            map=info.get("map", ""),
+            score=info.get("score", [0, 0]),
+            teamNames=info.get("teamNames", ["", ""]),
+        )
         print(f"[{did}] DONE {info}", flush=True)
     except Exception as e:  # noqa: BLE001 - report any failure to UI
         err = f"{type(e).__name__}: {e}"
