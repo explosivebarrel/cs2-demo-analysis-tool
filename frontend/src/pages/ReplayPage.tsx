@@ -418,12 +418,12 @@ export default function ReplayPage() {
       <MatchNav id={id!} />
       <div style={{ display: 'grid', gridTemplateColumns: `${leftWidth}px 8px 1fr`, gap: 0, alignItems: 'start' }}>
         <div style={{ minWidth: 0 }}>
-          <div className="card" style={{ padding: 8, position: 'relative' }}>
+          <div className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
             <img ref={radarRef} src={api.radarUrl(mapName)} alt="" style={{ display: 'none' }}
               onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current) }} />
             <canvas
               ref={canvasRef} width={leftWidth} height={leftWidth}
-              style={{ display: 'block', borderRadius: 4, cursor, width: '100%', height: 'auto' }}
+              style={{ display: 'block', cursor, width: '100%', height: 'auto' }}
               onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
               onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
             />

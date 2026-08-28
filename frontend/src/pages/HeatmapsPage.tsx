@@ -132,7 +132,7 @@ export default function HeatmapsPage() {
   const containerRef = useRef<HTMLDivElement>(null)
 
   // resizer
-  const [leftWidth, setLeftWidth] = useState(512)
+  const [leftWidth, setLeftWidth] = useState(600)
   const resizerRef = useRef<{ startX: number; startW: number } | null>(null)
   function onResizerMouseDown(e: React.MouseEvent) {
     e.preventDefault()
