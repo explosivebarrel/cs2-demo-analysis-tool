@@ -20,14 +20,14 @@ function MatchNav({ id }: { id: string }) {
   )
 }
 
-// frame data layout per player (10 values):
-// 0:x 1:y 2:z 3:yaw 4:hp 5:armor 6:alive 7:weaponId 8:team 9:flags
 const F_X = 0, F_Y = 1, F_Z = 2, F_YAW = 3, F_HP = 4, F_ARMOR = 5
 const F_ALIVE = 6, F_WID = 7, F_TEAM = 8, F_FLAGS = 9
 const FIELDS = 10
 
 const TEAM_COLORS = ['#e4882a', '#4a9eda']
 const SIZE = 600
+
+interface Transform { scale: number; ox: number; oy: number }
 
 function worldToCanvas(wx: number, wy: number, ov: MapOverview): [number, number] {
   const px = (wx - ov.pos_x) / ov.scale
@@ -36,7 +36,11 @@ function worldToCanvas(wx: number, wy: number, ov: MapOverview): [number, number
   return [px * ratio, py * ratio]
 }
 
-// ty codes from backend/app/pipeline/events.py
+// apply pan/zoom transform to a canvas-space point
+function applyTx(x: number, y: number, tx: Transform): [number, number] {
+  return [x * tx.scale + tx.ox, y * tx.scale + tx.oy]
+}
+
 const NADE_COLORS: Record<string, string> = {
   sm: 'rgba(150,200,150,0.65)',
   fd: 'rgba(255,240,80,0.8)',
@@ -57,9 +61,17 @@ function drawFrame(
   replay: ReplayData,
   ov: MapOverview,
   radarImg: HTMLImageElement | null,
+  tx: Transform,
 ) {
   const ctx = canvas.getContext('2d')!
   ctx.clearRect(0, 0, SIZE, SIZE)
+
+  // visual scale factor for player dots — shrink as zoom increases (sqrt keeps it gentle)
+  const dotScale = 1 / Math.sqrt(tx.scale)
+
+  ctx.save()
+  ctx.translate(tx.ox, tx.oy)
+  ctx.scale(tx.scale, tx.scale)
 
   if (radarImg?.complete && radarImg.naturalWidth > 0) {
     ctx.drawImage(radarImg, 0, 0, SIZE, SIZE)
@@ -76,7 +88,6 @@ function drawFrame(
 
   const curTick = replay.ticks[frameIdx] ?? 0
 
-  // find round start tick for current tick (grenades from previous rounds must not bleed through)
   const roundEvents = replay.events.filter(ev => (ev as Record<string, unknown>).ty === 'r')
   let roundStartT = 0
   for (const rev of roundEvents) {
@@ -84,16 +95,13 @@ function drawFrame(
     if (rt <= curTick) roundStartT = rt
   }
 
-  // active grenade zones (sm/fr active between detonate and expire event)
   const activeZones: { ty: string; x: number; y: number }[] = []
   for (const ev of replay.events) {
     const evTy = (ev as Record<string, unknown>).ty as string
     if (evTy !== 'sm' && evTy !== 'fr') continue
     const evT = (ev as Record<string, unknown>).t as number
     if (evT > curTick) continue
-    // must belong to current round (detonate after round start)
     if (evT < roundStartT) continue
-    // find corresponding expire (sx for smoke, fx for fire)
     const expTy = evTy === 'sm' ? 'sx' : 'fx'
     const expire = replay.events.find(e2 => {
       const t2 = (e2 as Record<string, unknown>)
@@ -108,7 +116,6 @@ function drawFrame(
     }
   }
 
-  // flash/HE detonations visible for ~0.3s
   const recentDet: { ty: string; x: number; y: number }[] = []
   for (const ev of replay.events) {
     const evTy = (ev as Record<string, unknown>).ty as string
@@ -119,7 +126,6 @@ function drawFrame(
     }
   }
 
-  // draw zones
   for (const z of [...activeZones, ...recentDet]) {
     const [cx, cy] = worldToCanvas(z.x, z.y, ov)
     const r = NADE_RADIUS[z.ty] ?? 10
@@ -130,7 +136,6 @@ function drawFrame(
     ctx.fillStyle = grad; ctx.fill()
   }
 
-  // shot tracers: visible for ~0.25s after the shot tick
   const tracerWindow = replay.tickrate * 0.25
   for (const shot of replay.shots) {
     const [stTick, pidx, sx, sy] = shot
@@ -149,10 +154,9 @@ function drawFrame(
     ctx.stroke()
   }
 
-  // players
   const n = replay.players.length
   const frameBase = frameIdx * n * FIELDS
-  if (frameBase + n * FIELDS > replay.data.length) return
+  if (frameBase + n * FIELDS > replay.data.length) { ctx.restore(); return }
 
   for (let i = 0; i < n; i++) {
     const base = frameBase + i * FIELDS
@@ -165,36 +169,34 @@ function drawFrame(
     const [cx, cy] = worldToCanvas(x, y, ov)
     const hasBomb = (flags & 1) !== 0
     const color = TEAM_COLORS[team] ?? '#ccc'
-    const r = 8
+    const r = 8 * dotScale
 
     ctx.beginPath()
     ctx.arc(cx, cy, r, 0, Math.PI * 2)
     ctx.fillStyle = color + 'cc'
     ctx.fill()
     ctx.strokeStyle = hasBomb ? '#fff' : color
-    ctx.lineWidth = hasBomb ? 2.5 : 1.5
+    ctx.lineWidth = (hasBomb ? 2.5 : 1.5) * dotScale
     ctx.stroke()
 
     const name = replay.players[i]?.name ?? ''
-    ctx.font = '10px monospace'
+    ctx.font = `${Math.round(10 * dotScale)}px monospace`
     ctx.fillStyle = '#fff'
     ctx.textAlign = 'center'
-    ctx.fillText(name.slice(0, 8), cx, cy - r - 2)
+    ctx.fillText(name.slice(0, 8), cx, cy - r - 2 * dotScale)
 
-    // aim direction arrow (canvas Y is flipped vs world Y, so negate sin)
     const yaw = replay.data[base + F_YAW]
     const rad = (yaw * Math.PI) / 180
-    const arrowLen = 14
+    const arrowLen = 14 * dotScale
     const ax = cx + Math.cos(rad) * arrowLen
     const ay = cy - Math.sin(rad) * arrowLen
     ctx.beginPath()
     ctx.moveTo(cx, cy)
     ctx.lineTo(ax, ay)
     ctx.strokeStyle = color
-    ctx.lineWidth = 1.5
+    ctx.lineWidth = 1.5 * dotScale
     ctx.stroke()
-    // arrowhead
-    const headLen = 4
+    const headLen = 4 * dotScale
     const headAngle = Math.PI / 6
     ctx.beginPath()
     ctx.moveTo(ax, ay)
@@ -202,17 +204,30 @@ function drawFrame(
     ctx.moveTo(ax, ay)
     ctx.lineTo(ax - headLen * Math.cos(rad + headAngle), ay + headLen * Math.sin(rad + headAngle))
     ctx.strokeStyle = color
-    ctx.lineWidth = 1.5
+    ctx.lineWidth = 1.5 * dotScale
     ctx.stroke()
 
-    const bw = 20, bh = 3
-    const bx = cx - bw / 2, by = cy + r + 2
+    const bw = 20 * dotScale, bh = 3 * dotScale
+    const bx = cx - bw / 2, by = cy + r + 2 * dotScale
     ctx.fillStyle = '#333'
     ctx.fillRect(bx, by, bw, bh)
     ctx.fillStyle = hp > 50 ? '#4caf7d' : hp > 25 ? '#f5c542' : '#e05252'
     ctx.fillRect(bx, by, bw * hp / 100, bh)
   }
+
+  ctx.restore()
 }
+
+const SPEEDS = [0.5, 1, 2, 4, 8]
+
+const HOTKEYS = [
+  { key: 'Space', label: 'Space', desc: 'Пауза / Воспроизведение' },
+  { key: ',', label: ',', desc: 'Замедлить' },
+  { key: '.', label: '.', desc: 'Ускорить' },
+  { key: '0', label: '0', desc: 'Сбросить зум' },
+  { key: 'Scroll', label: 'Scroll', desc: 'Зум' },
+  { key: 'Drag', label: 'Drag', desc: 'Перемещение' },
+]
 
 export default function ReplayPage() {
   useLang()
@@ -223,46 +238,48 @@ export default function ReplayPage() {
   const [frameIdx, setFrameIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
+  const [speedIdx, setSpeedIdx] = useState(1)
   const [err, setErr] = useState('')
+  const [tx, setTx] = useState<Transform>({ scale: 1, ox: 0, oy: 0 })
+  const txRef = useRef<Transform>({ scale: 1, ox: 0, oy: 0 })
+  const dragRef = useRef<{ startX: number; startY: number; startOx: number; startOy: number } | null>(null)
+  const touchRef = useRef<{ dist: number; cx: number; cy: number } | null>(null)
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const radarRef = useRef<HTMLImageElement>(null)
   const rafRef = useRef<number>(0)
   const lastTimeRef = useRef<number>(0)
   const frameIdxRef = useRef(0)
+  const replayRef = useRef<ReplayData | null>(null)
 
   useEffect(() => { frameIdxRef.current = frameIdx }, [frameIdx])
+  useEffect(() => { txRef.current = tx }, [tx])
+  useEffect(() => { replayRef.current = replay }, [replay])
 
   useEffect(() => {
     if (!id) return
     Promise.all([api.replay(id), api.analysis(id)])
-      .then(([r, a]) => {
-        setReplay(r)
-        setAnalysis(a)
-        return api.mapOverview(a.meta.map)
-      })
+      .then(([r, a]) => { setReplay(r); setAnalysis(a); return api.mapOverview(a.meta.map) })
       .then(setOverview)
       .catch(e => setErr(e.message))
   }, [id])
 
   const totalFrames = replay?.ticks.length ?? 0
 
-  // render current frame when canvas/replay/overview ready
   useEffect(() => {
     if (!canvasRef.current || !replay || !overview) return
-    drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current)
-  }, [frameIdx, replay, overview])
+    drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx)
+  }, [frameIdx, replay, overview, tx])
 
-  // animation loop
   useEffect(() => {
     if (!playing || !replay) return
     const frameMs = (replay.frameStep / replay.tickrate) * 1000 / speed
-
     function tick(now: number) {
       if (now - lastTimeRef.current >= frameMs) {
         lastTimeRef.current = now
         setFrameIdx(prev => {
           const next = prev + 1
-          if (next >= (replay?.ticks.length ?? 0)) { setPlaying(false); return prev }
+          if (next >= (replayRef.current?.ticks.length ?? 0)) { setPlaying(false); return prev }
           return next
         })
       }
@@ -272,10 +289,86 @@ export default function ReplayPage() {
     return () => cancelAnimationFrame(rafRef.current)
   }, [playing, replay, speed])
 
-  function scrub(e: React.ChangeEvent<HTMLInputElement>) {
-    setFrameIdx(Number(e.target.value))
-    setPlaying(false)
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement).tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p) }
+      if (e.key === ',') setSpeedIdx(i => { const ni = Math.max(0, i - 1); setSpeed(SPEEDS[ni]); return ni })
+      if (e.key === '.') setSpeedIdx(i => { const ni = Math.min(SPEEDS.length - 1, i + 1); setSpeed(SPEEDS[ni]); return ni })
+      if (e.key === '0') setTx({ scale: 1, ox: 0, oy: 0 })
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const clampTx = useCallback((t: Transform): Transform => {
+    // clamp scale first, then compute bounds from the clamped scale
+    const sc = Math.max(1, Math.min(8, t.scale))
+    const maxOff = SIZE * (sc - 1)
+    return { scale: sc, ox: Math.max(-maxOff, Math.min(0, t.ox)), oy: Math.max(-maxOff, Math.min(0, t.oy)) }
+  }, [])
+
+  // passive:false is required to allow preventDefault() on wheel — React's synthetic onWheel can't do this
+  useEffect(() => {
+    const el = canvasRef.current
+    if (!el) return
+    function onWheel(e: WheelEvent) {
+      e.preventDefault()
+      const rect = el!.getBoundingClientRect()
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top
+      const factor = e.deltaY < 0 ? 1.1 : 0.9
+      const cur = txRef.current
+      // clamp the new scale before computing offset to avoid drift at boundaries
+      const rawScale = cur.scale * factor
+      const sc = Math.max(1, Math.min(8, rawScale))
+      const ox = mx - (mx - cur.ox) * (sc / cur.scale)
+      const oy = my - (my - cur.oy) * (sc / cur.scale)
+      const maxOff = SIZE * (sc - 1)
+      setTx({ scale: sc, ox: Math.max(-maxOff, Math.min(0, ox)), oy: Math.max(-maxOff, Math.min(0, oy)) })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [canvasRef.current])
+
+  function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (e.button !== 0) return
+    dragRef.current = { startX: e.clientX, startY: e.clientY, startOx: txRef.current.ox, startOy: txRef.current.oy }
   }
+  function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    if (!dragRef.current) return
+    const dx = e.clientX - dragRef.current.startX, dy = e.clientY - dragRef.current.startY
+    setTx(clampTx({ scale: txRef.current.scale, ox: dragRef.current.startOx + dx, oy: dragRef.current.startOy + dy }))
+  }
+  function onMouseUp() { dragRef.current = null }
+
+  function onTouchStart(e: React.TouchEvent<HTMLCanvasElement>) {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY
+      touchRef.current = { dist: Math.sqrt(dx*dx+dy*dy), cx: (e.touches[0].clientX+e.touches[1].clientX)/2, cy: (e.touches[0].clientY+e.touches[1].clientY)/2 }
+    } else if (e.touches.length === 1) {
+      dragRef.current = { startX: e.touches[0].clientX, startY: e.touches[0].clientY, startOx: txRef.current.ox, startOy: txRef.current.oy }
+    }
+  }
+  function onTouchMove(e: React.TouchEvent<HTMLCanvasElement>) {
+    e.preventDefault()
+    if (e.touches.length === 2 && touchRef.current) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX, dy = e.touches[0].clientY - e.touches[1].clientY
+      const dist = Math.sqrt(dx*dx+dy*dy)
+      const rect = canvasRef.current!.getBoundingClientRect()
+      const mx = touchRef.current.cx - rect.left, my = touchRef.current.cy - rect.top
+      const factor = dist / touchRef.current.dist
+      const cur = txRef.current; const ns = cur.scale * factor
+      setTx(clampTx({ scale: ns, ox: mx-(mx-cur.ox)*(ns/cur.scale), oy: my-(my-cur.oy)*(ns/cur.scale) }))
+      touchRef.current.dist = dist
+    } else if (e.touches.length === 1 && dragRef.current) {
+      const dx = e.touches[0].clientX - dragRef.current.startX, dy = e.touches[0].clientY - dragRef.current.startY
+      setTx(clampTx({ scale: txRef.current.scale, ox: dragRef.current.startOx+dx, oy: dragRef.current.startOy+dy }))
+    }
+  }
+  function onTouchEnd() { dragRef.current = null; touchRef.current = null }
+
+  function scrub(e: React.ChangeEvent<HTMLInputElement>) { setFrameIdx(Number(e.target.value)); setPlaying(false) }
 
   function fmtTime(fi: number) {
     if (!replay) return '0:00'
@@ -283,12 +376,9 @@ export default function ReplayPage() {
     return `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
   }
 
-  // find round for current tick
   const currentRound = analysis?.rounds.find(r =>
     replay && r.freezeEndTick <= (replay.ticks[frameIdx] ?? 0) && (replay.ticks[frameIdx] ?? 0) <= r.endTick
   )
-
-  // kill feed: kills near current tick (compact event keys: ty/t/a/v/w/h)
   const curTick = replay?.ticks[frameIdx] ?? 0
   const killFeed = replay?.events.filter(ev => {
     const e = ev as Record<string, unknown>
@@ -299,20 +389,22 @@ export default function ReplayPage() {
   if (!replay || !overview) return <div className="page"><span className="spinner" /><span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span></div>
 
   const mapName = analysis?.meta.map ?? ''
+  const cursor = dragRef.current ? 'grabbing' : tx.scale > 1 ? 'grab' : 'default'
 
   return (
     <div className="page">
       <MatchNav id={id!} />
       <div style={{ display: 'grid', gridTemplateColumns: `${SIZE}px 1fr`, gap: 16, alignItems: 'start' }}>
-        {/* canvas */}
         <div>
           <div className="card" style={{ padding: 8, position: 'relative' }}>
-            {/* hidden radar img for drawImage */}
             <img ref={radarRef} src={api.radarUrl(mapName)} alt="" style={{ display: 'none' }}
-              onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current) }} />
-            <canvas ref={canvasRef} width={SIZE} height={SIZE} style={{ display: 'block', borderRadius: 4 }} />
-
-            {/* kill feed overlay */}
+              onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current) }} />
+            <canvas
+              ref={canvasRef} width={SIZE} height={SIZE}
+              style={{ display: 'block', borderRadius: 4, cursor }}
+              onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+              onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+            />
             <div style={{ position: 'absolute', top: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
               {killFeed.map((ev, i) => {
                 const e = ev as Record<string, unknown>
@@ -322,23 +414,24 @@ export default function ReplayPage() {
                 const weapName = weapInfo ? (getLang() === 'ru' ? weapInfo.ru : weapInfo.en) : ''
                 return (
                   <div key={i} style={{ background: 'rgba(0,0,0,.7)', padding: '3px 8px', borderRadius: 4, fontSize: 12, color: '#fff' }}>
-                    {attacker}{e.h ? ' 🎯' : ''} →{' '}
-                    <span style={{ color: 'var(--red)' }}>{victim}</span>
+                    {attacker}{e.h ? ' HS' : ''} → <span style={{ color: 'var(--red)' }}>{victim}</span>
                     {' '}<span style={{ color: 'var(--text2)', fontSize: 10 }}>{weapName}</span>
                   </div>
                 )
               })}
             </div>
-
-            {/* round overlay */}
             {currentRound && (
               <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,.7)', padding: '3px 10px', borderRadius: 4, fontSize: 12 }}>
                 R{currentRound.n} · {currentRound.scoreTeam0}:{currentRound.scoreTeam1}
               </div>
             )}
+            {tx.scale > 1 && (
+              <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)' }}>
+                {tx.scale.toFixed(1)}x · [0] сбросить
+              </div>
+            )}
           </div>
 
-          {/* controls */}
           <div className="card" style={{ marginTop: 8 }}>
             <div className="flex items-center gap-12" style={{ marginBottom: 8 }}>
               <button className="btn-primary" style={{ minWidth: 72 }} onClick={() => setPlaying(p => !p)}>
@@ -348,23 +441,20 @@ export default function ReplayPage() {
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>/ {fmtTime(totalFrames - 1)}</span>
               <div className="flex items-center gap-8" style={{ marginLeft: 'auto' }}>
                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('speed')}</span>
-                {[0.5, 1, 2, 4, 8].map(s => (
+                {SPEEDS.map((s, si) => (
                   <button key={s} className={speed === s ? 'btn-primary' : 'btn-ghost'}
-                    style={{ fontSize: 12, padding: '3px 8px' }} onClick={() => setSpeed(s)}>
+                    style={{ fontSize: 12, padding: '3px 8px' }}
+                    onClick={() => { setSpeed(s); setSpeedIdx(si) }}>
                     {s}x
                   </button>
                 ))}
               </div>
             </div>
-
-            {/* scrub bar with round markers */}
             <div style={{ position: 'relative' }}>
               <input type="range" min={0} max={Math.max(0, totalFrames - 1)} value={frameIdx}
-                onChange={scrub}
-                style={{ width: '100%', accentColor: 'var(--accent)' }} />
-              {/* round start markers */}
+                onChange={scrub} style={{ width: '100%', accentColor: 'var(--accent)' }} />
               {analysis?.rounds.map(r => {
-                const fi = replay.ticks.findIndex(t => t >= r.freezeEndTick)
+                const fi = replay.ticks.findIndex(tick => tick >= r.freezeEndTick)
                 if (fi < 0) return null
                 const pct = fi / (totalFrames - 1) * 100
                 return (
@@ -373,10 +463,17 @@ export default function ReplayPage() {
                 )
               })}
             </div>
+            <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+              {HOTKEYS.map(hk => (
+                <div key={hk.key} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: 'var(--text2)' }}>
+                  <kbd style={{ background: 'var(--bg3)', border: '1px solid var(--border)', borderRadius: 3, padding: '1px 6px', fontFamily: 'monospace', fontSize: 11 }}>{hk.label}</kbd>
+                  <span>{hk.desc}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
-        {/* sidebar: player list */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', color: 'var(--text2)' }}>Игроки</div>
@@ -393,11 +490,9 @@ export default function ReplayPage() {
                   <div style={{ width: 8, height: 8, borderRadius: '50%', background: TEAM_COLORS[team] ?? '#ccc', flexShrink: 0 }} />
                   <span style={{ flex: 1, fontSize: 13 }}>{pl.name}</span>
                   <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 60 }}>{weapName}</span>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', minWidth: 48 }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: hp > 50 ? 'var(--green)' : hp > 25 ? 'var(--accent2)' : 'var(--red)' }}>
-                      {alive ? hp + ' HP' : '☠'}
-                    </span>
-                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, minWidth: 48, textAlign: 'right', color: hp > 50 ? 'var(--green)' : hp > 25 ? 'var(--accent2)' : 'var(--red)' }}>
+                    {alive ? hp + ' HP' : '☠'}
+                  </span>
                 </div>
               )
             })}

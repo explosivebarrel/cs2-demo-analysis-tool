@@ -120,34 +120,36 @@ export default function HeatmapsPage() {
   const [pointAlpha, setPointAlpha] = useState(0.35)
   const [error, setError] = useState('')
 
+  // pan/zoom
+  const [scale, setScale] = useState(1)
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const scaleRef = useRef(1)
+  const offsetRef = useRef({ x: 0, y: 0 })
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => { scaleRef.current = scale }, [scale])
+  useEffect(() => { offsetRef.current = offset }, [offset])
+
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const bgRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
     if (!id) return
     Promise.all([api.analysis(id), api.heatmap(id)])
-      .then(([a, h]) => {
-        setAnalysis(a)
-        setHeatmap(h)
-        return api.mapOverview(a.meta.map)
-      })
+      .then(([a, h]) => { setAnalysis(a); setHeatmap(h); return api.mapOverview(a.meta.map) })
       .then(ov => setOverview(ov))
       .catch(e => setError(String(e)))
   }, [id])
 
-  // draw map background
   useEffect(() => {
     const cv = bgRef.current
     if (!cv || !analysis || !overview) return
     const img = new Image()
-    img.onload = () => {
-      const ctx = cv.getContext('2d')!
-      ctx.drawImage(img, 0, 0, cv.width, cv.height)
-    }
+    img.onload = () => { cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height) }
     img.src = api.radarUrl(analysis.meta.map)
   }, [analysis, overview])
 
-  // draw heatmap points
   useEffect(() => {
     const cv = canvasRef.current
     if (!cv || !heatmap || !overview) return
@@ -164,80 +166,117 @@ export default function HeatmapsPage() {
     })
   }, [])
 
+  function clamp(s: number, ox: number, oy: number, size: number) {
+    // clamp scale first, then compute bounds to avoid drift at boundaries
+    const sc = Math.max(1, Math.min(8, s))
+    const maxOff = size * (sc - 1)
+    return { scale: sc, ox: Math.max(-maxOff, Math.min(0, ox)), oy: Math.max(-maxOff, Math.min(0, oy)) }
+  }
+
+  // passive:false required to preventDefault() on wheel
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    function onWheel(e: WheelEvent) {
+      e.preventDefault()
+      const rect = el!.getBoundingClientRect()
+      const size = rect.width
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top
+      const factor = e.deltaY < 0 ? 1.1 : 0.9
+      const cur = scaleRef.current
+      const sc = Math.max(1, Math.min(8, cur * factor))
+      const ox = mx - (mx - offsetRef.current.x) * (sc / cur)
+      const oy = my - (my - offsetRef.current.y) * (sc / cur)
+      const maxOff = size * (sc - 1)
+      setScale(sc)
+      setOffset({ x: Math.max(-maxOff, Math.min(0, ox)), y: Math.max(-maxOff, Math.min(0, oy)) })
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [containerRef.current])
+
+  function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (e.button !== 0) return
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: offsetRef.current.x, oy: offsetRef.current.y }
+  }
+  function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
+    if (!dragRef.current) return
+    const rect = containerRef.current!.getBoundingClientRect()
+    const c = clamp(scaleRef.current, dragRef.current.ox + e.clientX - dragRef.current.sx, dragRef.current.oy + e.clientY - dragRef.current.sy, rect.width)
+    setOffset({ x: c.ox, y: c.oy })
+  }
+  function onMouseUp() { dragRef.current = null }
+
   if (error) return <div className="page"><div className="text-muted">{error}</div></div>
   if (!analysis || !heatmap || !overview) return <div className="page"><div className="text-muted">{t('loading')}</div></div>
 
   const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
   const SIZE = 512
+  const cur = scale > 1 ? 'grab' : 'default'
 
   return (
     <div className="page">
       <MatchNav id={id!} />
-
       <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        {/* canvas stack */}
-        <div className="card" style={{ padding: 8, flexShrink: 0 }}>
-          <div style={{ position: 'relative', width: SIZE, height: SIZE }}>
-            <canvas ref={bgRef} width={SIZE} height={SIZE}
-              style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
-            <canvas ref={canvasRef} width={SIZE} height={SIZE}
-              style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
+        <div className="card" style={{ padding: 8, flexShrink: 0, position: 'relative', overflow: 'hidden', width: SIZE + 16, height: SIZE + 16 }}>
+          <div
+            ref={containerRef}
+            style={{ position: 'relative', width: SIZE, height: SIZE, cursor: cur, userSelect: 'none' }}
+            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+          >
+            <div style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: '0 0', width: SIZE, height: SIZE }}>
+              <canvas ref={bgRef} width={SIZE} height={SIZE}
+                style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
+              <canvas ref={canvasRef} width={SIZE} height={SIZE}
+                style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
+            </div>
           </div>
+          {scale > 1 && (
+            <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
+              {scale.toFixed(1)}x · scroll out to reset
+            </div>
+          )}
         </div>
 
-        {/* controls */}
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 220, flex: 1, padding: 16 }}>
-          {/* layer selector */}
           <div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
               {layers.map(l => (
-                <button key={l}
-                  onClick={() => setLayer(l)}
-                  style={{
-                    background: layer === l ? 'var(--accent)' : 'var(--bg3)',
-                    color: layer === l ? '#fff' : 'var(--text)',
-                    border: 'none', borderRadius: 4, padding: '5px 10px',
-                    cursor: 'pointer', textAlign: 'left', fontSize: 12,
-                  }}>
+                <button key={l} onClick={() => setLayer(l)} style={{
+                  background: layer === l ? 'var(--accent)' : 'var(--bg3)',
+                  color: layer === l ? '#fff' : 'var(--text)',
+                  border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                }}>
                   {LAYER_LABELS[l] ?? l}
-                  <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>
-                    {(heatmap.layers[l] as unknown as number[][]).length}
-                  </span>
+                  <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* opacity slider */}
           <div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
               Прозрачность точек
               <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pointAlpha * 100)}%</span>
             </div>
-            <input
-              type="range" min={5} max={100} step={5}
+            <input type="range" min={5} max={100} step={5}
               value={Math.round(pointAlpha * 100)}
               onChange={e => setPointAlpha(Number(e.target.value) / 100)}
-              style={{ width: '100%', accentColor: 'var(--accent)' }}
-            />
+              style={{ width: '100%', accentColor: 'var(--accent)' }} />
           </div>
 
-          {/* player filter */}
           <div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('allPlayers')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
               {analysis.players.map((p, idx) => {
                 const active = selectedPlayers.has(idx)
                 return (
-                  <button key={p.steamid}
-                    onClick={() => togglePlayer(idx)}
-                    style={{
-                      background: active ? 'var(--accent)' : 'var(--bg3)',
-                      color: active ? '#fff' : 'var(--text)',
-                      border: 'none', borderRadius: 4, padding: '4px 8px',
-                      cursor: 'pointer', textAlign: 'left', fontSize: 12,
-                    }}>
+                  <button key={p.steamid} onClick={() => togglePlayer(idx)} style={{
+                    background: active ? 'var(--accent)' : 'var(--bg3)',
+                    color: active ? '#fff' : 'var(--text)',
+                    border: 'none', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                  }}>
                     {p.name}
                   </button>
                 )
