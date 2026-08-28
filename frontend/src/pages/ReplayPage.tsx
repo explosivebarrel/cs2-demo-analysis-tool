@@ -427,7 +427,7 @@ export default function ReplayPage() {
             )}
             {tx.scale > 1 && (
               <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)' }}>
-                {tx.scale.toFixed(1)}x · [0] сбросить
+                {tx.scale.toFixed(1)}x · [0] {t('zoomReset')}
               </div>
             )}
           </div>
@@ -476,7 +476,7 @@ export default function ReplayPage() {
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', color: 'var(--text2)' }}>Игроки</div>
+            <div style={{ fontWeight: 700, marginBottom: 8, fontSize: 12, textTransform: 'uppercase', color: 'var(--text2)' }}>{t('players')}</div>
             {replay.players.map((pl, i) => {
               const base = frameIdx * replay.players.length * FIELDS + i * FIELDS
               const alive = replay.data[base + F_ALIVE] ?? 0
@@ -509,7 +509,7 @@ export default function ReplayPage() {
                 <div style={{ color: 'var(--text2)', fontSize: 12, marginTop: 2 }}>
                   {analysis?.teams[1].name}: <span className={`tag tag-${currentRound.sideTeam0 === 'T' ? 'CT' : 'T'}`}>{currentRound.sideTeam0 === 'T' ? 'CT' : 'T'}</span>
                 </div>
-                {currentRound.bombPlanted && <div style={{ color: 'var(--accent)', fontSize: 12, marginTop: 4 }}>💣 Бомба заложена · сайт {currentRound.bombSite}</div>}
+                {currentRound.bombPlanted && <div style={{ color: 'var(--accent)', fontSize: 12, marginTop: 4 }}>💣 {t('bombPlantedSite')} {currentRound.bombSite}</div>}
               </div>
             </div>
           )}

@@ -54,18 +54,33 @@ function SeriesChart({ series }: { series: PlayerData['series'] }) {
   if (!series.length) return null
   const maxDmg = Math.max(...series.map(s => s.dmg), 1)
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 80, padding: '4px 0' }}>
+    <div style={{ width: '100%' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 1, height: 80 }}>
         {series.map(s => {
           const h = Math.max(4, (s.dmg / maxDmg) * 72)
-          const color = s.k > s.d ? 'var(--green)' : s.k < s.d ? 'var(--red)' : 'var(--text2)'
+          const color = s.won ? (s.k > s.d ? 'var(--green)' : 'var(--accent2)') : 'var(--red)'
           return (
-            <div key={s.n} title={`R${s.n}: K${s.k} D${s.d} DMG${s.dmg}`}
-              style={{ flex: '0 0 10px', height: h, background: color, borderRadius: 2, opacity: s.kast ? 1 : 0.4 }} />
+            <div key={s.n} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%' }}
+              title={`R${s.n}: K${s.k} D${s.d} DMG${s.dmg}${s.pistol ? ' [P]' : ''}${s.mvp ? ' ★' : ''}`}>
+              <div style={{ width: '100%', height: h, background: color, borderRadius: '2px 2px 0 0', opacity: s.kast ? 1 : 0.4 }} />
+            </div>
           )
         })}
       </div>
-      <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>Раунды (зелёный = K&gt;D, красный = D&gt;K, полупрозрачный = не в KAST)</div>
+      <div style={{ display: 'flex', gap: 1, marginTop: 3 }}>
+        {series.map(s => {
+          const label = s.mvp ? '★' : s.pistol ? 'P' : String(s.n)
+          const labelColor = s.mvp ? 'var(--accent2)' : s.pistol ? 'var(--accent)' : 'var(--text2)'
+          return (
+            <div key={s.n} style={{ flex: 1, textAlign: 'center', fontSize: 9, color: labelColor, fontWeight: s.mvp || s.pistol ? 700 : 400, lineHeight: 1.2, overflow: 'hidden' }}>
+              {label}
+            </div>
+          )
+        })}
+      </div>
+      <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 4 }}>
+        {t('seriesLegend')} · ★ MVP · P пистолетка
+      </div>
     </div>
   )
 }
@@ -160,7 +175,7 @@ export default function PlayerPage() {
             {(['2k', '3k', '4k', '5k'] as const).map(k => (
               <Kv key={k} label={k.toUpperCase()} value={p.multiKills[k]} />
             ))}
-            <Kv label="Раундов" value={p.multiKills.rounds} />
+            <Kv label={t('roundsCount')} value={p.multiKills.rounds} />
           </div>
           <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>{t('clutches')}</div>
@@ -191,7 +206,6 @@ export default function PlayerPage() {
           </div>
         </Section>
 
-        {/* bomb */}
         <Section title="Bomb">
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
             <Kv label={t('plants')} value={p.bomb.plants} />
@@ -225,7 +239,7 @@ export default function PlayerPage() {
             const s = p.bySide[side]
             return (
               <div key={side} style={{ marginBottom: 12 }}>
-                <span className={`tag tag-${side}`} style={{ marginBottom: 8, display: 'inline-block' }}>{side} ({s.rounds} rounds)</span>
+                <span className={`tag tag-${side}`} style={{ marginBottom: 8, display: 'inline-block' }}>{side} ({s.rounds} {t('roundsCount')})</span>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
                   <Kv label={t('kills')} value={s.kills} />
                   <Kv label={t('deaths')} value={s.deaths} />
@@ -252,8 +266,7 @@ export default function PlayerPage() {
         </Section>
       </div>
 
-      {/* series */}
-      <Section title="Статистика по раундам">
+      <Section title={t('seriesTitle')}>
         <SeriesChart series={p.series} />
       </Section>
 
@@ -263,7 +276,7 @@ export default function PlayerPage() {
           <table>
             <thead>
               <tr>
-                <th>Оружие</th><th>{t('kills')}</th><th>HS%</th>
+                <th>{t('weaponCol')}</th><th>{t('kills')}</th><th>HS%</th>
                 <th>{t('shots')}</th><th>{t('hits')}</th><th>{t('accuracy')}</th><th>{t('dmg')}</th>
               </tr>
             </thead>

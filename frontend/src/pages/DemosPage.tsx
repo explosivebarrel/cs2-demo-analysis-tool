@@ -55,6 +55,7 @@ export default function DemosPage() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [drag, setDrag] = useState(false)
+  const [uploadErr, setUploadErr] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const pollRef = useRef<number | null>(null)
@@ -94,18 +95,31 @@ export default function DemosPage() {
   }
 
   async function uploadFile(file: File) {
-    if (!file.name.endsWith('.dem')) { alert('Только .dem файлы'); return }
+    if (!file.name.endsWith('.dem')) { setUploadErr('Только .dem файлы'); return }
+    setUploadErr('')
     setUploading(true)
     try {
       const r = await api.upload(file)
       await api.analyze(r.id)
       refresh()
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e)
+      if (msg.includes('fetch') || msg.includes('ALPN') || msg.includes('network')) {
+        setUploadErr(t('uploadErrorArchive'))
+      } else {
+        setUploadErr(t('uploadErrorGeneric') + ': ' + msg)
+      }
     } finally { setUploading(false) }
   }
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDrag(false)
-    const f = e.dataTransfer.files[0]; if (f) uploadFile(f)
+    const f = e.dataTransfer.files[0]
+    if (!f) {
+      setUploadErr(t('uploadErrorArchive'))
+      return
+    }
+    uploadFile(f)
   }
 
   const rows = demos.slice().sort((a, b) => {

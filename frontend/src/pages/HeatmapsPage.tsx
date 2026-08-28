@@ -233,7 +233,7 @@ export default function HeatmapsPage() {
           </div>
           {scale > 1 && (
             <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
-              {scale.toFixed(1)}x · scroll out to reset
+              {scale.toFixed(1)}x · scroll out to {t('zoomReset')}
             </div>
           )}
         </div>
@@ -257,7 +257,7 @@ export default function HeatmapsPage() {
 
           <div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
-              Прозрачность точек
+              {t('opacity')}
               <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pointAlpha * 100)}%</span>
             </div>
             <input type="range" min={5} max={100} step={5}
