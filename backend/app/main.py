@@ -132,6 +132,17 @@ def replay(did: str):
     return _read_artifact(did, "replay.json.gz")
 
 
+@app.get("/api/demos/{did}/player/{steamid}/analytics")
+async def get_player_analytics(did: str, steamid: str):
+    data = storage.read_player_analytics(did)
+    if data is None:
+        raise HTTPException(404, "Player analytics not found — re-analyze the demo")
+    player_data = data.get(steamid)
+    if player_data is None:
+        raise HTTPException(404, f"No analytics for player {steamid}")
+    return player_data
+
+
 # ------------------------------------------------------------------ maps
 @app.get("/api/maps/{map_name}/overview")
 def map_overview(map_name: str):

@@ -118,6 +118,7 @@ export interface ReplayData {
   events: ReplayEvent[]
   shots: number[][]  // compact: [tick, playerIdx, x, y, yaw]
   weapons: Record<number, WeaponInfo>
+  winprob?: number[]  // ct win probability per frame [0.05, 0.95]
 }
 
 export interface ReplayEvent {
@@ -131,6 +132,63 @@ export interface ShotEvent {
 
 export interface StatusData {
   status: string; progress?: number; phase?: string; error?: string
+}
+
+export interface PlayerAnalyticsData {
+  duels: DuelEpisode[]
+  metrics: PlayerMetrics
+  impact: PlayerImpact
+  mapEvents: MapEvent[]
+}
+
+export interface DuelEpisode {
+  round: number
+  tick: number
+  timestamp: number
+  attacker: string
+  victim: string
+  weapon: string
+  headshot: boolean
+  won: boolean
+  errors: string[]
+  context: {
+    nearAllyDist: number | null
+    flashDur: number
+    attackerVel: number
+    victimVel: number
+    aliveAllies: number
+    aliveEnemies: number
+    attackerWalking: boolean
+  }
+}
+
+export interface PlayerMetrics {
+  tradeKillPct: number
+  tradedDeathPct: number
+  openingWinPct: number
+  flashEfficiency: number
+  clutchWinPct: number
+  shiftPeekPct: number
+  isolatedPct: number
+  mainProblem: string | null
+}
+
+export interface PlayerImpact {
+  topRoundsPositive: { n: number; imp: number }[]
+  topRoundsNegative: { n: number; imp: number }[]
+  avgWinProbAtDuel: number | null
+}
+
+export interface MapEvent {
+  tick: number
+  round: number
+  type: 'kill' | 'death'
+  x: number
+  y: number
+  vx: number
+  vy: number
+  weapon: string
+  headshot: boolean
 }
 
 export interface MapOverview {
@@ -152,4 +210,6 @@ export const api = {
   replay: (id: string): Promise<ReplayData> => req(`/demos/${id}/replay`),
   mapOverview: (map: string): Promise<MapOverview> => req(`/maps/${map}/overview`),
   radarUrl: (map: string) => `/api/maps/${map}/radar`,
+  playerAnalytics: (id: string, steamid: string): Promise<PlayerAnalyticsData> =>
+    req(`/demos/${id}/player/${steamid}/analytics`),
 }

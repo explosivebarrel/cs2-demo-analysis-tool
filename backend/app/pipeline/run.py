@@ -16,6 +16,7 @@ from .players import compute_players, METERS_PER_UNIT
 from .rating import compute_ratings
 from .heatmaps import build_heatmap
 from .events import build_events
+from .winprob import compute_winprob
 
 
 def _gz_write(path, payload):
@@ -57,10 +58,17 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     ev = build_events(ctx, rb, fb)
     fb.finalize_bomb(replay, ev["events"])
 
+    prog("winprob", 88)
+    winprob = compute_winprob(fb, rb, replay)
+
     prog("heatmaps", 90)
     hm = build_heatmap(ctx, rb, players, fb, replay)
 
-    prog("writing", 94)
+    prog("analytics", 92)
+    from .playeranalytics import build_player_analytics
+    pa = build_player_analytics(ctx, rb, fb, players)
+
+    prog("writing", 95)
     analysis = _build_analysis(ctx, rb, fb, players)
     replay_payload = {
         "tickrate": ctx.tickrate,
@@ -73,6 +81,7 @@ def analyze_demo(demo_path: str, did: str, progress=None):
         "events": ev["events"],
         "shots": ev["shots"],
         "weapons": weapon_id_table(),
+        "winprob": winprob,
     }
     heatmap_payload = {
         "layers": hm,
@@ -86,6 +95,7 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "analysis.json.gz"), analysis)
     _gz_write(os.path.join(out_dir, "replay.json.gz"), replay_payload)
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
+    _gz_write(os.path.join(out_dir, "player_analytics.json.gz"), pa)
 
     prog("done", 100)
     return {

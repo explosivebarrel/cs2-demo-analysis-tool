@@ -3,19 +3,7 @@ import { useParams, NavLink } from 'react-router-dom'
 import { api, AnalysisData, HeatmapData, MapOverview } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
-
-function MatchNav({ id }: { id: string }) {
-  useLang()
-  const base = `/match/${id}`
-  const s = (active: boolean) => ({ color: active ? 'var(--accent)' : 'var(--text2)', fontWeight: active ? 700 : 400, textDecoration: 'none', fontSize: 13 })
-  return (
-    <div className="flex gap-16 items-center" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 20 }}>
-      <NavLink to={base} end style={({ isActive }) => s(isActive)}>{t('overview')}</NavLink>
-      <NavLink to={`${base}/heatmaps`} style={({ isActive }) => s(isActive)}>{t('heatmaps')}</NavLink>
-      <NavLink to={`${base}/replay`} style={({ isActive }) => s(isActive)}>{t('replay')}</NavLink>
-    </div>
-  )
-}
+import MatchNav from '../components/MatchNav'
 
 const LAYER_COLORS: Record<string, string> = {
   kills: '255,80,80', deaths: '80,160,255', damage: '255,160,40',
@@ -237,7 +225,7 @@ export default function HeatmapsPage() {
 
   return (
     <div className="page">
-      <MatchNav id={id!} />
+      <MatchNav id={id!} players={analysis?.players} />
       <div style={{ display: 'grid', gridTemplateColumns: `${leftWidth}px 8px 1fr`, gap: 0, alignItems: 'start' }}>
         <div className="card" style={{ padding: 8, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
           <div

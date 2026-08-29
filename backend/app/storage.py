@@ -98,6 +98,20 @@ def list_uploads():
     return out
 
 
+def player_analytics_path(did: str) -> str:
+    return os.path.join(analysis_dir(did), "player_analytics.json.gz")
+
+
+def read_player_analytics(did: str) -> dict | None:
+    p = player_analytics_path(did)
+    if not os.path.exists(p):
+        return None
+    import gzip
+    import json
+    with gzip.open(p, "rt", encoding="utf-8") as f:
+        return json.load(f)
+
+
 def list_demos():
     """Combined registry with statuses."""
     items = {}

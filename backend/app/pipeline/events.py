@@ -23,6 +23,120 @@ def _f(v):
     return round(fv, 1) if abs(fv) < 1e6 else 0.0
 
 
+def _build_kill_context(ctx, rb, fb, kills_df):
+    """Attach tick-level context to each kill for the event log diagnosis engine.
+
+    Returns a dict keyed by (tick, attacker_steamid, victim_steamid) -> context dict.
+    Context fields:
+      nearAllyDist  — distance (units) from attacker to nearest alive teammate at kill tick
+      flashDur      — flash_duration on victim at kill tick (seconds)
+      victimVel     — victim velocity (units/s) at kill tick, approximated from pos delta
+      aliveAllies   — alive attacker-side players at kill tick (excluding attacker)
+      aliveEnemies  — alive victim-side players at kill tick (including victim, before this kill)
+      victimWalking — 1 if victim is_walking at kill tick
+    """
+    ticks_df = ctx.ticks
+    if ticks_df is None or not len(kills_df):
+        return {}
+
+    import pandas as pd
+
+    # index ticks by tick value for fast lookup
+    ticks_by_tick = {t: grp for t, grp in ticks_df.groupby("tick")}
+
+    pidx = fb.player_idx
+    players = fb.players  # ordered list of steamids
+
+    ctx_map = {}
+    prev_pos: dict[str, tuple[float, float]] = {}
+
+    # build velocity map: for each (tick, steamid) store speed
+    # vectorised: sort by (steamid, tick), compute pos delta
+    try:
+        pos_df = ticks_df[["tick", "steamid", "X", "Y"]].copy()
+        pos_df["steamid"] = pos_df["steamid"].astype(str)
+        pos_df = pos_df.sort_values(["steamid", "tick"])
+        pos_df["dx"] = pos_df.groupby("steamid")["X"].diff().fillna(0.0)
+        pos_df["dy"] = pos_df.groupby("steamid")["Y"].diff().fillna(0.0)
+        pos_df["dtick"] = pos_df.groupby("steamid")["tick"].diff().fillna(1.0).clip(lower=1)
+        pos_df["vel"] = (pos_df["dx"] ** 2 + pos_df["dy"] ** 2).pow(0.5) / pos_df["dtick"] * ctx.tickrate
+        vel_lookup = pos_df.set_index(["tick", "steamid"])["vel"].to_dict()
+    except Exception:
+        vel_lookup = {}
+
+    for _, k in kills_df.iterrows():
+        tick = int(k["tick"])
+        a_sid = _sid(k.get("attacker_steamid"))
+        v_sid = _sid(k.get("user_steamid"))
+        if not (a_sid and v_sid):
+            continue
+
+        frame = ticks_by_tick.get(tick)
+        if frame is None:
+            ctx_map[(tick, a_sid, v_sid)] = {}
+            continue
+
+        # build per-player state at this tick
+        rows = {str(r["steamid"]): r for _, r in frame.iterrows()}
+        a_row = rows.get(a_sid)
+        v_row = rows.get(v_sid)
+
+        # attacker team
+        a_team = int(a_row["team_num"]) if a_row is not None else -1
+
+        # find nearest alive ally
+        near_ally_dist = None
+        alive_allies = 0
+        alive_enemies = 0
+        ax = float(a_row["X"]) if a_row is not None else 0.0
+        ay = float(a_row["Y"]) if a_row is not None else 0.0
+        for sid2, r2 in rows.items():
+            if sid2 == a_sid:
+                continue
+            try:
+                alive2 = bool(r2["is_alive"])
+                team2 = int(r2["team_num"])
+            except (TypeError, ValueError):
+                continue
+            if not alive2:
+                continue
+            if team2 == a_team:
+                alive_allies += 1
+                dx = float(r2["X"]) - ax
+                dy = float(r2["Y"]) - ay
+                d = (dx * dx + dy * dy) ** 0.5
+                if near_ally_dist is None or d < near_ally_dist:
+                    near_ally_dist = d
+            else:
+                alive_enemies += 1
+
+        flash_dur = 0.0
+        victim_walking = 0
+        if v_row is not None:
+            try:
+                fd = float(v_row.get("flash_duration", 0) or 0)
+                flash_dur = round(fd, 2)
+            except (TypeError, ValueError):
+                pass
+            try:
+                victim_walking = 1 if v_row.get("is_walking") else 0
+            except (TypeError, ValueError):
+                pass
+
+        victim_vel = round(float(vel_lookup.get((tick, v_sid), 0.0)), 1)
+
+        ctx_map[(tick, a_sid, v_sid)] = {
+            "nearAllyDist": round(near_ally_dist, 1) if near_ally_dist is not None else None,
+            "flashDur": flash_dur,
+            "victimVel": victim_vel,
+            "aliveAllies": alive_allies,
+            "aliveEnemies": alive_enemies,
+            "victimWalking": victim_walking,
+        }
+
+    return ctx_map
+
+
 def build_events(ctx, rb, fb):
     events = []
     pidx = fb.player_idx
@@ -34,14 +148,19 @@ def build_events(ctx, rb, fb):
     kills = ctx.ev("player_death")
     if len(kills):
         kills = kills.sort_values("tick")
+        kill_ctx = _build_kill_context(ctx, rb, fb, kills)
         for _, k in kills.iterrows():
             a, v = _sid(k.get("attacker_steamid")), _sid(k.get("user_steamid"))
             if not (a and v):
                 continue
-            events.append({"t": int(k["tick"]), "ty": "k", "a": idx(a), "v": idx(v),
-                           "w": weapon_id(k.get("weapon")),
-                           "h": 1 if k.get("headshot") else 0,
-                           "as": idx(_sid(k.get("assister_steamid")))})
+            kc = kill_ctx.get((int(k["tick"]), a, v), {})
+            ev = {"t": int(k["tick"]), "ty": "k", "a": idx(a), "v": idx(v),
+                  "w": weapon_id(k.get("weapon")),
+                  "h": 1 if k.get("headshot") else 0,
+                  "as": idx(_sid(k.get("assister_steamid")))}
+            if kc:
+                ev["kc"] = kc
+            events.append(ev)
 
     # shots (muzzle flash tracers) --------------------------------------
     wf = ctx.ev("weapon_fire")

@@ -1,21 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, NavLink } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { api, AnalysisData, PlayerData, RoundData } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
-
-function MatchNav({ id }: { id: string }) {
-  useLang()
-  const base = `/match/${id}`
-  const s = (active: boolean) => ({ color: active ? 'var(--accent)' : 'var(--text2)', fontWeight: active ? 700 : 400, textDecoration: 'none', fontSize: 13 })
-  return (
-    <div className="flex gap-16 items-center" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 20 }}>
-      <NavLink to={base} end style={({ isActive }) => s(isActive)}>{t('overview')}</NavLink>
-      <NavLink to={`${base}/heatmaps`} style={({ isActive }) => s(isActive)}>{t('heatmaps')}</NavLink>
-      <NavLink to={`${base}/replay`} style={({ isActive }) => s(isActive)}>{t('replay')}</NavLink>
-    </div>
-  )
-}
+import MatchNav from '../components/MatchNav'
 
 function ScoreBoard({ data, id }: { data: AnalysisData; id: string }) {
   useLang()
@@ -201,7 +189,7 @@ export default function OverviewPage() {
 
   return (
     <div className="page">
-      <MatchNav id={id!} />
+      <MatchNav id={id!} players={data.players} />
       <ScoreBoard data={data} id={id!} />
       <Scoreboard data={data} id={id!} />
       <RoundsTable data={data} />
