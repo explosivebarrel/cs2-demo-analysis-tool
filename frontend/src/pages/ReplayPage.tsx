@@ -88,7 +88,7 @@ function EventLog({
   const curTick = replay.ticks[frameIdx] ?? 0
 
   // find current round bounds
-  const curRound = (analysis?.rounds ? [...analysis.rounds].reverse().find((r: RoundData) => r.freezeEndTick <= curTick) : null) ?? null
+  const curRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
   const roundStart = curRound?.freezeEndTick ?? 0
   const roundEnd = curRound?.endTick ?? Infinity
 
@@ -284,6 +284,20 @@ function ScoreboardPanel({
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
+/** Find which round owns the given tick (freeze time belongs to the NEXT round). */
+function findRoundForTick(rounds: RoundData[], tick: number): RoundData | null {
+  if (!rounds.length) return null
+  // each round owns: (prevRound.endTick, curRound.endTick]
+  // i.e. freeze time after prev round belongs to next round
+  for (let i = 0; i < rounds.length; i++) {
+    const r = rounds[i]
+    const prevEnd = i > 0 ? rounds[i - 1].endTick : 0
+    if (tick > prevEnd && tick <= r.endTick) return r
+  }
+  // past the last round
+  return rounds[rounds.length - 1]
+}
+
 /** Numbered round buttons with a vertical scrubber line sliding across the active round. */
 function RoundSwitcher({
   rounds, ticks, frameIdx, onJump,
@@ -294,7 +308,7 @@ function RoundSwitcher({
   onJump: (fi: number) => void
 }) {
   const curTick = ticks[frameIdx] ?? 0
-  const activeRound = rounds.length ? [...rounds].reverse().find((r: RoundData) => r.freezeEndTick <= curTick) ?? null : null
+  const activeRound = findRoundForTick(rounds, curTick)
 
   // warmup: ticks before first round freezeEndTick
   const firstRoundStart = rounds.length > 0 ? rounds[0].freezeEndTick : 0
@@ -306,13 +320,13 @@ function RoundSwitcher({
   }
 
   return (
-    <div style={{ display: 'flex', width: '100%', marginBottom: 10, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+    <div style={{ display: 'flex', width: '100%', marginBottom: 10, border: '1px solid var(--border)', borderRadius: 0, overflow: 'visible' }}>
       {/* warmup button */}
       <button
         onClick={jumpWarmup}
         title="Разминка"
         style={{
-          position: 'relative', overflow: 'hidden', flexShrink: 0,
+          position: 'relative', flexShrink: 0,
           padding: '5px 8px', fontSize: 10, fontWeight: isWarmup ? 700 : 400,
           background: isWarmup ? 'rgba(100,100,200,0.25)' : 'var(--bg2)',
           color: isWarmup ? '#aac' : 'var(--text2)',
@@ -325,10 +339,13 @@ function RoundSwitcher({
 
       {rounds.map((r, ri) => {
         const isActive = activeRound?.n === r.n
+        // scrubber spans full round including freeze: from freezeStartTick to endTick
+        const prevRound = ri > 0 ? rounds[ri - 1] : null
+        const roundFreezeStart = prevRound ? prevRound.endTick : 0
+        const roundTotalDur = r.endTick - roundFreezeStart
         let scrubberPct = -1
-        if (isActive && activeRound) {
-          const dur = activeRound.endTick - activeRound.freezeEndTick
-          scrubberPct = dur > 0 ? Math.min(1, (curTick - activeRound.freezeEndTick) / dur) : 0
+        if (isActive && roundTotalDur > 0) {
+          scrubberPct = Math.min(1, Math.max(0, (curTick - roundFreezeStart) / roundTotalDur))
         }
         const startFi = ticks.findIndex(tk => tk >= r.freezeEndTick)
         return (
@@ -337,24 +354,26 @@ function RoundSwitcher({
             onClick={() => startFi >= 0 && onJump(startFi)}
             title={`R${r.n}${r.isPistol ? ' (pistol)' : ''}`}
             style={{
-              position: 'relative', overflow: 'hidden', flex: 1,
+              position: 'relative', flex: 1,
               padding: '5px 2px', fontSize: 11, fontWeight: isActive ? 700 : 400,
-              background: isActive ? 'rgba(var(--accent-rgb,74,120,220),0.18)' : r.isPistol ? 'rgba(255,180,50,0.06)' : 'var(--bg2)',
+              background: isActive ? 'rgba(74,120,220,0.18)' : r.isPistol ? 'rgba(255,180,50,0.06)' : 'var(--bg2)',
               color: isActive ? 'var(--accent)' : r.isPistol ? 'var(--accent2)' : 'var(--text2)',
               border: 'none',
-              borderLeft: ri >= 0 ? '1px solid var(--border)' : 'none',
+              borderLeft: '1px solid var(--border)',
               cursor: 'pointer', textAlign: 'center', minWidth: 0,
+              overflow: 'visible',
             }}
           >
-            {/* vertical scrubber line sliding across full button height */}
+            {/* vertical scrubber line — full height, no clipping */}
             {isActive && scrubberPct >= 0 && (
               <div style={{
                 position: 'absolute', top: 0, bottom: 0,
                 left: `${scrubberPct * 100}%`,
                 width: 2,
-                background: 'rgba(255,255,255,0.6)',
+                background: 'rgba(255,255,255,0.7)',
                 transform: 'translateX(-50%)',
                 pointerEvents: 'none',
+                zIndex: 1,
               }} />
             )}
             {String(r.n).padStart(2, '0')}
@@ -380,26 +399,47 @@ function WinProbGraph({
   const dragging = useRef(false)
   const total = winprob.length
 
-  // compute current round frame bounds — include freeze time
+  // compute current round frame bounds — include freeze time + ±10s neighbours
   const curTick = ticks[frameIdx] ?? 0
-  // find the active round: last round whose freezeEndTick <= curTick, or first round if before match
-  const activeByTick = rounds.length ? [...rounds].reverse().find(r => r.freezeEndTick <= curTick) ?? null : null
-  const curRound = activeByTick ?? (rounds.length ? rounds[0] : null)
+  const curRound = findRoundForTick(rounds, curTick)
 
-  // freeze start: use previous round's endTick+1, or approx 15s before freezeEndTick
   const curRoundIdx = curRound ? rounds.findIndex(r => r.n === curRound.n) : -1
   const prevRound = curRoundIdx > 0 ? rounds[curRoundIdx - 1] : null
+  const nextRound = curRoundIdx >= 0 && curRoundIdx < rounds.length - 1 ? rounds[curRoundIdx + 1] : null
+
+  const NEIGHBOUR_TICKS = 10 * 64  // ~10s at 64tick
+
+  // core window: freeze start → round end
   const freezeStartTick = curRound
     ? (prevRound ? prevRound.endTick + 1 : Math.max(0, curRound.freezeEndTick - 960))
     : 0
+  const roundEndTick = curRound?.endTick ?? 0
 
-  const rStartFi = curRound ? Math.max(0, ticks.findIndex(tk => tk >= freezeStartTick)) : 0
-  const rFreezeEndFi = curRound ? Math.max(0, ticks.findIndex(tk => tk >= curRound.freezeEndTick)) : 0
-  const rEndFi   = curRound ? (() => { const i = ticks.findIndex(tk => tk >= curRound.endTick); return i < 0 ? total - 1 : i })() : total - 1
-  const rLen = Math.max(1, rEndFi - rStartFi)
+  // extended window with neighbours
+  const extStartTick = Math.max(0, freezeStartTick - NEIGHBOUR_TICKS)
+  const extEndTick   = roundEndTick + NEIGHBOUR_TICKS
 
-  // freeze end marker position (0..1)
-  const freezeMarkerPct = rLen > 0 ? Math.min(1, (rFreezeEndFi - rStartFi) / rLen) : 0
+  function tickToFi(tick: number): number {
+    const i = ticks.findIndex(tk => tk >= tick)
+    return i < 0 ? total - 1 : Math.max(0, i)
+  }
+
+  const rStartFi    = tickToFi(extStartTick)
+  const rCoreStartFi = tickToFi(freezeStartTick)
+  const rFreezeEndFi = curRound ? tickToFi(curRound.freezeEndTick) : 0
+  const rCoreEndFi  = curRound ? tickToFi(roundEndTick) : total - 1
+  const rEndFi      = Math.min(total - 1, tickToFi(extEndTick))
+  const rLen        = Math.max(1, rEndFi - rStartFi)
+
+  // positions as 0..W fractions
+  function fi2x(fi: number): number { return ((fi - rStartFi) / rLen) * W }
+
+  // freeze end marker position
+  const freezeMarkerX = fi2x(rFreezeEndFi)
+  // core start (where prev neighbour ends)
+  const coreStartX = fi2x(rCoreStartFi)
+  // core end (where next neighbour begins)
+  const coreEndX   = fi2x(rCoreEndFi)
 
   function fiFromClientX(clientX: number): number {
     const rect = svgRef.current?.getBoundingClientRect()
@@ -421,28 +461,26 @@ function WinProbGraph({
   if (total < 2) return null
 
   const W = 1000, H = height
-  // slice winprob to current round window
+  // slice winprob to extended window
   const slice = winprob.slice(rStartFi, rEndFi + 1)
   const sliceLen = Math.max(1, slice.length - 1)
 
-  // build balance curve: value = ct_prob (0.5 = even, >0.5 = CT leading)
-  // cursor position within round
-  const cursorPct = Math.min(1, (frameIdx - rStartFi) / sliceLen)
-  const cursorX = (cursorPct * W).toFixed(1)
+  // cursor X
+  const cursorX = fi2x(frameIdx).toFixed(1)
 
-  // build fill areas — CT fill (top half) and T fill (bottom half)
+  // build fill areas using extended slice
   const midY = H / 2
-  const ctPts = slice.map((p, i) => `${((i / sliceLen) * W).toFixed(1)},${((1 - p) * H).toFixed(1)}`).join(' ')
-  const tPts  = slice.map((p, i) => `${((i / sliceLen) * W).toFixed(1)},${(p * H).toFixed(1)}`).join(' ')
-
-  // filled area for CT advantage (above midline)
+  const ctPts = slice.map((p, i) => `${fi2x(rStartFi + i).toFixed(1)},${((1 - p) * H).toFixed(1)}`).join(' ')
+  const tPts  = slice.map((p, i) => `${fi2x(rStartFi + i).toFixed(1)},${(p * H).toFixed(1)}`).join(' ')
   const ctFillPts = `0,${midY} ` + ctPts + ` ${W},${midY}`
-  // filled area for T advantage (below midline)
   const tFillPts  = `0,${midY} ` + tPts  + ` ${W},${midY}`
 
   const curVal = winprob[frameIdx] ?? 0.5
   const ctPct  = Math.round(curVal * 100)
   const tPct   = 100 - ctPct
+
+  // hatch pattern size
+  const hatchId = 'nbHatch'
 
   return (
     <svg
@@ -464,20 +502,18 @@ function WinProbGraph({
           <stop offset="0%" stopColor="#e4882a" stopOpacity="0.45" />
           <stop offset="100%" stopColor="#e4882a" stopOpacity="0.05" />
         </linearGradient>
+        {/* diagonal hatch for neighbour zones */}
+        <pattern id={hatchId} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(120,120,120,0.35)" strokeWidth="3" />
+        </pattern>
       </defs>
 
       {/* background */}
       <rect width={W} height={H} fill="var(--bg2, #1a1c20)" />
 
-      {/* freeze time zone (left portion before freezeMarkerPct) */}
-      {freezeMarkerPct > 0 && (
-        <rect x="0" y="0" width={(freezeMarkerPct * W).toFixed(1)} height={H} fill="rgba(255,255,255,0.04)" />
-      )}
-
-      {/* CT fill area */}
+      {/* CT / T fill areas */}
       <polygon points={ctFillPts} fill="url(#ctFill)" />
-      {/* T fill area */}
-      <polygon points={tFillPts} fill="url(#tFill)" />
+      <polygon points={tFillPts}  fill="url(#tFill)" />
 
       {/* 50% midline */}
       <line x1="0" y1={midY} x2={W} y2={midY} stroke="#555" strokeWidth="0.8" strokeDasharray="6,4" />
@@ -485,17 +521,42 @@ function WinProbGraph({
       {/* CT balance curve */}
       <polyline points={ctPts} fill="none" stroke="#4a9eda" strokeWidth="1.8" strokeLinejoin="round" />
 
-      {/* freeze end marker — dashed vertical line */}
-      {freezeMarkerPct > 0 && (
-        <line
-          x1={(freezeMarkerPct * W).toFixed(1)} y1="0"
-          x2={(freezeMarkerPct * W).toFixed(1)} y2={H}
-          stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="3,3"
-        />
+      {/* prev-round neighbour hatch (left side) */}
+      {coreStartX > 0 && (
+        <rect x="0" y="0" width={coreStartX.toFixed(1)} height={H} fill={`url(#${hatchId})`} />
+      )}
+
+      {/* next-round neighbour hatch (right side) */}
+      {coreEndX < W && (
+        <rect x={coreEndX.toFixed(1)} y="0" width={(W - coreEndX).toFixed(1)} height={H} fill={`url(#${hatchId})`} />
+      )}
+
+      {/* freeze time subtle tint (between coreStart and freezeEnd) */}
+      {freezeMarkerX > coreStartX && (
+        <rect x={coreStartX.toFixed(1)} y="0"
+          width={(freezeMarkerX - coreStartX).toFixed(1)} height={H}
+          fill="rgba(255,255,255,0.04)" />
+      )}
+
+      {/* freeze end marker */}
+      <line
+        x1={freezeMarkerX.toFixed(1)} y1="0"
+        x2={freezeMarkerX.toFixed(1)} y2={H}
+        stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="3,3"
+      />
+
+      {/* neighbour boundary markers */}
+      {coreStartX > 0 && (
+        <line x1={coreStartX.toFixed(1)} y1="0" x2={coreStartX.toFixed(1)} y2={H}
+          stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+      )}
+      {coreEndX < W && (
+        <line x1={coreEndX.toFixed(1)} y1="0" x2={coreEndX.toFixed(1)} y2={H}
+          stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
       )}
 
       {/* cursor line */}
-      <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" />
+      <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" />
 
       {/* live score labels */}
       <text x="6" y="11" fill="#4a9eda" fontSize="10" fontFamily="monospace" fontWeight="bold">КТ {ctPct}%</text>
@@ -847,7 +908,7 @@ export default function ReplayPage() {
   function jumpToFrame(fi: number) { setFrameIdx(fi); setPlaying(false) }
 
   const curTick = replay?.ticks[frameIdx] ?? 0
-  const currentRound = (analysis?.rounds ? [...analysis.rounds].reverse().find((r: RoundData) => r.freezeEndTick <= curTick) : null) ?? null
+  const currentRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
 
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
   if (!replay || !overview) return <div className="page"><span className="spinner" /><span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span></div>
