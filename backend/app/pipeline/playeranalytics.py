@@ -8,6 +8,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
+from .aim_mechanics import compute_aim_mechanics
+
 # ------------------------------------------------------------------ constants
 
 ERROR_GROUPS = {
@@ -464,6 +466,9 @@ def build_player_analytics(ctx, rb, fb, players: dict) -> dict:
                     "openingWinPct": 0.0, "flashEfficiency": 0.0,
                     "clutchWinPct": 0.0, "shiftPeekPct": 0.0,
                     "isolatedPct": 0.0, "mainProblem": None,
+                    "counterStrafeErrors": 0, "idealStrafePct": 0.0,
+                    "firstBulletAcc": 0.0, "ttk_ms": 0.0,
+                    "reloadErrors": 0, "angleControlCount": 0,
                 },
                 "impact": {"topRoundsPositive": [], "topRoundsNegative": [],
                            "avgWinProbAtDuel": None},
@@ -498,13 +503,26 @@ def build_player_analytics(ctx, rb, fb, players: dict) -> dict:
             series = []
 
         try:
+            aim = compute_aim_mechanics(ctx, rb, steamid)
+        except Exception:
+            aim = {
+                "counterStrafeErrors": 0, "idealStrafePct": 0.0,
+                "firstBulletAcc": 0.0, "ttk_ms": 0.0,
+                "reloadErrors": 0, "angleControlCount": 0,
+            }
+
+        try:
             metrics = _build_metrics(p, series, duels)
+            metrics.update(aim)
         except Exception:
             metrics = {
                 "tradeKillPct": 0.0, "tradedDeathPct": 0.0,
                 "openingWinPct": 0.0, "flashEfficiency": 0.0,
                 "clutchWinPct": 0.0, "shiftPeekPct": 0.0,
                 "isolatedPct": 0.0, "mainProblem": None,
+                "counterStrafeErrors": 0, "idealStrafePct": 0.0,
+                "firstBulletAcc": 0.0, "ttk_ms": 0.0,
+                "reloadErrors": 0, "angleControlCount": 0,
             }
 
         try:

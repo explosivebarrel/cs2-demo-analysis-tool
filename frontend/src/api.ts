@@ -171,6 +171,13 @@ export interface PlayerMetrics {
   shiftPeekPct: number
   isolatedPct: number
   mainProblem: string | null
+  // aim mechanics (Batch 2)
+  counterStrafeErrors: number
+  idealStrafePct: number
+  firstBulletAcc: number
+  ttk_ms: number
+  reloadErrors: number
+  angleControlCount: number
 }
 
 export interface PlayerImpact {

@@ -179,6 +179,55 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
         </div>
       </div>
 
+      {/* ── Group: Механика дуэли и аим ── */}
+      <div>
+        <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
+          {lang === 'ru' ? 'Механика дуэли и аим' : 'Duel mechanics & aim'}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+          <MetricCard
+            label={lang === 'ru' ? 'Ошибки контрстрейфа' : 'Counter-strafe errors'}
+            value={String(metrics.counterStrafeErrors ?? 0)}
+            sub={lang === 'ru' ? 'выстрелов в движении' : 'shots while moving'}
+            rating={ratingLabel(100 - Math.min(100, (metrics.counterStrafeErrors ?? 0) * 5), 70, lang)}
+            onClick={() => openDrill('moving_shot', lang === 'ru' ? 'Движение при стрельбе' : 'Shot while moving')}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Идеальные стрейфы' : 'Ideal strafes'}
+            value={(metrics.idealStrafePct ?? 0).toFixed(1) + '%'}
+            sub={lang === 'ru' ? '% килов на стопе' : '% kills while stopped'}
+            rating={ratingLabel(metrics.idealStrafePct ?? 0, 60, lang)}
+            color={(metrics.idealStrafePct ?? 0) >= 60 ? 'var(--green)' : undefined}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Точность первой пули' : 'First bullet acc'}
+            value={(metrics.firstBulletAcc ?? 0).toFixed(1) + '%'}
+            sub={lang === 'ru' ? '% первых выстрелов — попадание' : '% first shots hit'}
+            rating={ratingLabel(metrics.firstBulletAcc ?? 0, 40, lang)}
+            color={(metrics.firstBulletAcc ?? 0) >= 40 ? 'var(--green)' : undefined}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Время до фрага' : 'Time to kill'}
+            value={(metrics.ttk_ms ?? 0) > 0 ? (metrics.ttk_ms ?? 0).toFixed(0) + ' мс' : '—'}
+            sub={lang === 'ru' ? 'ср. мс от выстрела до кила' : 'avg ms first shot to kill'}
+            rating={(metrics.ttk_ms ?? 0) > 0 ? ratingLabel(1200 - (metrics.ttk_ms ?? 0), 500, lang) : undefined}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Контроль угла' : 'Angle control'}
+            value={String(metrics.angleControlCount ?? 0)}
+            sub={lang === 'ru' ? 'позиций удержано ≥2с' : 'positions held ≥2s'}
+            rating={ratingLabel((metrics.angleControlCount ?? 0) * 10, 30, lang)}
+            color={(metrics.angleControlCount ?? 0) >= 3 ? 'var(--green)' : undefined}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Перезарядки' : 'Reload errors'}
+            value={String(metrics.reloadErrors ?? 0)}
+            sub={lang === 'ru' ? 'перезарядок с патронами' : 'reloads with bullets left'}
+            rating={ratingLabel(100 - Math.min(100, (metrics.reloadErrors ?? 0) * 10), 70, lang)}
+          />
+        </div>
+      </div>
+
       {/* ── Group: Дисциплина в дуэлях ── */}
       <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
         <div style={{ fontWeight: 700, fontSize: 10, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 14 }}>
