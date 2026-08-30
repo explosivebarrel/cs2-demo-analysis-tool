@@ -659,9 +659,9 @@ function drawFrame(
     ctx.fillStyle = grad; ctx.fill()
   }
 
-  // shot tracers + hit lines
+  // shot lines + hit markers
   const tracerWindow = replay.tickrate * 0.25
-  // build hurt-hit map: "tick:attackerPidx" -> {hx, hy} for quick lookup
+  // build hurt-hit map: "tick:attackerPidx" -> {hx, hy}
   const hurtMap = new Map<string, { hx: number; hy: number }>()
   for (const ev of replay.events) {
     const e = ev as Record<string, unknown>
@@ -681,36 +681,63 @@ function drawFrame(
     const rad = (syaw * Math.PI) / 180
     const fade = 1 - (curTick - stTick) / tracerWindow
     const playerColor = TEAM_COLORS[replay.data[frameIdx * replay.players.length * FIELDS + pidx * FIELDS + F_TEAM] ?? 0] ?? '#fff'
-    const alphaHex = Math.round(fade * 0xcc).toString(16).padStart(2, '0')
+    const alphaFull = Math.round(fade * 0xcc)
+    const alphaHex  = alphaFull.toString(16).padStart(2, '0')
+    const alphaHalf = Math.round(fade * 0x66).toString(16).padStart(2, '0')
 
-    // look for matching hurt event within ±3 ticks of this shot
+    // player dot radius in canvas px (same formula as player loop)
+    const pr = 8 * dotScale
+    // chevron tip sits at dot edge, arms open backward
+    const chevTipX = scx + Math.cos(rad) * pr
+    const chevTipY = scy - Math.sin(rad) * pr
+    const chevLen  = 6 * dotScale
+    const chevAngle = Math.PI / 5
+    const chv1x = chevTipX + Math.cos(rad + Math.PI - chevAngle) * chevLen
+    const chv1y = chevTipY - Math.sin(rad + Math.PI - chevAngle) * chevLen
+    const chv2x = chevTipX + Math.cos(rad + Math.PI + chevAngle) * chevLen
+    const chv2y = chevTipY - Math.sin(rad + Math.PI + chevAngle) * chevLen
+    ctx.beginPath()
+    ctx.moveTo(chv1x, chv1y); ctx.lineTo(chevTipX, chevTipY); ctx.lineTo(chv2x, chv2y)
+    ctx.strokeStyle = playerColor + alphaHex
+    ctx.lineWidth = 1.5 * dotScale; ctx.stroke()
+
+    // scale-aware line width: thinner when zoomed in
+    const shotLW = Math.max(0.4, 1.0 / Math.sqrt(tx.scale))
+
+    // look for matching hurt event within ±3 ticks
     let hitPt: { hx: number; hy: number } | null = null
     for (let dt = 0; dt <= 3 && !hitPt; dt++) {
       hitPt = hurtMap.get(`${stTick + dt}:${pidx}`) ?? null
     }
 
     if (hitPt) {
+      // hit: line from dot edge to impact + white cross
       const [ecx, ecy] = worldToCanvas(hitPt.hx, hitPt.hy, ov, SZ)
       ctx.beginPath()
-      ctx.moveTo(scx, scy)
-      ctx.lineTo(ecx, ecy)
+      ctx.moveTo(chevTipX, chevTipY); ctx.lineTo(ecx, ecy)
       ctx.strokeStyle = playerColor + alphaHex
-      ctx.lineWidth = 1.2; ctx.stroke()
-      // cross at impact point
+      ctx.lineWidth = shotLW; ctx.stroke()
       const cs = 4 * dotScale
       ctx.beginPath()
       ctx.moveTo(ecx - cs, ecy - cs); ctx.lineTo(ecx + cs, ecy + cs)
       ctx.moveTo(ecx + cs, ecy - cs); ctx.lineTo(ecx - cs, ecy + cs)
       ctx.strokeStyle = '#ffffff' + alphaHex
-      ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.lineWidth = shotLW * 1.2; ctx.stroke()
     } else {
-      // no hit data yet: draw short directional tracer
-      const tracerLen = 40
+      // miss: half-opacity fixed world-length line + small dot at end
+      // 300 world units ≈ typical room width, stays readable at any zoom
+      const missWorldLen = 300
+      const missCanvasLen = missWorldLen / ov.scale * (SZ / 1024) * tx.scale
+      const ex = chevTipX + Math.cos(rad) * missCanvasLen
+      const ey = chevTipY - Math.sin(rad) * missCanvasLen
       ctx.beginPath()
-      ctx.moveTo(scx, scy)
-      ctx.lineTo(scx + Math.cos(rad) * tracerLen, scy - Math.sin(rad) * tracerLen)
-      ctx.strokeStyle = playerColor + alphaHex
-      ctx.lineWidth = 1.5; ctx.stroke()
+      ctx.moveTo(chevTipX, chevTipY); ctx.lineTo(ex, ey)
+      ctx.strokeStyle = playerColor + alphaHalf
+      ctx.lineWidth = shotLW; ctx.stroke()
+      ctx.beginPath()
+      ctx.arc(ex, ey, 2 * dotScale, 0, Math.PI * 2)
+      ctx.fillStyle = playerColor + alphaHalf
+      ctx.fill()
     }
   }
 
