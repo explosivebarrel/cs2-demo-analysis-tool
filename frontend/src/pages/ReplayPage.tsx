@@ -458,25 +458,28 @@ function WinProbGraph({
   if (total < 2) return null
 
   const H = height
-  // slice winprob to extended window
   const slice = winprob.slice(rStartFi, rEndFi + 1)
-  const sliceLen = Math.max(1, slice.length - 1)
 
-  // cursor X
   const cursorX = fi2x(frameIdx).toFixed(1)
-
-  // build fill areas using extended slice
   const midY = H / 2
-  const ctPts = slice.map((p, i) => `${fi2x(rStartFi + i).toFixed(1)},${((1 - p) * H).toFixed(1)}`).join(' ')
-  const tPts  = slice.map((p, i) => `${fi2x(rStartFi + i).toFixed(1)},${(p * H).toFixed(1)}`).join(' ')
-  const ctFillPts = `0,${midY} ` + ctPts + ` ${W},${midY}`
-  const tFillPts  = `0,${midY} ` + tPts  + ` ${W},${midY}`
+
+  // curve points (x, y) where y=0 is top (CT winning), y=H is bottom (T winning)
+  const curvePts = slice.map((p, i) => [fi2x(rStartFi + i), (1 - p) * H] as [number, number])
+
+  // SVG polyline string
+  const curveStr = curvePts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+
+  // CT fill: curve + right edge at mid + left edge at mid — clipped to top half
+  const firstX = curvePts[0]?.[0] ?? 0
+  const lastX  = curvePts[curvePts.length - 1]?.[0] ?? W
+  const fillPath = `M ${firstX.toFixed(1)},${midY} ` +
+    curvePts.map(([x, y]) => `L ${x.toFixed(1)},${y.toFixed(1)}`).join(' ') +
+    ` L ${lastX.toFixed(1)},${midY} Z`
 
   const curVal = winprob[frameIdx] ?? 0.5
   const ctPct  = Math.round(curVal * 100)
   const tPct   = 100 - ctPct
 
-  // hatch pattern size
   const hatchId = 'nbHatch'
 
   return (
@@ -491,15 +494,22 @@ function WinProbGraph({
       onMouseLeave={onMouseUp}
     >
       <defs>
+        {/* CT fill: curve area above midline */}
+        <clipPath id="clipCT">
+          <rect x="0" y="0" width={W} height={midY} />
+        </clipPath>
+        {/* T fill: curve area below midline */}
+        <clipPath id="clipT">
+          <rect x="0" y={midY} width={W} height={midY} />
+        </clipPath>
         <linearGradient id="ctFill" x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#4a9eda" stopOpacity="0.45" />
-          <stop offset="100%" stopColor="#4a9eda" stopOpacity="0.05" />
+          <stop offset="0%" stopColor="#4a9eda" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#4a9eda" stopOpacity="0.08" />
         </linearGradient>
         <linearGradient id="tFill" x1="0" x2="0" y1="1" y2="0">
-          <stop offset="0%" stopColor="#e4882a" stopOpacity="0.45" />
-          <stop offset="100%" stopColor="#e4882a" stopOpacity="0.05" />
+          <stop offset="0%" stopColor="#e4882a" stopOpacity="0.5" />
+          <stop offset="100%" stopColor="#e4882a" stopOpacity="0.08" />
         </linearGradient>
-        {/* diagonal hatch for neighbour zones */}
         <pattern id={hatchId} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(120,120,120,0.35)" strokeWidth="3" />
         </pattern>
@@ -508,15 +518,16 @@ function WinProbGraph({
       {/* background */}
       <rect width={W} height={H} fill="var(--bg2, #1a1c20)" />
 
-      {/* CT / T fill areas */}
-      <polygon points={ctFillPts} fill="url(#ctFill)" />
-      <polygon points={tFillPts}  fill="url(#tFill)" />
+      {/* CT advantage fill — only above midline */}
+      <path d={fillPath} fill="url(#ctFill)" clipPath="url(#clipCT)" />
+      {/* T advantage fill — only below midline */}
+      <path d={fillPath} fill="url(#tFill)" clipPath="url(#clipT)" />
 
       {/* 50% midline */}
       <line x1="0" y1={midY} x2={W} y2={midY} stroke="#555" strokeWidth="0.8" strokeDasharray="6,4" />
 
-      {/* CT balance curve */}
-      <polyline points={ctPts} fill="none" stroke="#4a9eda" strokeWidth="1.8" strokeLinejoin="round" />
+      {/* balance curve */}
+      <polyline points={curveStr} fill="none" stroke="#4a9eda" strokeWidth="1.8" strokeLinejoin="round" />
 
       {/* prev-round neighbour hatch (left side) */}
       {coreStartX > 0 && (
