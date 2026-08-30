@@ -398,6 +398,7 @@ function WinProbGraph({
   const svgRef = useRef<SVGSVGElement>(null)
   const dragging = useRef(false)
   const total = winprob.length
+  const W = 1000
 
   // compute current round frame bounds — include freeze time + ±10s neighbours
   const curTick = ticks[frameIdx] ?? 0
@@ -405,7 +406,6 @@ function WinProbGraph({
 
   const curRoundIdx = curRound ? rounds.findIndex(r => r.n === curRound.n) : -1
   const prevRound = curRoundIdx > 0 ? rounds[curRoundIdx - 1] : null
-  const nextRound = curRoundIdx >= 0 && curRoundIdx < rounds.length - 1 ? rounds[curRoundIdx + 1] : null
 
   const NEIGHBOUR_TICKS = 10 * 64  // ~10s at 64tick
 
@@ -424,22 +424,19 @@ function WinProbGraph({
     return i < 0 ? total - 1 : Math.max(0, i)
   }
 
-  const rStartFi    = tickToFi(extStartTick)
+  const rStartFi     = tickToFi(extStartTick)
   const rCoreStartFi = tickToFi(freezeStartTick)
   const rFreezeEndFi = curRound ? tickToFi(curRound.freezeEndTick) : 0
-  const rCoreEndFi  = curRound ? tickToFi(roundEndTick) : total - 1
-  const rEndFi      = Math.min(total - 1, tickToFi(extEndTick))
-  const rLen        = Math.max(1, rEndFi - rStartFi)
+  const rCoreEndFi   = curRound ? tickToFi(roundEndTick) : total - 1
+  const rEndFi       = Math.min(total - 1, tickToFi(extEndTick))
+  const rLen         = Math.max(1, rEndFi - rStartFi)
 
-  // positions as 0..W fractions
+  // map frame index → SVG x coordinate
   function fi2x(fi: number): number { return ((fi - rStartFi) / rLen) * W }
 
-  // freeze end marker position
   const freezeMarkerX = fi2x(rFreezeEndFi)
-  // core start (where prev neighbour ends)
-  const coreStartX = fi2x(rCoreStartFi)
-  // core end (where next neighbour begins)
-  const coreEndX   = fi2x(rCoreEndFi)
+  const coreStartX    = fi2x(rCoreStartFi)
+  const coreEndX      = fi2x(rCoreEndFi)
 
   function fiFromClientX(clientX: number): number {
     const rect = svgRef.current?.getBoundingClientRect()
@@ -460,7 +457,7 @@ function WinProbGraph({
 
   if (total < 2) return null
 
-  const W = 1000, H = height
+  const H = height
   // slice winprob to extended window
   const slice = winprob.slice(rStartFi, rEndFi + 1)
   const sliceLen = Math.max(1, slice.length - 1)
