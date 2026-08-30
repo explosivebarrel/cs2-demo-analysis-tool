@@ -284,7 +284,7 @@ function ScoreboardPanel({
 
 // ── sub-components ────────────────────────────────────────────────────────────
 
-/** Numbered round buttons with a progress-bar overlay on the active round. */
+/** Numbered round buttons with a vertical scrubber line sliding across the active round. */
 function RoundSwitcher({
   rounds, ticks, frameIdx, onJump,
 }: {
@@ -296,14 +296,39 @@ function RoundSwitcher({
   const curTick = ticks[frameIdx] ?? 0
   const activeRound = rounds.length ? [...rounds].reverse().find((r: RoundData) => r.freezeEndTick <= curTick) ?? null : null
 
+  // warmup: ticks before first round freezeEndTick
+  const firstRoundStart = rounds.length > 0 ? rounds[0].freezeEndTick : 0
+  const isWarmup = curTick < firstRoundStart
+
+  function jumpWarmup() {
+    const fi = ticks.findIndex(tk => tk > 0)
+    if (fi >= 0) onJump(fi)
+  }
+
   return (
     <div style={{ display: 'flex', width: '100%', marginBottom: 10, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+      {/* warmup button */}
+      <button
+        onClick={jumpWarmup}
+        title="Разминка"
+        style={{
+          position: 'relative', overflow: 'hidden', flexShrink: 0,
+          padding: '5px 8px', fontSize: 10, fontWeight: isWarmup ? 700 : 400,
+          background: isWarmup ? 'rgba(100,100,200,0.25)' : 'var(--bg2)',
+          color: isWarmup ? '#aac' : 'var(--text2)',
+          border: 'none', borderRight: '1px solid var(--border)',
+          cursor: 'pointer', textAlign: 'center', minWidth: 0, whiteSpace: 'nowrap',
+        }}
+      >
+        WU
+      </button>
+
       {rounds.map((r, ri) => {
         const isActive = activeRound?.n === r.n
-        let progress = 0
+        let scrubberPct = -1
         if (isActive && activeRound) {
           const dur = activeRound.endTick - activeRound.freezeEndTick
-          progress = dur > 0 ? Math.min(1, (curTick - activeRound.freezeEndTick) / dur) : 0
+          scrubberPct = dur > 0 ? Math.min(1, (curTick - activeRound.freezeEndTick) / dur) : 0
         }
         const startFi = ticks.findIndex(tk => tk >= r.freezeEndTick)
         return (
@@ -314,19 +339,22 @@ function RoundSwitcher({
             style={{
               position: 'relative', overflow: 'hidden', flex: 1,
               padding: '5px 2px', fontSize: 11, fontWeight: isActive ? 700 : 400,
-              background: isActive ? 'var(--accent)' : r.isPistol ? 'rgba(255,180,50,0.08)' : 'var(--bg2)',
-              color: isActive ? '#fff' : r.isPistol ? 'var(--accent2)' : 'var(--text2)',
+              background: isActive ? 'rgba(var(--accent-rgb,74,120,220),0.18)' : r.isPistol ? 'rgba(255,180,50,0.06)' : 'var(--bg2)',
+              color: isActive ? 'var(--accent)' : r.isPistol ? 'var(--accent2)' : 'var(--text2)',
               border: 'none',
-              borderLeft: ri > 0 ? '1px solid var(--border)' : 'none',
+              borderLeft: ri >= 0 ? '1px solid var(--border)' : 'none',
               cursor: 'pointer', textAlign: 'center', minWidth: 0,
             }}
           >
-            {isActive && (
+            {/* vertical scrubber line sliding across full button height */}
+            {isActive && scrubberPct >= 0 && (
               <div style={{
-                position: 'absolute', left: 0, bottom: 0,
-                width: `${progress * 100}%`, height: 3,
-                background: 'rgba(255,255,255,0.55)',
-                transition: 'width 0.1s linear',
+                position: 'absolute', top: 0, bottom: 0,
+                left: `${scrubberPct * 100}%`,
+                width: 2,
+                background: 'rgba(255,255,255,0.6)',
+                transform: 'translateX(-50%)',
+                pointerEvents: 'none',
               }} />
             )}
             {String(r.n).padStart(2, '0')}
@@ -352,12 +380,26 @@ function WinProbGraph({
   const dragging = useRef(false)
   const total = winprob.length
 
-  // compute current round frame bounds
+  // compute current round frame bounds — include freeze time
   const curTick = ticks[frameIdx] ?? 0
-  const curRound = rounds.length ? [...rounds].reverse().find(r => r.freezeEndTick <= curTick) ?? null : null
-  const rStartFi = curRound ? Math.max(0, ticks.findIndex(tk => tk >= curRound.freezeEndTick)) : 0
+  // find the active round: last round whose freezeEndTick <= curTick, or first round if before match
+  const activeByTick = rounds.length ? [...rounds].reverse().find(r => r.freezeEndTick <= curTick) ?? null : null
+  const curRound = activeByTick ?? (rounds.length ? rounds[0] : null)
+
+  // freeze start: use previous round's endTick+1, or approx 15s before freezeEndTick
+  const curRoundIdx = curRound ? rounds.findIndex(r => r.n === curRound.n) : -1
+  const prevRound = curRoundIdx > 0 ? rounds[curRoundIdx - 1] : null
+  const freezeStartTick = curRound
+    ? (prevRound ? prevRound.endTick + 1 : Math.max(0, curRound.freezeEndTick - 960))
+    : 0
+
+  const rStartFi = curRound ? Math.max(0, ticks.findIndex(tk => tk >= freezeStartTick)) : 0
+  const rFreezeEndFi = curRound ? Math.max(0, ticks.findIndex(tk => tk >= curRound.freezeEndTick)) : 0
   const rEndFi   = curRound ? (() => { const i = ticks.findIndex(tk => tk >= curRound.endTick); return i < 0 ? total - 1 : i })() : total - 1
   const rLen = Math.max(1, rEndFi - rStartFi)
+
+  // freeze end marker position (0..1)
+  const freezeMarkerPct = rLen > 0 ? Math.min(1, (rFreezeEndFi - rStartFi) / rLen) : 0
 
   function fiFromClientX(clientX: number): number {
     const rect = svgRef.current?.getBoundingClientRect()
@@ -427,6 +469,11 @@ function WinProbGraph({
       {/* background */}
       <rect width={W} height={H} fill="var(--bg2, #1a1c20)" />
 
+      {/* freeze time zone (left portion before freezeMarkerPct) */}
+      {freezeMarkerPct > 0 && (
+        <rect x="0" y="0" width={(freezeMarkerPct * W).toFixed(1)} height={H} fill="rgba(255,255,255,0.04)" />
+      )}
+
       {/* CT fill area */}
       <polygon points={ctFillPts} fill="url(#ctFill)" />
       {/* T fill area */}
@@ -437,6 +484,15 @@ function WinProbGraph({
 
       {/* CT balance curve */}
       <polyline points={ctPts} fill="none" stroke="#4a9eda" strokeWidth="1.8" strokeLinejoin="round" />
+
+      {/* freeze end marker — dashed vertical line */}
+      {freezeMarkerPct > 0 && (
+        <line
+          x1={(freezeMarkerPct * W).toFixed(1)} y1="0"
+          x2={(freezeMarkerPct * W).toFixed(1)} y2={H}
+          stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="3,3"
+        />
+      )}
 
       {/* cursor line */}
       <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" />
