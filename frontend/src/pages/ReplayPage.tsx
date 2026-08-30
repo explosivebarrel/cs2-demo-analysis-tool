@@ -297,10 +297,9 @@ function RoundSwitcher({
   const activeRound = rounds.length ? [...rounds].reverse().find((r: RoundData) => r.freezeEndTick <= curTick) ?? null : null
 
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-      {rounds.map(r => {
+    <div style={{ display: 'flex', width: '100%', marginBottom: 10, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)' }}>
+      {rounds.map((r, ri) => {
         const isActive = activeRound?.n === r.n
-        // progress within this round (0–1)
         let progress = 0
         if (isActive && activeRound) {
           const dur = activeRound.endTick - activeRound.freezeEndTick
@@ -313,20 +312,20 @@ function RoundSwitcher({
             onClick={() => startFi >= 0 && onJump(startFi)}
             title={`R${r.n}${r.isPistol ? ' (pistol)' : ''}`}
             style={{
-              position: 'relative', overflow: 'hidden',
-              padding: '4px 6px', minWidth: 34, fontSize: 11, fontWeight: isActive ? 700 : 400,
-              background: isActive ? 'var(--accent)' : r.isPistol ? 'var(--bg3)' : 'var(--bg2)',
+              position: 'relative', overflow: 'hidden', flex: 1,
+              padding: '5px 2px', fontSize: 11, fontWeight: isActive ? 700 : 400,
+              background: isActive ? 'var(--accent)' : r.isPistol ? 'rgba(255,180,50,0.08)' : 'var(--bg2)',
               color: isActive ? '#fff' : r.isPistol ? 'var(--accent2)' : 'var(--text2)',
-              border: `1px solid ${isActive ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 4, cursor: 'pointer',
+              border: 'none',
+              borderLeft: ri > 0 ? '1px solid var(--border)' : 'none',
+              cursor: 'pointer', textAlign: 'center', minWidth: 0,
             }}
           >
-            {/* progress bar overlay */}
             {isActive && (
               <div style={{
                 position: 'absolute', left: 0, bottom: 0,
                 width: `${progress * 100}%`, height: 3,
-                background: 'rgba(255,255,255,0.6)', borderRadius: '0 0 0 3px',
+                background: 'rgba(255,255,255,0.55)',
                 transition: 'width 0.1s linear',
               }} />
             )}
@@ -338,7 +337,7 @@ function RoundSwitcher({
   )
 }
 
-/** SVG win-probability graph that also acts as a timeline scrubber. */
+/** SVG balance-of-power graph that acts as a timeline scrubber for the current round. */
 function WinProbGraph({
   winprob, ticks, rounds, frameIdx, onScrub, height = 60,
 }: {
@@ -353,11 +352,18 @@ function WinProbGraph({
   const dragging = useRef(false)
   const total = winprob.length
 
+  // compute current round frame bounds
+  const curTick = ticks[frameIdx] ?? 0
+  const curRound = rounds.length ? [...rounds].reverse().find(r => r.freezeEndTick <= curTick) ?? null : null
+  const rStartFi = curRound ? Math.max(0, ticks.findIndex(tk => tk >= curRound.freezeEndTick)) : 0
+  const rEndFi   = curRound ? (() => { const i = ticks.findIndex(tk => tk >= curRound.endTick); return i < 0 ? total - 1 : i })() : total - 1
+  const rLen = Math.max(1, rEndFi - rStartFi)
+
   function fiFromClientX(clientX: number): number {
     const rect = svgRef.current?.getBoundingClientRect()
-    if (!rect || total < 2) return 0
+    if (!rect || rLen < 2) return rStartFi
     const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    return Math.round(pct * (total - 1))
+    return Math.round(rStartFi + pct * rLen)
   }
 
   function onMouseDown(e: React.MouseEvent) {
@@ -372,29 +378,29 @@ function WinProbGraph({
 
   if (total < 2) return null
 
-  // build polyline points for CT (top) and T (bottom) — CT prob [0.05..0.95]
   const W = 1000, H = height
-  const pts = winprob.map((p, i) => {
-    const x = (i / (total - 1)) * W
-    const y = (1 - p) * H  // p=1 → top, p=0 → bottom
-    return `${x.toFixed(1)},${y.toFixed(1)}`
-  }).join(' ')
+  // slice winprob to current round window
+  const slice = winprob.slice(rStartFi, rEndFi + 1)
+  const sliceLen = Math.max(1, slice.length - 1)
 
-  const cursorX = ((frameIdx / (total - 1)) * W).toFixed(1)
+  // build balance curve: value = ct_prob (0.5 = even, >0.5 = CT leading)
+  // cursor position within round
+  const cursorPct = Math.min(1, (frameIdx - rStartFi) / sliceLen)
+  const cursorX = (cursorPct * W).toFixed(1)
 
-  // kill event markers
-  const killXs: number[] = []
-  if (ticks.length) {
-    // we need access to events but this component doesn't get them — computed outside
-  }
+  // build fill areas — CT fill (top half) and T fill (bottom half)
+  const midY = H / 2
+  const ctPts = slice.map((p, i) => `${((i / sliceLen) * W).toFixed(1)},${((1 - p) * H).toFixed(1)}`).join(' ')
+  const tPts  = slice.map((p, i) => `${((i / sliceLen) * W).toFixed(1)},${(p * H).toFixed(1)}`).join(' ')
 
-  // round phase labels (freeze start markers)
-  const roundMarkers = rounds.map(r => {
-    const fi = ticks.findIndex(tk => tk >= r.freezeEndTick)
-    if (fi < 0) return null
-    const x = ((fi / (total - 1)) * W).toFixed(1)
-    return { x, n: r.n, isPistol: r.isPistol }
-  }).filter(Boolean) as { x: string; n: number; isPistol: boolean }[]
+  // filled area for CT advantage (above midline)
+  const ctFillPts = `0,${midY} ` + ctPts + ` ${W},${midY}`
+  // filled area for T advantage (below midline)
+  const tFillPts  = `0,${midY} ` + tPts  + ` ${W},${midY}`
+
+  const curVal = winprob[frameIdx] ?? 0.5
+  const ctPct  = Math.round(curVal * 100)
+  const tPct   = 100 - ctPct
 
   return (
     <svg
@@ -407,46 +413,37 @@ function WinProbGraph({
       onMouseUp={onMouseUp}
       onMouseLeave={onMouseUp}
     >
-      {/* background — split CT (blue) top / T (orange) bottom at 50% */}
       <defs>
-        <linearGradient id="wpBg" x1="0" x2="0" y1="0" y2="1" gradientUnits="userSpaceOnUse"
-          gradientTransform={`scale(1,${H})`}>
-          <stop offset="0%" stopColor="#4a9eda" stopOpacity="0.15" />
-          <stop offset="50%" stopColor="#222" stopOpacity="0" />
-          <stop offset="100%" stopColor="#e4882a" stopOpacity="0.15" />
+        <linearGradient id="ctFill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#4a9eda" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="#4a9eda" stopOpacity="0.05" />
+        </linearGradient>
+        <linearGradient id="tFill" x1="0" x2="0" y1="1" y2="0">
+          <stop offset="0%" stopColor="#e4882a" stopOpacity="0.45" />
+          <stop offset="100%" stopColor="#e4882a" stopOpacity="0.05" />
         </linearGradient>
       </defs>
-      <rect width={W} height={H} fill="url(#wpBg)" />
+
+      {/* background */}
+      <rect width={W} height={H} fill="var(--bg2, #1a1c20)" />
+
+      {/* CT fill area */}
+      <polygon points={ctFillPts} fill="url(#ctFill)" />
+      {/* T fill area */}
+      <polygon points={tFillPts} fill="url(#tFill)" />
 
       {/* 50% midline */}
-      <line x1="0" y1={H / 2} x2={W} y2={H / 2} stroke="#444" strokeWidth="0.5" strokeDasharray="4,4" />
+      <line x1="0" y1={midY} x2={W} y2={midY} stroke="#555" strokeWidth="0.8" strokeDasharray="6,4" />
 
-      {/* round start markers */}
-      {roundMarkers.map(m => (
-        <line key={m.n} x1={m.x} y1="0" x2={m.x} y2={H}
-          stroke={m.isPistol ? 'var(--accent2, #aaa)' : '#444'} strokeWidth="0.8" />
-      ))}
+      {/* CT balance curve */}
+      <polyline points={ctPts} fill="none" stroke="#4a9eda" strokeWidth="1.8" strokeLinejoin="round" />
 
-      {/* CT win% curve */}
-      <polyline points={pts} fill="none" stroke="#4a9eda" strokeWidth="1.5" strokeLinejoin="round" />
+      {/* cursor line */}
+      <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="rgba(255,255,255,0.7)" strokeWidth="1.5" />
 
-      {/* T fill area under curve (mirror) */}
-      <polyline
-        points={winprob.map((p, i) => {
-          const x = (i / (total - 1)) * W
-          const y = p * H
-          return `${x.toFixed(1)},${y.toFixed(1)}`
-        }).join(' ')}
-        fill="none" stroke="#e4882a" strokeWidth="1" strokeLinejoin="round" strokeOpacity="0.5"
-      />
-
-      {/* cursor */}
-      <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="#fff" strokeWidth="1.5" />
-
-      {/* CT % label at cursor */}
-      <text x={Number(cursorX) + 3} y="10" fill="#4a9eda" fontSize="9" fontFamily="monospace">
-        CT {Math.round((winprob[frameIdx] ?? 0.5) * 100)}%
-      </text>
+      {/* live score labels */}
+      <text x="6" y="11" fill="#4a9eda" fontSize="10" fontFamily="monospace" fontWeight="bold">КТ {ctPct}%</text>
+      <text x={W - 6} y={H - 4} fill="#e4882a" fontSize="10" fontFamily="monospace" fontWeight="bold" textAnchor="end">Т {tPct}%</text>
     </svg>
   )
 }
@@ -895,50 +892,6 @@ export default function ReplayPage() {
                   onScrub={fi => { setFrameIdx(fi); setPlaying(false) }}
                   height={56}
                 />
-                {/* phase labels row */}
-                {currentRound && (() => {
-                  const total = replay.ticks.length
-                  const rStart = replay.ticks.findIndex(tk => tk >= currentRound.freezeEndTick)
-                  const rEnd   = replay.ticks.findIndex(tk => tk >= currentRound.endTick)
-                  const safeEnd = rEnd < 0 ? total - 1 : rEnd
-                  const freezeDur = Math.round((currentRound.freezeEndTick - (currentRound.freezeEndTick - 2400)) / 64)
-                  // approximate freeze start = ~15s before freezeEndTick (64 tick = 1s → ~960 ticks)
-                  const freezeStartTick = currentRound.freezeEndTick - 960
-                  const freezeStartFi = Math.max(0, replay.ticks.findIndex(tk => tk >= freezeStartTick))
-                  const freezeStartPct = (freezeStartFi / (total - 1)) * 100
-                  const activeStartPct = (rStart / (total - 1)) * 100
-                  const endPct = (safeEnd / (total - 1)) * 100
-                  const lang = getLang()
-                  return (
-                    <div style={{ position: 'relative', height: 14, background: 'var(--bg2)', fontSize: 9, color: 'var(--text2)', userSelect: 'none' }}>
-                      <div style={{
-                        position: 'absolute',
-                        left: `${freezeStartPct}%`,
-                        width: `${activeStartPct - freezeStartPct}%`,
-                        height: '100%',
-                        background: 'rgba(74,158,218,0.08)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        overflow: 'hidden', whiteSpace: 'nowrap',
-                        borderRight: '1px solid var(--border)',
-                      }}>
-                        {lang === 'ru' ? 'ЗАМОРОЗКА' : 'FREEZE'}
-                      </div>
-                      <div style={{
-                        position: 'absolute',
-                        left: `${activeStartPct}%`,
-                        width: `${endPct - activeStartPct}%`,
-                        height: '100%',
-                        background: currentRound.bombPlanted ? 'rgba(228,136,42,0.08)' : 'rgba(80,200,120,0.06)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        overflow: 'hidden', whiteSpace: 'nowrap',
-                      }}>
-                        {currentRound.bombPlanted
-                          ? (lang === 'ru' ? 'ПОСТАКТИВНАЯ' : 'POST-PLANT')
-                          : (lang === 'ru' ? 'АКТИВНАЯ' : 'ACTIVE')}
-                      </div>
-                    </div>
-                  )
-                })()}
               </div>
             ) : (
               <div style={{ position: 'relative', marginBottom: 8 }}>

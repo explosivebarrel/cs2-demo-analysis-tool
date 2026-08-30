@@ -216,6 +216,7 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
             "mvp": 1 if r.get("mvp") == p.steamid else 0,
             "won": 1 if r_won else 0,
             "imp": imp,
+            "nades": pr.get("nades", 0),
         })
 
     overall_imp = round(sum(s["imp"] for s in series) / len(series), 2) if series else 0.0

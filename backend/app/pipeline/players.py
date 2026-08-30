@@ -32,7 +32,7 @@ class PlayerStats:
             "postPlantTaken": 0.0, "enemyFlashed": 0, "blindSec": 0.0,
             "effectiveFlashes": 0, "plant": 0, "defuse": 0, "defuseAttempt": 0,
             "tradedDeath": False, "tradedKill": False, "opening": None,
-            "shots": 0, "hits": 0, "survived": False,
+            "shots": 0, "hits": 0, "survived": False, "nades": 0,
         })
         self.weapons: dict[str, dict] = defaultdict(lambda: {
             "kills": 0, "hs": 0, "shots": 0, "hits": 0, "dmg": 0.0})
@@ -285,10 +285,13 @@ def compute_players(ctx, rb, fb):
                     "CDecoyGrenade": "decoy"}
         g2 = g.dropna(subset=["steamid"])
         try:
+            # first tick per grenade entity for round lookup
+            seg_tick = g2.groupby(["steamid", "grenade_entity_id"])["tick"].min()
             seg = g2.groupby(["steamid", "grenade_entity_id"])["grenade_type"].first()
         except Exception:
             seg = []
-        for (sid, _eid), gtype in seg.items():
+            seg_tick = {}
+        for (sid, eid), gtype in seg.items():
             p = players.get(str(sid))
             if p is None:
                 continue
@@ -303,6 +306,15 @@ def compute_players(ctx, rb, fb):
                 p.fireThrows += 1
             elif t == "decoy":
                 p.decoyThrows += 1
+            # per-round nades counter (all utility types)
+            if t in ("flash", "smoke", "he", "fire", "decoy"):
+                try:
+                    first_tick = int(seg_tick[(sid, eid)])
+                    rr = round_of_tick(first_tick)
+                    if rr is not None:
+                        p.r(rr["n"])["nades"] += 1
+                except Exception:
+                    pass
 
     # ---------------------------------------------------------- shots (gun trigger pulls)
     if len(wf):

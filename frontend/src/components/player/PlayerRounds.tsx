@@ -90,6 +90,7 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
               <th style={{ padding: '8px 10px' }}>K</th>
               <th style={{ padding: '8px 10px' }}>D</th>
               <th style={{ padding: '8px 10px' }}>{lang === 'ru' ? 'Урон' : 'DMG'}</th>
+              <th style={{ padding: '8px 10px' }} title={lang === 'ru' ? 'Гранаты брошены' : 'Grenades thrown'}>🔴</th>
               <th style={{ padding: '8px 10px' }}>IMP</th>
               <th style={{ padding: '8px 6px' }}></th>
             </tr>
@@ -166,6 +167,11 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
                   {/* damage */}
                   <td style={{ padding: '8px 10px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: s.dmg >= 100 ? 700 : 400 }}>
                     {s.dmg}
+                  </td>
+
+                  {/* grenades */}
+                  <td style={{ padding: '8px 10px', textAlign: 'center', color: (s.nades ?? 0) > 0 ? 'var(--accent2)' : 'var(--text2)', fontWeight: (s.nades ?? 0) > 0 ? 700 : 400 }}>
+                    {s.nades ?? 0}
                   </td>
 
                   {/* IMP */}
