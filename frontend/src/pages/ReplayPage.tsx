@@ -74,11 +74,12 @@ type EventFilter = 'all' | 'kills' | 'bomb' | 'nades'
 
 /** Event log panel for the replay page center column. */
 function EventLog({
-  replay, analysis, frameIdx,
+  replay, analysis, frameIdx, onSeek,
 }: {
   replay: ReplayData
   analysis: AnalysisData | null
   frameIdx: number
+  onSeek: (tick: number) => void
 }) {
   const [filter, setFilter] = useState<EventFilter>('all')
   const [focusPidx, setFocusPidx] = useState<number | null>(null)
@@ -135,7 +136,7 @@ function EventLog({
       return (
         <div key={idx}
           style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', background: highlighted ? 'rgba(255,255,255,0.04)' : 'transparent', cursor: 'pointer' }}
-          onClick={() => setFocusPidx(focusPidx === ai ? null : ai)}
+      onClick={() => { onSeek(tick); setFocusPidx(focusPidx === ai ? null : ai) }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
@@ -1293,7 +1294,10 @@ export default function ReplayPage() {
               <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12, textTransform: 'uppercase', color: 'var(--text2)', flexShrink: 0 }}>
                 СОБЫТИЯ
               </div>
-              <EventLog replay={replay} analysis={analysis} frameIdx={frameIdx} />
+              <EventLog replay={replay} analysis={analysis} frameIdx={frameIdx} onSeek={tick => {
+                const fi = replay.ticks.findIndex(t => t >= tick)
+                if (fi >= 0) jumpToFrame(fi)
+              }} />
             </div>
             <div style={{ cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', minHeight: 400, padding: '0 2px' }}>
               <div style={{ width: 4, height: '100%', background: 'var(--border)', borderRadius: 2 }} />
