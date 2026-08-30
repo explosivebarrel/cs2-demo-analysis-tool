@@ -7,10 +7,11 @@ import { useLang } from '../App'
 
 // ── field indices in the flat data buffer ────────────────────────────────────
 const F_X = 0, F_Y = 1, F_Z = 2, F_YAW = 3, F_HP = 4, F_ARMOR = 5
-const F_ALIVE = 6, F_WID = 7, F_TEAM = 8, F_FLAGS = 9
-const FIELDS = 10
+const F_ALIVE = 6, F_WID = 7, F_FLAGS = 8, F_TEAM = 9
+const FIELDS = 11
 
-const TEAM_COLORS = ['#e4882a', '#4a9eda']  // index 0 = T (orange), index 1 = CT (blue)
+const TEAM_COLORS: Record<number, string> = { 2: '#e4882a', 3: '#4a9eda' }  // team_num: 2=T (orange), 3=CT (blue)
+const TEAM_COLOR_BY_IDX = ['#e4882a', '#4a9eda']  // player.team index: 0=T, 1=CT
 const SIZE = 600
 const SPEEDS = [0.5, 1, 2, 4, 8]
 
@@ -143,7 +144,7 @@ function EventLog({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
             <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>УБИЙСТВО{hs ? ' НС' : ''}</span>
-            <span style={{ fontSize: 12, color: TEAM_COLORS[aTeam] ?? '#fff', fontWeight: 600 }}>{attacker}</span>
+            <span style={{ fontSize: 12, color: TEAM_COLOR_BY_IDX[aTeam] ?? '#fff', fontWeight: 600 }}>{attacker}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)' }}>→</span>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>{victim}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>{weapName}</span>
@@ -235,8 +236,8 @@ function ScoreboardPanel({
 
   // group players by team index (0=T, 1=CT)
   const teams: { idx: number; label: string; color: string; players: typeof replay.players }[] = [
-    { idx: 1, label: 'КТ', color: TEAM_COLORS[1], players: replay.players.filter(p => p.team === 1) },
-    { idx: 0, label: 'Т',  color: TEAM_COLORS[0], players: replay.players.filter(p => p.team === 0) },
+    { idx: 1, label: 'КТ', color: TEAM_COLOR_BY_IDX[1], players: replay.players.filter(p => p.team === 1) },
+    { idx: 0, label: 'Т',  color: TEAM_COLOR_BY_IDX[0], players: replay.players.filter(p => p.team === 0) },
   ]
 
   return (

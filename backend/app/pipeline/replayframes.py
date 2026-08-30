@@ -8,6 +8,48 @@ import numpy as np
 from .. import config
 from ..weapons import weapon_id
 
+# approximate CS2 buy prices for equipment value estimation
+_WEAPON_VALUE = {
+    "awp": 4750, "ssg08": 1700, "scar20": 5000, "g3sg1": 5000,
+    "ak47": 2700, "m4a4": 3100, "m4a1_silencer": 2900, "m4a1": 2900,
+    "famas": 2050, "galilar": 1800, "aug": 3300, "sg556": 3000,
+    "m249": 5200, "negev": 1700, "nova": 1050, "xm1014": 2000, "mag7": 1300,
+    "mp9": 1250, "mac10": 1050, "mp7": 1500, "ump45": 1200,
+    "p90": 2350, "bizon": 1400, "mp5sd": 1500,
+    "deagle": 700, "revolver": 600, "p250": 300, "cz75a": 500,
+    "fiveseven": 500, "tec9": 500, "elite": 300,
+    "usp_silencer": 200, "usp_s": 200, "hkp2000": 200, "glock": 200, "glock18": 200,
+    "flashbang": 200, "smokegrenade": 300, "hegrenade": 300,
+    "molotov": 400, "incgrenade": 600, "decoy": 50,
+    "kevlar": 650, "kevlar_helmet": 1000,
+    "defuser": 400, "taser": 200, "c4": 0,
+}
+
+
+def _equip_value(inventory, active_weapon: str, has_helmet: bool, has_defuser: bool) -> int:
+    """Estimate total equipment value from inventory list + gear flags."""
+    total = 0
+    seen_kevlar = False
+    if inventory is not None:
+        try:
+            items = inventory if isinstance(inventory, (list, tuple)) else []
+            for item in items:
+                key = str(item).lower().replace("weapon_", "")
+                v = _WEAPON_VALUE.get(key, 0)
+                if key in ("kevlar", "kevlar_helmet"):
+                    seen_kevlar = True
+                total += v
+        except TypeError:
+            pass
+    if not seen_kevlar:
+        if has_helmet:
+            total += 1000
+        elif active_weapon:
+            pass  # no armor info available
+    if has_defuser:
+        total += 400
+    return total
+
 
 def _flags(row, inventory) -> int:
     f = 0
@@ -183,16 +225,20 @@ class FrameBuilder:
                 except (TypeError, ValueError):
                     team = 0
                 wid = weapon_id(row["active_weapon_name"])
-                flags = _flags(row, row.get("inventory"))
+                inventory = row.get("inventory")
+                flags = _flags(row, inventory)
+                equip = _equip_value(inventory, row.get("active_weapon_name", ""),
+                                     bool(row.get("has_helmet")), bool(row.get("has_defuser")))
                 per_player[idx] = [round(pos[0]), round(pos[1]), round(pos[2]),
                                    _safe_int(_norm_yaw(row["yaw"])), _safe_int(row["health"]),
-                                   _safe_int(row["armor_value"]), 1 if alive else 0, wid, flags, team]
+                                   _safe_int(row["armor_value"]), 1 if alive else 0, wid, flags, team,
+                                   equip]
                 self._update_player_stats(sid, idx, pos, alive, row, r, dt)
 
             for i in range(self.n):
                 if per_player[i] is None:
                     p = self.last_pos[i]
-                    per_player[i] = [round(p[0]), round(p[1]), round(p[2]), 0, 0, 0, 0, 0, 0, 0]
+                    per_player[i] = [round(p[0]), round(p[1]), round(p[2]), 0, 0, 0, 0, 0, 0, 0, 0]
 
             frame_ticks.append(tick)
             frame_data.extend(v for pp in per_player for v in pp)
@@ -296,9 +342,9 @@ class FrameBuilder:
                 elif ty in ("bx", "bd"):
                     state, carrier = 4, -1
             if state == 0:
-                base = fi * self.n * 10
+                base = fi * self.n * 11
                 for idx in range(self.n):
-                    if data[base + idx * 10 + 8] & 1:
+                    if data[base + idx * 11 + 8] & 1:
                         cx, cy = self._pos_of(data, fi, idx)
                         state, carrier = 1, idx
                         break
@@ -309,5 +355,5 @@ class FrameBuilder:
         return replay
 
     def _pos_of(self, data, fi, idx):
-        base = fi * self.n * 10
-        return data[base + idx * 10], data[base + idx * 10 + 1]
+        base = fi * self.n * 11
+        return data[base + idx * 11], data[base + idx * 11 + 1]
