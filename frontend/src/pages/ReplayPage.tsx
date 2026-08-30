@@ -687,9 +687,9 @@ function drawFrame(
 
     // player dot radius in canvas px (same formula as player loop)
     const pr = 8 * dotScale
-    // chevron tip sits at dot edge, arms open backward
-    const chevTipX = scx + Math.cos(rad) * pr
-    const chevTipY = scy - Math.sin(rad) * pr
+    // chevron tip sits 2 radii from center (clear of the dot)
+    const chevTipX = scx + Math.cos(rad) * pr * 2
+    const chevTipY = scy - Math.sin(rad) * pr * 2
     const chevLen  = 6 * dotScale
     const chevAngle = Math.PI / 5
     const chv1x = chevTipX + Math.cos(rad + Math.PI - chevAngle) * chevLen
@@ -727,7 +727,7 @@ function drawFrame(
       // miss: half-opacity fixed world-length line + small dot at end
       // 300 world units ≈ typical room width, stays readable at any zoom
       const missWorldLen = 300
-      const missCanvasLen = missWorldLen / ov.scale * (SZ / 1024) * tx.scale
+      const missCanvasLen = missWorldLen / ov.scale * (SZ / 1024) * (1 / tx.scale)
       const ex = chevTipX + Math.cos(rad) * missCanvasLen
       const ey = chevTipY - Math.sin(rad) * missCanvasLen
       ctx.beginPath()
