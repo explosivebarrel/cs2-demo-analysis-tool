@@ -10,7 +10,7 @@ P_START_MONEY = "CCSPlayerController.CCSPlayerController_InGameMoneyServices.m_i
 
 TICK_PROPS = [
     "X", "Y", "Z", "pitch", "yaw", "health", "armor_value", "is_alive",
-    "active_weapon_name", "inventory", "team_num", "team_name", "team_clan_name",
+    "active_weapon_name", "active_weapon_ammo", "inventory", "team_num", "team_name", "team_clan_name",
     "game_phase", "is_freeze_period", "is_bomb_planted", "total_rounds_played",
     "game_time", "flash_duration", "has_defuser", "has_helmet", "is_walking",
     "is_scoped", "duck_amount", "cash_spent_this_round", "total_cash_spent",
@@ -24,7 +24,7 @@ EVENTS_WITH_PLAYERS = [
     "decoy_started", "decoy_detonate",
     "bomb_planted", "bomb_beginplant", "bomb_begindefuse", "bomb_defused",
     "bomb_exploded", "bomb_dropped", "bomb_pickup", "item_pickup",
-    "player_team",
+    "player_team", "weapon_reload",
 ]
 
 EVENTS_PLAIN = [

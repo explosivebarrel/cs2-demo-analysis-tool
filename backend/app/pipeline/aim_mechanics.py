@@ -224,15 +224,23 @@ def _compute_reload_errors(ctx, rb, steamid: str, tickrate: float) -> int:
     if my_reloads.empty:
         return 0
 
-    # try to get clip ammo at reload time from ticks
-    ticks_df = ctx.ticks
-    has_ammo = ticks_df is not None and "clipammo" in ticks_df.columns
+    import bisect as _bisect
+    import numpy as _np
 
-    if not has_ammo:
+    # try to get clip ammo at reload time from ticks (active_weapon_ammo)
+    ticks_df = ctx.ticks
+    ammo_col = None
+    if ticks_df is not None:
+        for cname in ("active_weapon_ammo", "clipammo"):
+            if cname in ticks_df.columns:
+                ammo_col = cname
+                break
+
+    fe_arr = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
+    end_arr = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
+
+    if ammo_col is None:
         # no ammo data: count all reloads during live play (not freeze time)
-        import numpy as _np
-        fe_arr = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
-        end_arr = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
         errors = 0
         for _, row in my_reloads.iterrows():
             t = int(row["tick"])
@@ -242,18 +250,21 @@ def _compute_reload_errors(ctx, rb, steamid: str, tickrate: float) -> int:
         return errors
 
     # ammo data available — only count reloads with bullets remaining
-    player_ticks = ticks_df[ticks_df["steamid"].astype(str) == steamid][["tick", "clipammo"]].copy()
+    player_ticks = ticks_df[ticks_df["steamid"].astype(str) == steamid][["tick", ammo_col]].copy()
     player_ticks = player_ticks.sort_values("tick")
     tick_arr = player_ticks["tick"].to_numpy()
-    ammo_arr = player_ticks["clipammo"].to_numpy()
+    ammo_arr = player_ticks[ammo_col].to_numpy()
 
     errors = 0
     for _, row in my_reloads.iterrows():
         t = int(row["tick"])
-        import bisect
-        i = bisect.bisect_right(tick_arr, t) - 1
+        # only count during live rounds
+        ri = int(_np.searchsorted(fe_arr, t, side="right")) - 1
+        if not (0 <= ri < len(fe_arr) and t <= end_arr[ri]):
+            continue
+        i = _bisect.bisect_right(tick_arr, t) - 1
         if i >= 0:
-            bullets = int(ammo_arr[i])
+            bullets = int(ammo_arr[i]) if ammo_arr[i] == ammo_arr[i] else 0
             if bullets > RELOAD_SAFE_BULLETS:
                 errors += 1
     return errors

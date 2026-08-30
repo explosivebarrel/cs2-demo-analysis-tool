@@ -168,6 +168,24 @@ def build_events(ctx, rb, fb):
                 ev["kc"] = kc
             events.append(ev)
 
+    # hurt hits (bullet impact positions for shot-line rendering) ----------
+    hurt = ctx.ev("player_hurt")
+    if len(hurt):
+        for _, h in hurt.iterrows():
+            a_sid = _sid(h.get("attacker_steamid"))
+            if not a_sid:
+                continue
+            # user_X/Y = victim position at impact = bullet landing point
+            hx = h.get("user_X")
+            hy = h.get("user_Y")
+            if hx is None or hy is None:
+                continue
+            events.append({
+                "t": int(h["tick"]), "ty": "hi",
+                "a": idx(a_sid),
+                "x": _f(hx), "y": _f(hy),
+            })
+
     # shots (muzzle flash tracers) --------------------------------------
     wf = ctx.ev("weapon_fire")
     if len(wf):

@@ -659,22 +659,59 @@ function drawFrame(
     ctx.fillStyle = grad; ctx.fill()
   }
 
-  // shot tracers
+  // shot tracers + hit lines
   const tracerWindow = replay.tickrate * 0.25
+  // build hurt-hit map: "tick:attackerPidx" -> {hx, hy} for quick lookup
+  const hurtMap = new Map<string, { hx: number; hy: number }>()
+  for (const ev of replay.events) {
+    const e = ev as Record<string, unknown>
+    if (e.ty !== 'hi') continue
+    const htick = e.t as number
+    const ha = e.a as number
+    if (htick > curTick || curTick - htick > tracerWindow) continue
+    const key = `${htick}:${ha}`
+    if (!hurtMap.has(key)) hurtMap.set(key, { hx: e.x as number, hy: e.y as number })
+  }
+
   for (const shot of replay.shots) {
     const [stTick, pidx, sx, sy] = shot
     if (stTick > curTick || curTick - stTick > tracerWindow) continue
     const syaw = shot[4]
     const [scx, scy] = worldToCanvas(sx, sy, ov, SZ)
     const rad = (syaw * Math.PI) / 180
-    const tracerLen = 40
     const fade = 1 - (curTick - stTick) / tracerWindow
     const playerColor = TEAM_COLORS[replay.data[frameIdx * replay.players.length * FIELDS + pidx * FIELDS + F_TEAM] ?? 0] ?? '#fff'
-    ctx.beginPath()
-    ctx.moveTo(scx, scy)
-    ctx.lineTo(scx + Math.cos(rad) * tracerLen, scy - Math.sin(rad) * tracerLen)
-    ctx.strokeStyle = playerColor + Math.round(fade * 0xcc).toString(16).padStart(2, '0')
-    ctx.lineWidth = 1.5; ctx.stroke()
+    const alphaHex = Math.round(fade * 0xcc).toString(16).padStart(2, '0')
+
+    // look for matching hurt event within ±3 ticks of this shot
+    let hitPt: { hx: number; hy: number } | null = null
+    for (let dt = 0; dt <= 3 && !hitPt; dt++) {
+      hitPt = hurtMap.get(`${stTick + dt}:${pidx}`) ?? null
+    }
+
+    if (hitPt) {
+      const [ecx, ecy] = worldToCanvas(hitPt.hx, hitPt.hy, ov, SZ)
+      ctx.beginPath()
+      ctx.moveTo(scx, scy)
+      ctx.lineTo(ecx, ecy)
+      ctx.strokeStyle = playerColor + alphaHex
+      ctx.lineWidth = 1.2; ctx.stroke()
+      // cross at impact point
+      const cs = 4 * dotScale
+      ctx.beginPath()
+      ctx.moveTo(ecx - cs, ecy - cs); ctx.lineTo(ecx + cs, ecy + cs)
+      ctx.moveTo(ecx + cs, ecy - cs); ctx.lineTo(ecx - cs, ecy + cs)
+      ctx.strokeStyle = '#ffffff' + alphaHex
+      ctx.lineWidth = 1.5; ctx.stroke()
+    } else {
+      // no hit data yet: draw short directional tracer
+      const tracerLen = 40
+      ctx.beginPath()
+      ctx.moveTo(scx, scy)
+      ctx.lineTo(scx + Math.cos(rad) * tracerLen, scy - Math.sin(rad) * tracerLen)
+      ctx.strokeStyle = playerColor + alphaHex
+      ctx.lineWidth = 1.5; ctx.stroke()
+    }
   }
 
   // grenade trails
