@@ -43,15 +43,18 @@ def _team_name(rb, team, players):
 
 
 def analyze_demo(demo_path: str, did: str, progress=None):
-    prog = progress or (lambda phase, pct: None)
+    prog = progress or (lambda phase, pct, detail="": None)
     t0 = time.time()
 
+    prog("loading", 5)
     ctx = DemoContext(demo_path)
     ctx.load()
 
     prog("rounds", 62)
     rb = RoundBuilder(ctx)
     rb.rounds = rb.build()
+    n_rounds = len(rb.rounds)
+    prog("rounds", 65, f"{n_rounds} rounds")
 
     prog("frames", 70)
     fb = FrameBuilder(ctx, rb)
@@ -59,7 +62,9 @@ def analyze_demo(demo_path: str, did: str, progress=None):
 
     prog("players", 78)
     players = compute_players(ctx, rb, fb)
+    n_players = len(players)
     compute_ratings(players)
+    prog("players", 82, f"{n_players} players")
 
     prog("events", 84)
     ev = build_events(ctx, rb, fb)
