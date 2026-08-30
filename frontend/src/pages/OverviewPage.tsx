@@ -127,6 +127,14 @@ function RoundsTable({ data }: { data: AnalysisData }) {
   const buyLabel = (b: string) => ({ pistol: t('pistol'), eco: t('eco'), force: t('force'), full: t('full') }[b] ?? b)
   const sideColor = (s: string) => s === 'T' ? 'var(--t-color)' : 'var(--ct-color)'
 
+  // build round -> total nades map from all players' series
+  const nadesPerRound: Record<number, number> = {}
+  for (const p of data.players) {
+    for (const s of p.series) {
+      nadesPerRound[s.n] = (nadesPerRound[s.n] ?? 0) + (s.nades ?? 0)
+    }
+  }
+
   return (
     <div className="card" style={{ overflowX: 'auto', marginTop: 16 }}>
       <div style={{ fontWeight: 700, marginBottom: 10 }}>{t('round')}</div>
@@ -136,6 +144,7 @@ function RoundsTable({ data }: { data: AnalysisData }) {
             <th>#</th><th>{t('score')}</th><th>{t('winner')}</th>
             <th>{t('reason')}</th><th>{t('buy')} {teams[0].name}</th>
             <th>{t('buy')} {teams[1].name}</th><th>{t('plant')}</th>
+            <th>🔴</th>
             <th>MVP</th>
           </tr>
         </thead>
@@ -163,6 +172,9 @@ function RoundsTable({ data }: { data: AnalysisData }) {
                   {buyLabel(r.buyTeam1)}
                 </td>
                 <td>{r.bombPlanted ? (r.bombSite || '✓') : '—'}</td>
+                <td style={{ textAlign: 'center', color: (nadesPerRound[r.n] ?? 0) > 0 ? 'var(--accent2)' : 'var(--text2)', fontWeight: (nadesPerRound[r.n] ?? 0) > 0 ? 700 : 400 }}>
+                  {nadesPerRound[r.n] ?? 0}
+                </td>
                 <td style={{ color: 'var(--text2)', fontSize: 12 }}>{mvpPlayer?.name ?? '—'}</td>
               </tr>
             )
