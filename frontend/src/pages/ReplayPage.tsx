@@ -246,7 +246,7 @@ function ScoreboardPanel({
               <span style={{ fontWeight: 700, fontSize: 12, color: team.color }}>{team.label}</span>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>{teamName}</span>
             </div>
-            {team.players.map((pl, _) => {
+            {team.players.map((pl, teamLocalIdx) => {
               const globalIdx = replay.players.findIndex(p => p.steamid === pl.steamid)
               const base = frameIdx * n * FIELDS + globalIdx * FIELDS
               const alive = replay.data[base + F_ALIVE] ?? 0
@@ -258,7 +258,9 @@ function ScoreboardPanel({
               const weapName = weapInfo ? (lang === 'ru' ? weapInfo.ru : weapInfo.en) : ''
               return (
                 <div key={pl.steamid} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', borderBottom: '1px solid var(--border)', opacity: alive ? 1 : 0.35 }}>
-                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: alive ? team.color : '#555', flexShrink: 0 }} />
+                  <div style={{ width: 16, height: 16, borderRadius: '50%', background: alive ? team.color : '#555', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', lineHeight: 1 }}>{teamLocalIdx + 1}</span>
+                  </div>
                   <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {hasBomb ? '💣 ' : ''}{pl.name}
                   </span>
@@ -825,6 +827,15 @@ function drawFrame(
   const frameBase = frameIdx * n * FIELDS
   if (frameBase + n * FIELDS > replay.data.length) { ctx.restore(); return }
 
+  // assign per-team numbers 1..5 by index order within each team
+  const teamCount: Record<number, number> = {}
+  const playerNum: number[] = new Array(n)
+  for (let i = 0; i < n; i++) {
+    const team = replay.players[i]?.team ?? 0
+    teamCount[team] = (teamCount[team] ?? 0) + 1
+    playerNum[i] = teamCount[team]
+  }
+
   // velocity: compute per-player from prev frame position
   const prevFrameBase = Math.max(0, frameIdx - 1) * n * FIELDS
   const velScale = replay.tickrate / Math.max(1, replay.frameStep)
@@ -846,6 +857,15 @@ function drawFrame(
     ctx.fillStyle = color + 'cc'; ctx.fill()
     ctx.strokeStyle = hasBomb ? '#fff' : color
     ctx.lineWidth = (hasBomb ? 2.5 : 1.5) * dotScale; ctx.stroke()
+
+    // player number inside dot (75% of diameter = 1.5 * r font size)
+    const numFontSize = Math.round(r * 1.5)
+    ctx.font = `bold ${numFontSize}px sans-serif`
+    ctx.fillStyle = '#ffffff'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(String(playerNum[i]), cx, cy)
+    ctx.textBaseline = 'alphabetic'
 
     // weapon label above dot (instead of name)
     const wid = replay.data[base + F_WID] ?? 0
@@ -893,9 +913,12 @@ function drawFrame(
 
     const yaw = replay.data[base + F_YAW]
     const rad = (yaw * Math.PI) / 180
-    const arrowLen = 14 * dotScale
-    const ax = cx + Math.cos(rad) * arrowLen, ay = cy - Math.sin(rad) * arrowLen
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ax, ay)
+    const arrowLen = 6 * dotScale
+    // start arrow from circle edge, not centre
+    const arrowStartX = cx + Math.cos(rad) * r
+    const arrowStartY = cy - Math.sin(rad) * r
+    const ax = cx + Math.cos(rad) * (r + arrowLen), ay = cy - Math.sin(rad) * (r + arrowLen)
+    ctx.beginPath(); ctx.moveTo(arrowStartX, arrowStartY); ctx.lineTo(ax, ay)
     ctx.strokeStyle = color; ctx.lineWidth = 1.5 * dotScale; ctx.stroke()
     const headLen = 4 * dotScale, headAngle = Math.PI / 6
     ctx.beginPath()

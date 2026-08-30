@@ -169,21 +169,43 @@ def build_events(ctx, rb, fb):
             events.append(ev)
 
     # hurt hits (bullet impact positions for shot-line rendering) ----------
+    # Prefer player_bullet_hit.victim_pos_x/y (real bullet impact point).
+    # Fall back to player_hurt.user_X/Y (victim centre) when not available.
     hurt = ctx.ev("player_hurt")
+    pbh = ctx.ev("player_bullet_hit")
+
+    # build (tick, attacker_slot) -> (victim_pos_x, victim_pos_y) from player_bullet_hit
+    pbh_map: dict[tuple[int, int], tuple[float, float]] = {}
+    if len(pbh) and "attacker_slot" in pbh.columns and "victim_pos_x" in pbh.columns:
+        for _, row in pbh.iterrows():
+            key = (int(row["tick"]), int(row["attacker_slot"]))
+            pbh_map[key] = (_f(row["victim_pos_x"]), _f(row["victim_pos_y"]))
+
+    # build player slot lookup: steamid -> slot index (position in fb.players)
+    slot_of: dict[str, int] = {str(s): i for i, s in enumerate(fb.players)}
+
     if len(hurt):
         for _, h in hurt.iterrows():
             a_sid = _sid(h.get("attacker_steamid"))
             if not a_sid:
                 continue
-            # user_X/Y = victim position at impact = bullet landing point
-            hx = h.get("user_X")
-            hy = h.get("user_Y")
-            if hx is None or hy is None:
-                continue
+            tick = int(h["tick"])
+            # try real impact point first
+            a_slot = slot_of.get(a_sid)
+            impact = pbh_map.get((tick, a_slot)) if a_slot is not None else None
+            if impact is not None:
+                hx, hy = impact
+            else:
+                # fallback: victim centre position
+                hx = h.get("user_X")
+                hy = h.get("user_Y")
+                if hx is None or hy is None:
+                    continue
+                hx, hy = _f(hx), _f(hy)
             events.append({
-                "t": int(h["tick"]), "ty": "hi",
+                "t": tick, "ty": "hi",
                 "a": idx(a_sid),
-                "x": _f(hx), "y": _f(hy),
+                "x": hx, "y": hy,
             })
 
     # shots (muzzle flash tracers) --------------------------------------
