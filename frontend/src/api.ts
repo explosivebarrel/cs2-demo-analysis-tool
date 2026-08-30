@@ -14,11 +14,14 @@ export interface DemoEntry {
   status?: string
   progress?: number
   phase?: string
+  detail?: string
   error?: string
   mtime?: number
   map?: string
   score?: number[]
   teamNames?: string[]
+  players?: { steamid: string; name: string; clan: string; team: number }[]
+  date?: string
 }
 
 export interface AnalysisData {
@@ -131,7 +134,10 @@ export interface ShotEvent {
 }
 
 export interface StatusData {
-  status: string; progress?: number; phase?: string; error?: string
+  status: string; progress?: number; phase?: string; detail?: string; error?: string
+  map?: string; score?: number[]; teamNames?: string[]
+  players?: { steamid: string; name: string; clan: string; team: number }[]
+  date?: string
 }
 
 export interface DecisionEntry {
@@ -220,6 +226,7 @@ export const api = {
     return req('/demos/upload', { method: 'POST', body: fd })
   },
   analyze: (id: string): Promise<unknown> => req(`/demos/${id}/analyze`, { method: 'POST' }),
+  probe: (id: string): Promise<unknown> => req(`/demos/${id}/probe`, { method: 'POST' }),
   status: (id: string): Promise<StatusData> => req(`/demos/${id}/status`),
   delete: (id: string): Promise<unknown> => req(`/demos/${id}`, { method: 'DELETE' }),
   analysis: (id: string): Promise<AnalysisData> => req(`/demos/${id}/analysis`),

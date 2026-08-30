@@ -25,11 +25,34 @@ _jobs: dict[str, subprocess.Popen] = {}
 _jobs_lock = threading.Lock()
 
 
+@app.on_event("startup")
+def _probe_unprobed_demos():
+    """On startup, probe any demo that has no map/team info yet."""
+    for demo in storage.list_demos():
+        st = storage.read_status(demo["id"]) or {}
+        if st.get("status") in ("new", None) and not st.get("map"):
+            _start_probe(demo)
+
+
 def _find_demo(did: str) -> dict:
     for d in storage.list_demos():
         if d["id"] == did:
             return d
     raise HTTPException(404, "demo not found")
+
+
+def _start_probe(demo: dict) -> bool:
+    did = demo["id"]
+    with _jobs_lock:
+        if did in _jobs and _jobs[did].poll() is None:
+            return False
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "app.worker", _demo_fs_path(demo), did, "--probe"],
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+        _jobs[did] = proc
+    return True
+
 
 
 def _start_job(demo: dict) -> bool:
@@ -73,7 +96,23 @@ async def upload(file: UploadFile = File(...)):
         f.write(data)
     with open(dest + ".name", "w", encoding="utf-8") as f:
         json.dump({"name": os.path.basename(name)}, f)
+    # auto-start probe so map/teams appear immediately
+    demo = _find_demo(did)
+    st = storage.read_status(did)
+    if not st or st.get("status") in ("new", None):
+        _start_probe(demo)
     return {"id": did, "name": name, "size": len(data)}
+
+
+@app.post("/api/demos/{did}/probe")
+def probe(did: str):
+    demo = _find_demo(did)
+    st = storage.read_status(did) or {}
+    # don't probe if already analyzed or currently running
+    if st.get("status") in ("parsing", "probing"):
+        return {"started": False, "status": st}
+    started = _start_probe(demo)
+    return {"started": started, "status": storage.read_status(did) or {"status": "new"}}
 
 
 @app.post("/api/demos/{did}/analyze")
