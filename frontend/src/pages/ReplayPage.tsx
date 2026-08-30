@@ -6,7 +6,7 @@ import { t, getLang } from '../i18n'
 import { useLang } from '../App'
 
 // ── field indices in the flat data buffer ────────────────────────────────────
-const F_X = 0, F_Y = 1, F_Z = 2, F_YAW = 3, F_HP = 4, F_ARMOR = 5
+const F_X = 0, F_Y = 1, F_YAW = 3, F_HP = 4
 const F_ALIVE = 6, F_WID = 7, F_FLAGS = 8, F_TEAM = 9
 const FIELDS = 11
 
@@ -35,9 +35,6 @@ function worldToCanvas(wx: number, wy: number, ov: MapOverview, sz = SIZE): [num
   return [px * ratio, py * ratio]
 }
 
-function applyTx(x: number, y: number, tx: Transform): [number, number] {
-  return [x * tx.scale + tx.ox, y * tx.scale + tx.oy]
-}
 
 // ── kill diagnosis rules ──────────────────────────────────────────────────────
 interface KillContext {
@@ -91,7 +88,6 @@ function EventLog({
   // find current round bounds
   const curRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
   const roundStart = curRound?.freezeEndTick ?? 0
-  const roundEnd = curRound?.endTick ?? Infinity
 
   // collect events up to curTick within current round
   const visible = useMemo(() => {
