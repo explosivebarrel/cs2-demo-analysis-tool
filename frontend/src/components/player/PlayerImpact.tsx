@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PlayerImpact as PlayerImpactData, SeriesPoint, DuelEpisode, PlayerData } from '../../api'
+import { PlayerImpact as PlayerImpactData, SeriesPoint, DuelEpisode, PlayerData, DecisionEntry } from '../../api'
 import EpisodeDrillDown from './EpisodeDrillDown'
 
 const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: string }> = {
@@ -58,6 +58,7 @@ interface Props {
   impact: PlayerImpactData
   series: SeriesPoint[]
   duels: DuelEpisode[]
+  decisionsCost: DecisionEntry[]
   playerNames: Record<string, string>
   lang: 'ru' | 'en'
   allPlayers?: PlayerData[]
@@ -72,7 +73,7 @@ function ratingLabel(value: number, goodAbove: number, lang: 'ru' | 'en'): { tex
   return                               { text: lang === 'ru' ? 'СЛАБО'   : 'WEAK',   color: 'var(--red)' }
 }
 
-export default function PlayerImpact({ impact, series, duels, playerNames, lang, allPlayers, playerData, currentSteamid }: Props) {
+export default function PlayerImpact({ impact, series, duels, decisionsCost, playerNames, lang, allPlayers, playerData, currentSteamid }: Props) {
   const [drillDuel, setDrillDuel] = useState<DuelEpisode | null>(null)
 
   const totalImp = series.length
@@ -212,37 +213,77 @@ export default function PlayerImpact({ impact, series, duels, playerNames, lang,
       </div>
 
       {/* ── ЦЕНА РЕШЕНИЙ ── */}
-      {sortedErrors.length > 0 && (
+      {(decisionsCost.length > 0 || sortedErrors.length > 0) && (
         <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
           <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
             {lang === 'ru' ? 'Цена решений' : 'Decision cost'}
           </div>
-          {mainHabit && (
-            <div style={{ fontSize: 13, color: 'var(--accent)', marginBottom: 10 }}>
-              {lang === 'ru'
-                ? `Главная привычка: «${ERROR_META[mainHabit[0]]?.ru ?? mainHabit[0]}» — ${Math.round(mainHabit[1].length / totalErrors * 100)}% дорогих ошибок`
-                : `Main habit: "${ERROR_META[mainHabit[0]]?.en ?? mainHabit[0]}" — ${Math.round(mainHabit[1].length / totalErrors * 100)}% of costly errors`}
+
+          {/* WinProb delta cards */}
+          {decisionsCost.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              {mainHabit && (
+                <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 8 }}>
+                  {lang === 'ru'
+                    ? `Главная привычка: «${ERROR_META[mainHabit[0]]?.ru ?? mainHabit[0]}» — ${Math.round(mainHabit[1].length / totalErrors * 100)}% дорогих ошибок`
+                    : `Main habit: "${ERROR_META[mainHabit[0]]?.en ?? mainHabit[0]}" — ${Math.round(mainHabit[1].length / totalErrors * 100)}% of costly errors`}
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {decisionsCost.map((entry, i) => {
+                  const beforePct = Math.round(entry.probBefore * 100)
+                  const afterPct = Math.round(entry.probAfter * 100)
+                  const drop = Math.round(entry.drop * 100)
+                  return (
+                    <div key={i} style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      background: 'var(--bg2)', borderRadius: 6, padding: '7px 10px',
+                    }}>
+                      <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 52 }}>
+                        {lang === 'ru' ? 'Раунд' : 'Round'} {entry.round}
+                      </span>
+                      <span style={{ fontWeight: 700, color: 'var(--green)', fontSize: 13, minWidth: 36 }}>
+                        {beforePct}%
+                      </span>
+                      <span style={{ color: 'var(--text2)', fontSize: 12 }}>→</span>
+                      <span style={{ fontWeight: 700, color: 'var(--red)', fontSize: 13, minWidth: 36 }}>
+                        {afterPct}%
+                      </span>
+                      <div style={{ flex: 1, height: 4, background: 'var(--bg3)', borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ width: `${Math.min(drop * 2, 100)}%`, height: '100%', background: 'var(--red)', borderRadius: 2 }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--red)', minWidth: 36, textAlign: 'right' }}>
+                        −{drop}%
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {sortedErrors.map(([key, grpDuels]) => {
-              const m = ERROR_META[key]
-              if (!m) return null
-              const pct = totalErrors > 0 ? Math.round(grpDuels.length / totalErrors * 100) : 0
-              return (
-                <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
-                  onClick={() => setDrillDuel(grpDuels[0])}>
-                  <span style={{ fontSize: 14 }}>{m.icon}</span>
-                  <span style={{ flex: 1, fontSize: 12, color: m.color }}>{lang === 'ru' ? m.ru : m.en}</span>
-                  <span style={{ fontSize: 11, color: 'var(--text2)' }}>{grpDuels.length}×</span>
-                  <div style={{ width: 80, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ width: `${pct}%`, height: '100%', background: m.color, borderRadius: 2 }} />
+
+          {/* error pattern breakdown */}
+          {sortedErrors.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {sortedErrors.map(([key, grpDuels]) => {
+                const m = ERROR_META[key]
+                if (!m) return null
+                const pct = totalErrors > 0 ? Math.round(grpDuels.length / totalErrors * 100) : 0
+                return (
+                  <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+                    onClick={() => setDrillDuel(grpDuels[0])}>
+                    <span style={{ fontSize: 14 }}>{m.icon}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: m.color }}>{lang === 'ru' ? m.ru : m.en}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text2)' }}>{grpDuels.length}×</span>
+                    <div style={{ width: 80, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: m.color, borderRadius: 2 }} />
+                    </div>
+                    <span style={{ fontSize: 11, color: m.color, minWidth: 32, textAlign: 'right' }}>{pct}%</span>
                   </div>
-                  <span style={{ fontSize: 11, color: m.color, minWidth: 32, textAlign: 'right' }}>{pct}%</span>
-                </div>
-              )
-            })}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

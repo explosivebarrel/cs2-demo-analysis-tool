@@ -66,7 +66,7 @@ def analyze_demo(demo_path: str, did: str, progress=None):
 
     prog("analytics", 92)
     from .playeranalytics import build_player_analytics
-    pa = build_player_analytics(ctx, rb, fb, players)
+    pa = build_player_analytics(ctx, rb, fb, players, winprob=winprob, replay_ticks=replay["ticks"])
 
     prog("writing", 95)
     analysis = _build_analysis(ctx, rb, fb, players)

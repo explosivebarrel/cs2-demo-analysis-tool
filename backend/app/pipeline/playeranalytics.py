@@ -384,6 +384,111 @@ def _build_impact(series: list[dict]) -> dict:
     }
 
 
+# ------------------------------------------------------------------ decisions cost
+
+def _build_decisions_cost(ctx, rb, steamid: str, winprob: list[float], replay_ticks: list[int]) -> list[dict]:
+    """For each death of steamid, find WinProb before/after and return significant drops."""
+    if not winprob or not replay_ticks:
+        return []
+
+    kills_df = ctx.ev("player_death")
+    if not len(kills_df):
+        return []
+
+    # build tick -> winprob index (nearest frame)
+    import bisect
+    ticks_arr = replay_ticks  # sorted ascending
+
+    def prob_at_tick(t: int) -> float | None:
+        if not ticks_arr:
+            return None
+        i = bisect.bisect_left(ticks_arr, t)
+        if i >= len(ticks_arr):
+            i = len(ticks_arr) - 1
+        elif i > 0 and abs(ticks_arr[i - 1] - t) < abs(ticks_arr[i] - t):
+            i -= 1
+        return winprob[i] if i < len(winprob) else None
+
+    # round lookup
+    import numpy as _np
+    fe_arr = [r["freezeEndTick"] for r in rb.rounds]
+    end_arr = [r["endTick"] for r in rb.rounds]
+    fe_np = _np.array(fe_arr, dtype="int64")
+    end_np = _np.array(end_arr, dtype="int64")
+    round_ns = [r["n"] for r in rb.rounds]
+
+    def _round_of(t: int):
+        i = int(_np.searchsorted(fe_np, t, side="right")) - 1
+        if i < 0 or t > end_np[i]:
+            return None
+        return round_ns[i]
+
+    # determine player's team side per round to orient CT prob correctly
+    # steamid_team: {sid: 0 or 1}, team 0 = t0, team 1 = t1
+    player_team = rb.steamid_team.get(steamid)  # 0 or 1
+
+    LOOK_AHEAD_TICKS = int(ctx.tickrate * 3)  # 3 seconds after death
+    MIN_DROP = 0.08  # only include deaths with >=8% WinProb drop
+
+    entries: list[dict] = []
+
+    for _, k in kills_df.iterrows():
+        v_sid = _sid(k.get("user_steamid"))
+        if v_sid != steamid:
+            continue
+
+        tick = int(k["tick"])
+        rn = _round_of(tick)
+        if rn is None:
+            continue
+
+        # WinProb is CT probability; convert to player's team perspective
+        prob_before_ct = prob_at_tick(tick)
+        prob_after_ct = prob_at_tick(tick + LOOK_AHEAD_TICKS)
+        if prob_before_ct is None or prob_after_ct is None:
+            continue
+
+        # player_team 0 → team 0, need to figure out their side per round
+        # rb.team_with_side returns team index (0/1) for a given side string
+        try:
+            r_info = next((r for r in rb.rounds if r["n"] == rn), None)
+            if r_info is None:
+                continue
+            side0 = r_info.get("sideTeam0", "T")
+            # player side: team 0 has side0, team 1 has opposite
+            if player_team == 0:
+                player_side = side0
+            else:
+                player_side = "CT" if side0 == "T" else "T"
+        except Exception:
+            player_side = "T"
+
+        # orient probability toward player's side
+        if player_side == "CT":
+            prob_before = round(prob_before_ct, 3)
+            prob_after = round(prob_after_ct, 3)
+        else:
+            prob_before = round(1.0 - prob_before_ct, 3)
+            prob_after = round(1.0 - prob_after_ct, 3)
+
+        drop = prob_before - prob_after
+        if drop < MIN_DROP:
+            continue
+
+        entries.append({
+            "round": rn,
+            "tick": tick,
+            "probBefore": prob_before,
+            "probAfter": prob_after,
+            "drop": round(drop, 3),
+            "side": player_side,
+        })
+
+    # sort by drop descending, keep top 10
+    entries.sort(key=lambda e: e["drop"], reverse=True)
+    return entries[:10]
+
+
 # ------------------------------------------------------------------ map events
 
 def _build_map_events(ctx, rb, steamid: str) -> list[dict]:
@@ -448,7 +553,9 @@ def _build_map_events(ctx, rb, steamid: str) -> list[dict]:
 
 # ------------------------------------------------------------------ top-level
 
-def build_player_analytics(ctx, rb, fb, players: dict) -> dict:
+def build_player_analytics(ctx, rb, fb, players: dict,
+                           winprob: list | None = None,
+                           replay_ticks: list | None = None) -> dict:
     """Compute per-player deep analytics for all players in fb.players.
 
     Returns a dict keyed by steamid with keys: duels, metrics, impact, mapEvents.
@@ -536,11 +643,20 @@ def build_player_analytics(ctx, rb, fb, players: dict) -> dict:
         except Exception:
             map_events = []
 
+        try:
+            decisions_cost = _build_decisions_cost(
+                ctx, rb, steamid,
+                winprob or [], replay_ticks or [],
+            )
+        except Exception:
+            decisions_cost = []
+
         result[steamid] = {
             "duels": duels,
             "metrics": metrics,
             "impact": impact,
             "mapEvents": map_events,
+            "decisionsCost": decisions_cost,
         }
 
     return result

@@ -134,11 +134,21 @@ export interface StatusData {
   status: string; progress?: number; phase?: string; error?: string
 }
 
+export interface DecisionEntry {
+  round: number
+  tick: number
+  probBefore: number
+  probAfter: number
+  drop: number
+  side: string
+}
+
 export interface PlayerAnalyticsData {
   duels: DuelEpisode[]
   metrics: PlayerMetrics
   impact: PlayerImpact
   mapEvents: MapEvent[]
+  decisionsCost: DecisionEntry[]
 }
 
 export interface DuelEpisode {

@@ -440,7 +440,7 @@ export default function PlayerPage() {
         })()}
 
         {tab === 'impact' && analytics && (
-          <PlayerImpact impact={analytics.impact} series={p.series} duels={analytics.duels} playerNames={playerNames} lang={lang} allPlayers={data.players} playerData={p} currentSteamid={steamid} />
+          <PlayerImpact impact={analytics.impact} series={p.series} duels={analytics.duels} decisionsCost={analytics.decisionsCost ?? []} playerNames={playerNames} lang={lang} allPlayers={data.players} playerData={p} currentSteamid={steamid} />
         )}
         {tab === 'impact' && !analytics && !analyticsErr && (
           <div className="text-muted"><span className="spinner" style={{ marginRight: 8 }} />{t('loading')}</div>
