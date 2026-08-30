@@ -222,25 +222,82 @@ export default function DemosPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
   const pollRef = useRef<number | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const demosRef = useRef<DemoEntry[]>([])
 
   const refresh = useCallback(async () => {
     try {
       const list = await api.demos()
-      const withStatus = await Promise.all(list.map(async d => {
-        try {
-          const s = await api.status(d.id)
-          return { ...d, ...s }
-        } catch { return d }
-      }))
-      setDemos(withStatus)
+      demosRef.current = list
+      setDemos(list)
       setLoading(false)
     } catch { setLoading(false) }
   }, [])
 
   useEffect(() => {
     refresh()
-    pollRef.current = window.setInterval(refresh, 2000)
-    return () => { if (pollRef.current) clearInterval(pollRef.current) }
+
+    // WebSocket for real-time status pushes
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsUrl = `${proto}//${window.location.host}/ws/demos`
+    let ws: WebSocket
+    let reconnectTimer: number | null = null
+    let unmounted = false
+
+    function connect() {
+      if (unmounted) return
+      ws = new WebSocket(wsUrl)
+      wsRef.current = ws
+
+      ws.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data)
+          if (msg.type !== 'status') return
+          setDemos(prev => {
+            const idx = prev.findIndex(d => d.id === msg.id)
+            if (idx === -1) {
+              // new demo appeared — trigger a full refresh to get its metadata
+              refresh()
+              return prev
+            }
+            const updated = { ...prev[idx],
+              status: msg.status,
+              progress: msg.progress,
+              phase: msg.phase,
+              detail: msg.detail,
+              error: msg.error,
+              map: msg.map || prev[idx].map,
+              score: msg.score?.length ? msg.score : prev[idx].score,
+              teamNames: msg.teamNames?.length ? msg.teamNames : prev[idx].teamNames,
+              date: msg.date || prev[idx].date,
+            }
+            const next = [...prev]
+            next[idx] = updated
+            return next
+          })
+        } catch { /* ignore malformed */ }
+      }
+
+      ws.onclose = () => {
+        if (!unmounted) {
+          reconnectTimer = window.setTimeout(connect, 3000)
+        }
+      }
+
+      ws.onerror = () => { ws.close() }
+    }
+
+    connect()
+
+    // Slow fallback poll (10 s) — catches new demos added externally, covers WS gaps
+    pollRef.current = window.setInterval(refresh, 10000)
+
+    return () => {
+      unmounted = true
+      if (reconnectTimer !== null) clearTimeout(reconnectTimer)
+      if (pollRef.current) clearInterval(pollRef.current)
+      ws?.close()
+    }
   }, [refresh])
 
   async function startAnalyze(id: string, e: React.MouseEvent) {

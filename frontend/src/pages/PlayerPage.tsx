@@ -35,7 +35,7 @@ function Kv({ label, value, accent }: { label: string; value: React.ReactNode; a
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="card mt-12">
+    <div className="card">
       <div style={{ fontWeight: 700, marginBottom: 12, color: 'var(--text2)', fontSize: 12, textTransform: 'uppercase', letterSpacing: '.05em' }}>{title}</div>
       {children}
     </div>
@@ -303,7 +303,7 @@ export default function PlayerPage() {
           return (
             <div>
               {/* base stats grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginBottom: 12 }}>
                 <Section title={t('kills') + ' / ' + t('deaths') + ' / ' + t('assists')}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                     <Kv label={t('kills')} value={p.kills} />

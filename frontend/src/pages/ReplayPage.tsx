@@ -11,7 +11,6 @@ const F_ALIVE = 6, F_WID = 7, F_FLAGS = 8, F_TEAM = 9
 const FIELDS = 11
 
 const TEAM_COLORS: Record<number, string> = { 2: '#e4882a', 3: '#4a9eda' }  // team_num: 2=T (orange), 3=CT (blue)
-const TEAM_COLOR_BY_IDX = ['#e4882a', '#4a9eda']  // player.team index: 0=T, 1=CT
 const SIZE = 600
 const SPEEDS = [0.5, 1, 2, 4, 8]
 
@@ -133,6 +132,7 @@ function EventLog({
       // diagnosis from attacker's perspective
       const diag = kc ? diagnosisLines(kc, true) : []
       const highlighted = focusPidx !== null && (ai === focusPidx || vi === focusPidx)
+      const attackerColor = aTeam >= 0 ? teamColorAtFrame(replay, frameIdx, aTeam) : '#fff'
       return (
         <div key={idx}
           style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', background: highlighted ? 'rgba(255,255,255,0.04)' : 'transparent', cursor: 'pointer' }}
@@ -141,7 +141,7 @@ function EventLog({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
             <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>УБИЙСТВО{hs ? ' НС' : ''}</span>
-            <span style={{ fontSize: 12, color: TEAM_COLOR_BY_IDX[aTeam] ?? '#fff', fontWeight: 600 }}>{attacker}</span>
+            <span style={{ fontSize: 12, color: attackerColor, fontWeight: 600 }}>{attacker}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)' }}>→</span>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>{victim}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>{weapName}</span>
@@ -218,6 +218,27 @@ function EventLog({
   )
 }
 
+// ── per-frame side colors ─────────────────────────────────────────────────────
+/** Returns the live color for a player by their static team index at the given frame. */
+function teamColorAtFrame(replay: ReplayData, frameIdx: number, teamIdx: number): string {
+  // sample the first alive player on that team to get their current team_num
+  const n = replay.players.length
+  const frameBase = frameIdx * n * FIELDS
+  for (let i = 0; i < n; i++) {
+    if (replay.players[i]?.team !== teamIdx) continue
+    const alive = replay.data[frameBase + i * FIELDS + F_ALIVE]
+    const teamNum = replay.data[frameBase + i * FIELDS + F_TEAM]
+    if (alive && teamNum in TEAM_COLORS) return TEAM_COLORS[teamNum]
+  }
+  // fallback: try dead players too
+  for (let i = 0; i < n; i++) {
+    if (replay.players[i]?.team !== teamIdx) continue
+    const teamNum = replay.data[frameBase + i * FIELDS + F_TEAM]
+    if (teamNum in TEAM_COLORS) return TEAM_COLORS[teamNum]
+  }
+  return teamIdx === 0 ? '#e4882a' : '#4a9eda'
+}
+
 // ── scoreboard panel ──────────────────────────────────────────────────────────
 
 /** Right-side scoreboard with CT/T sections, HP bars, equipment value, weapon. */
@@ -229,13 +250,14 @@ function ScoreboardPanel({
   frameIdx: number
 }) {
   const lang = getLang()
-  const n = replay.players.length
 
-  // group players by team index (0=T, 1=CT)
-  const teams: { idx: number; label: string; color: string; players: typeof replay.players }[] = [
-    { idx: 1, label: 'КТ', color: TEAM_COLOR_BY_IDX[1], players: replay.players.filter(p => p.team === 1) },
-    { idx: 0, label: 'Т',  color: TEAM_COLOR_BY_IDX[0], players: replay.players.filter(p => p.team === 0) },
-  ]
+  // group players by team index (0 or 1), resolve live side color + label from current frame
+  const teams: { idx: number; label: string; color: string; players: typeof replay.players }[] = [1, 0].map(idx => {
+    const color = teamColorAtFrame(replay, frameIdx, idx)
+    // determine label from live team_num: orange=T, blue=CT
+    const label = color === TEAM_COLORS[2] ? 'Т' : 'КТ'
+    return { idx, label, color, players: replay.players.filter(p => p.team === idx) }
+  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -249,7 +271,7 @@ function ScoreboardPanel({
             </div>
             {team.players.map((pl, teamLocalIdx) => {
               const globalIdx = replay.players.findIndex(p => p.steamid === pl.steamid)
-              const base = frameIdx * n * FIELDS + globalIdx * FIELDS
+              const base = frameIdx * replay.players.length * FIELDS + globalIdx * FIELDS
               const alive = replay.data[base + F_ALIVE] ?? 0
               const hp = replay.data[base + F_HP] ?? 0
               const wid = replay.data[base + F_WID] ?? 0
