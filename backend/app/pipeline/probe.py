@@ -65,9 +65,9 @@ def probe_demo(demo_path: str) -> dict:
         # we don't know which team is 0/1 yet — just store raw counts
         score = [ct_wins, t_wins]  # will re-orient below
 
-    # player names + clans from player_death (has attacker/user names)
+    # parse player_death with team_num to get side assignments
     try:
-        death_pairs = p.parse_events(["player_death"], player=["team_clan_name"])
+        death_pairs = p.parse_events(["player_death"], player=["team_clan_name", "team_num"])
     except Exception:
         death_pairs = []
 
@@ -83,7 +83,7 @@ def probe_demo(demo_path: str) -> dict:
             sid_col = f"{role}_steamid"
             name_col = f"{role}_name"
             clan_col = f"{role}_team_clan_name"
-            tnum_col = f"{role}_team_num" if f"{role}_team_num" in df.columns else None
+            tnum_col = f"{role}_team_num"
 
             if sid_col not in df.columns:
                 continue
@@ -99,6 +99,14 @@ def probe_demo(demo_path: str) -> dict:
                     c = _clean_clan(str(row.get(clan_col) or ""))
                     if c:
                         clan_of[sid] = c
+                # extract team_num from death events (reliable — happens during live play)
+                if tnum_col in df.columns and sid not in team_num_of:
+                    try:
+                        tnum = int(row.get(tnum_col) or 0)
+                        if tnum in (2, 3):
+                            team_num_of[sid] = tnum
+                    except (TypeError, ValueError):
+                        pass
 
     # parse a minimal ticks sample at tick 0 to get team assignments
     try:
