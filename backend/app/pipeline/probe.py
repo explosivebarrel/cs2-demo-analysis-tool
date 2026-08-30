@@ -1,11 +1,11 @@
 """Fast demo probe: extract map, teams, player names, date, score.
 
 Runs in ~2-5 seconds vs 30-60s for full analysis.
-Parses only: header, round_end, player_death, begin_new_match.
+Parses only: header, round_end, player_death.
 """
 from __future__ import annotations
 
-import time
+from collections import Counter
 from datetime import datetime, timezone
 
 from demoparser2 import DemoParser
@@ -33,10 +33,8 @@ def probe_demo(demo_path: str) -> dict:
     header = p.parse_header()
     map_name = header.get("map_name", "")
 
-    # tickrate from header or fallback
     tickrate = float(header.get("tickrate") or 64)
 
-    # demo date from file mtime (most reliable) or header
     import os
     try:
         mtime = os.path.getmtime(demo_path)
@@ -44,120 +42,191 @@ def probe_demo(demo_path: str) -> dict:
     except Exception:
         date_iso = datetime.now(tz=timezone.utc).isoformat()
 
-    # parse minimal events
+    # --- begin_new_match: find match start tick to exclude knife/warmup rounds ---
+    match_start_tick = 0
     try:
-        ev_pairs = p.parse_events(["round_end", "begin_new_match"], player=["team_clan_name"])
-    except Exception:
-        ev_pairs = []
-
-    events: dict = {}
-    for name, df in ev_pairs:
-        events[name] = df
-
-    # score from round_end
-    score = [0, 0]
-    team_sides: dict[str, list[str]] = {}  # clan -> list of sides played
-
-    re_df = events.get("round_end")
-    if re_df is not None and len(re_df) and "winner" in re_df.columns:
-        ct_wins = int((re_df["winner"] == "CT").sum())
-        t_wins  = int((re_df["winner"] == "T").sum())
-        # we don't know which team is 0/1 yet — just store raw counts
-        score = [ct_wins, t_wins]  # will re-orient below
-
-    # parse player_death with team_num to get side assignments
-    try:
-        death_pairs = p.parse_events(["player_death"], player=["team_clan_name", "team_num"])
-    except Exception:
-        death_pairs = []
-
-    clan_of: dict[str, str] = {}   # steamid -> clan
-    name_of: dict[str, str] = {}   # steamid -> display name
-    side_of: dict[str, str] = {}   # steamid -> first known side (T/CT)
-    team_num_of: dict[str, int] = {}  # steamid -> team_num (2=T, 3=CT)
-
-    for ev_name, df in death_pairs:
-        if ev_name != "player_death":
-            continue
-        for role in ("attacker", "user"):
-            sid_col = f"{role}_steamid"
-            name_col = f"{role}_name"
-            clan_col = f"{role}_team_clan_name"
-            tnum_col = f"{role}_team_num"
-
-            if sid_col not in df.columns:
-                continue
-            for _, row in df.iterrows():
-                sid = _sid(row.get(sid_col))
-                if not sid:
-                    continue
-                if name_col in df.columns and sid not in name_of:
-                    n = str(row.get(name_col) or "")
-                    if n and n not in ("None", "nan"):
-                        name_of[sid] = n
-                if clan_col in df.columns and sid not in clan_of:
-                    c = _clean_clan(str(row.get(clan_col) or ""))
-                    if c:
-                        clan_of[sid] = c
-                # extract team_num from death events (reliable — happens during live play)
-                if tnum_col in df.columns and sid not in team_num_of:
-                    try:
-                        tnum = int(row.get(tnum_col) or 0)
-                        if tnum in (2, 3):
-                            team_num_of[sid] = tnum
-                    except (TypeError, ValueError):
-                        pass
-
-    # parse a minimal ticks sample at tick 0 to get team assignments
-    try:
-        ticks_df = p.parse_ticks(["team_num", "team_clan_name"], ticks=[0])
-        for _, row in ticks_df.iterrows():
-            sid = _sid(row.get("steamid"))
-            if not sid:
-                continue
-            tnum = row.get("team_num")
-            try:
-                tnum = int(tnum)
-            except (TypeError, ValueError):
-                tnum = 0
-            if tnum in (2, 3):
-                team_num_of[sid] = tnum
-                side_of[sid] = "T" if tnum == 2 else "CT"
-            c = _clean_clan(str(row.get("team_clan_name") or ""))
-            if c and sid not in clan_of:
-                clan_of[sid] = c
+        bnm_pairs = p.parse_events(["begin_new_match"])
+        for ev_name, df in bnm_pairs:
+            if ev_name == "begin_new_match" and len(df):
+                match_start_tick = int(df["tick"].min())
+                break
     except Exception:
         pass
 
-    # build team identity: group by clan or by first-round side
-    # team 0 = T side in round 1, team 1 = CT side in round 1
-    from collections import Counter, defaultdict
+    # --- round_end: collect (round_n, end_tick, winner_side) ---
+    # Only include rounds that end AFTER match start (excludes knife/warmup rounds).
+    rounds_info: list[tuple[int, int, str]] = []
+    try:
+        re_pairs = p.parse_events(["round_end"])
+        for ev_name, df in re_pairs:
+            if ev_name != "round_end":
+                continue
+            for _, row in df.iterrows():
+                rn = row.get("round")
+                tick = row.get("tick")
+                winner = row.get("winner")
+                if rn and tick and winner and str(winner) not in ("None", "nan"):
+                    if int(tick) > match_start_tick:
+                        rounds_info.append((int(rn), int(tick), str(winner)))
+    except Exception:
+        pass
+    rounds_info.sort()
+    # Re-number rounds sequentially starting from 1 (original round numbers may skip)
+    rounds_info = [(i + 1, tick, winner) for i, (_, tick, winner) in enumerate(rounds_info)]
 
+    # Build tick→round mapping
+    def tick_to_round(tick: int) -> int | None:
+        for rn, end_tick, _ in rounds_info:
+            if tick <= end_tick:
+                return rn
+        return None
+
+    # --- player_death: collect names, clans, and per-round tnum ---
+    clan_of: dict[str, str] = {}
+    name_of: dict[str, str] = {}
+    # sid -> {round_n -> tnum} — collect all rounds to vote on first-half side
+    sid_round_tnum: dict[str, dict[int, int]] = {}
+
+    try:
+        death_pairs = p.parse_events(["player_death"], player=["team_clan_name", "team_num"])
+        for ev_name, df in death_pairs:
+            if ev_name != "player_death":
+                continue
+            for role in ("attacker", "user"):
+                sid_col = f"{role}_steamid"
+                name_col = f"{role}_name"
+                clan_col = f"{role}_team_clan_name"
+                tnum_col = f"{role}_team_num"
+
+                if sid_col not in df.columns:
+                    continue
+                for _, row in df.iterrows():
+                    sid = _sid(row.get(sid_col))
+                    if not sid:
+                        continue
+
+                    if name_col in df.columns and sid not in name_of:
+                        n = str(row.get(name_col) or "")
+                        if n and n not in ("None", "nan"):
+                            name_of[sid] = n
+
+                    if clan_col in df.columns and sid not in clan_of:
+                        c = _clean_clan(str(row.get(clan_col) or ""))
+                        if c:
+                            clan_of[sid] = c
+
+                    if tnum_col in df.columns:
+                        try:
+                            tnum = int(float(row.get(tnum_col) or 0))
+                            tick = int(row.get("tick") or 0)
+                        except (TypeError, ValueError):
+                            continue
+                        if tnum not in (2, 3) or tick <= 0:
+                            continue
+                        rn = tick_to_round(tick)
+                        if rn is not None and rn >= 1:
+                            if sid not in sid_round_tnum:
+                                sid_round_tnum[sid] = {}
+                            # keep first occurrence per round
+                            if rn not in sid_round_tnum[sid]:
+                                sid_round_tnum[sid][rn] = tnum
+    except Exception:
+        pass
+
+    # --- Determine each player's first-half side via majority vote over rounds 2-6 ---
+    # Round 1 is often a knife round with scrambled sides; rounds 2-6 are reliable.
+    # For each steamid, count tnum occurrences in rounds 2-6.
+    sid_first_tnum: dict[str, int] = {}
+    for sid, rnd_map in sid_round_tnum.items():
+        votes: Counter[int] = Counter()
+        for rn, tnum in rnd_map.items():
+            if 2 <= rn <= 6:
+                votes[tnum] += 1
+        if not votes:
+            # fall back to any early round > 1
+            for rn in sorted(rnd_map):
+                if rn > 1:
+                    votes[rnd_map[rn]] += 1
+                    break
+        if not votes:
+            # last resort: use whatever we have
+            for rn in sorted(rnd_map):
+                votes[rnd_map[rn]] += 1
+                break
+        if votes:
+            sid_first_tnum[sid] = votes.most_common(1)[0][0]
+
+    # --- Build team identity (team 0 / team 1) ---
+    # Group by clan tag first; fallback to tnum grouping.
     clan_team: dict[str, int] = {}
-    for sid, tnum in team_num_of.items():
+    # To assign team 0/1 consistently: use clan data when available.
+    # For each clan, all members share a tnum in the first half → pick majority tnum.
+    clan_tnum_votes: dict[str, Counter] = {}
+    for sid, tnum in sid_first_tnum.items():
         clan = clan_of.get(sid, "")
-        team_idx = 0 if tnum == 2 else 1
         if clan:
-            clan_team[clan] = team_idx
+            if clan not in clan_tnum_votes:
+                clan_tnum_votes[clan] = Counter()
+            clan_tnum_votes[clan][tnum] += 1
 
-    # fallback: no clan data — assign by side
+    for clan, votes in clan_tnum_votes.items():
+        dominant_tnum = votes.most_common(1)[0][0]
+        clan_team[clan] = 0 if dominant_tnum == 2 else 1
+
     sid_team: dict[str, int] = {}
-    for sid, tnum in team_num_of.items():
-        sid_team[sid] = 0 if tnum == 2 else 1
+    for sid, tnum in sid_first_tnum.items():
+        clan = clan_of.get(sid, "")
+        if clan and clan in clan_team:
+            sid_team[sid] = clan_team[clan]
+        else:
+            sid_team[sid] = 0 if tnum == 2 else 1
+
+    # Ensure players without tnum but with known clan still get assigned
     for sid, clan in clan_of.items():
-        if clan in clan_team:
+        if sid not in sid_team and clan in clan_team:
             sid_team[sid] = clan_team[clan]
 
-    # team names
+    # --- Determine team 0's first-half side (T or CT) ---
+    if clan_team:
+        # With clan data: derive from whichever tnum team0's clan players had in early rounds.
+        t0_tnums = [sid_first_tnum[sid] for sid, t in sid_team.items() if t == 0 and sid in sid_first_tnum]
+        t0_tnum_majority = Counter(t0_tnums).most_common(1)[0][0] if t0_tnums else 2
+        team0_first_side: str = "T" if t0_tnum_majority == 2 else "CT"
+    else:
+        # No clan data: mirror full-analysis fallback — team0 = T-side (tnum=2) in r1.
+        # sid_team already assigns tnum=2 → team0, so team0 always starts T here.
+        team0_first_side = "T"
+
+    # --- Score: count wins per team using standard CS2 half logic ---
+    # Sides swap after round 12 in regulation; OT uses 3-round halves starting at round 25.
+    def _team0_side_for_round(rn: int) -> str:
+        if rn <= 12:
+            half_idx = 0
+        elif rn <= 24:
+            half_idx = 1
+        else:
+            half_idx = 2 + ((rn - 25) // 3)
+        if half_idx % 2 == 0:
+            return team0_first_side
+        return "CT" if team0_first_side == "T" else "T"
+
+    team0_wins = team1_wins = 0
+    for rn, _end_tick, winner_side in rounds_info:
+        if _team0_side_for_round(rn) == winner_side:
+            team0_wins += 1
+        else:
+            team1_wins += 1
+
+    score = [team0_wins, team1_wins]
+
+    # --- Team names ---
     def _team_name(team_idx: int) -> str:
-        # prefer clan tag
         clans = Counter(
             clan_of[sid] for sid, t in sid_team.items()
             if t == team_idx and sid in clan_of
         )
         if clans:
             return clans.most_common(1)[0][0]
-        # fallback: first non-steamid player name
         for sid, t in sid_team.items():
             if t != team_idx:
                 continue
@@ -168,17 +237,7 @@ def probe_demo(demo_path: str) -> dict:
 
     team_names = [_team_name(0), _team_name(1)]
 
-    # score: re-derive as (T wins, CT wins) oriented to team0=T
-    # If we have round_end data, use it; score = [team0_wins, team1_wins]
-    # team0 is T in round 1, so team0_wins = T_wins from round_end
-    if re_df is not None and len(re_df) and "winner" in re_df.columns:
-        t_wins  = int((re_df["winner"] == "T").sum())
-        ct_wins = int((re_df["winner"] == "CT").sum())
-        score = [t_wins, ct_wins]  # team0=T, team1=CT in round 1
-    else:
-        score = [0, 0]
-
-    # players list
+    # --- Players list ---
     players = []
     all_sids = set(sid_team) | set(name_of)
     for sid in all_sids:
@@ -189,7 +248,7 @@ def probe_demo(demo_path: str) -> dict:
             "clan": clan_of.get(sid, ""),
             "team": team_idx,
         })
-    players.sort(key=lambda p: (p["team"], p["name"]))
+    players.sort(key=lambda x: (x["team"], x["name"]))
 
     return {
         "map": map_name,
