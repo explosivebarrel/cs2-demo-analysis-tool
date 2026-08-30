@@ -31,6 +31,13 @@ def _team_name(rb, team, players):
     clans = Counter(p.clan for p in players if p.team == team and p.clan)
     if clans:
         return clans.most_common(1)[0][0]
+    # no clan tag — use the name of the first player on the team
+    # but only if it doesn't look like a raw steamid (pure digits, 17 chars)
+    team_players = [p for p in players if p.team == team and p.name]
+    for p in team_players:
+        name = p.name.strip()
+        if name and not (name.isdigit() and len(name) >= 15):
+            return name
     sids = [s for s, t in rb.steamid_team.items() if t == team]
     return f"Team {sids[0]}" if sids else f"Team {team + 1}"
 

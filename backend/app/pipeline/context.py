@@ -28,7 +28,7 @@ EVENTS_WITH_PLAYERS = [
 ]
 
 EVENTS_PLAIN = [
-    "round_freeze_end", "round_officially_ended", "round_prestart",
+    "round_end", "round_freeze_end", "round_officially_ended", "round_prestart",
     "round_poststart", "begin_new_match", "cs_pre_restart",
     "cs_win_panel_match", "buytime_ended", "announce_phase_end",
     "round_announce_last_round_half", "round_announce_match_start",

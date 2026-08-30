@@ -140,27 +140,68 @@ class RoundBuilder:
     def _winners(self, rounds):
         exploded = set(self.ctx.ev("bomb_exploded")["tick"]) if self.ctx.has_ev("bomb_exploded") else set()
         defused = set(self.ctx.ev("bomb_defused")["tick"]) if self.ctx.has_ev("bomb_defused") else set()
+
+        # Build round_end lookup: tick -> (winner_side, reason)
+        # winner_side is "CT" or "T"; reason is the raw string from the event
+        round_end_by_tick: dict[int, tuple[str, str]] = {}
+        re_ev = self.ctx.ev("round_end")
+        if len(re_ev) and "winner" in re_ev.columns:
+            for _, row in re_ev.iterrows():
+                t = int(row["tick"])
+                w = str(row.get("winner") or "")
+                rsn = str(row.get("reason") or "")
+                if w in ("CT", "T"):
+                    round_end_by_tick[t] = (w, rsn)
+
         for r in rounds:
             w0, w1 = r["freezeEndTick"], r["endTick"]
             winner_team, reason = None, "elimination"
-            if any(w0 <= t <= w1 for t in exploded):
-                winner_team = self.team_with_side(r, "T")
-                reason = "bomb"
-            elif any(w0 <= t <= w1 for t in defused):
-                winner_team = self.team_with_side(r, "CT")
-                reason = "defuse"
+
+            # 1. Authoritative: round_end event with winner field (present in most demos)
+            #    Search in a window [w0 .. w1 + 5s] to handle slight tick offsets
+            search_end = w1 + int(self.ctx.tickrate * 5)
+            for t, (win_side, rsn) in round_end_by_tick.items():
+                if w0 <= t <= search_end:
+                    winner_team = self.team_with_side(r, win_side)
+                    # map raw reason strings to our canonical set
+                    if "bomb" in rsn or "explod" in rsn:
+                        reason = "bomb"
+                    elif "defus" in rsn:
+                        reason = "defuse"
+                    elif "time" in rsn or rsn == "":
+                        reason = "time"
+                    else:
+                        reason = "elimination"
+                    break
+
+            # 2. Bomb events override reason (more reliable than round_end reason string)
+            if winner_team is not None:
+                if any(w0 <= t <= w1 for t in exploded):
+                    reason = "bomb"
+                elif any(w0 <= t <= w1 for t in defused):
+                    reason = "defuse"
+
+            # 3. Fallback: alive-count heuristic (used when round_end not available)
             if winner_team is None:
-                counts = self.tv.alive_by_team(min(w1, self.ctx.max_tick), None)
-                ct_team = self.team_with_side(r, "CT")
-                t_team = self.team_with_side(r, "T")
-                alive_ct = counts.get(3, 0)
-                alive_t = counts.get(2, 0)
-                if alive_t == 0 and alive_ct > 0:
-                    winner_team, reason = ct_team, "elimination"
-                elif alive_ct == 0 and alive_t > 0:
-                    winner_team, reason = t_team, "elimination"
+                if any(w0 <= t <= w1 for t in exploded):
+                    winner_team = self.team_with_side(r, "T")
+                    reason = "bomb"
+                elif any(w0 <= t <= w1 for t in defused):
+                    winner_team = self.team_with_side(r, "CT")
+                    reason = "defuse"
                 else:
-                    winner_team, reason = ct_team, "time"
+                    counts = self.tv.alive_by_team(min(w1, self.ctx.max_tick), None)
+                    ct_team = self.team_with_side(r, "CT")
+                    t_team = self.team_with_side(r, "T")
+                    alive_ct = counts.get(3, 0)
+                    alive_t = counts.get(2, 0)
+                    if alive_t == 0 and alive_ct > 0:
+                        winner_team, reason = ct_team, "elimination"
+                    elif alive_ct == 0 and alive_t > 0:
+                        winner_team, reason = t_team, "elimination"
+                    else:
+                        winner_team, reason = ct_team, "time"
+
             r["winnerTeam"] = int(winner_team)
             r["reason"] = reason
 

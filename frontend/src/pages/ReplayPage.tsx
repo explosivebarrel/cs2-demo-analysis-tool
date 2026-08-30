@@ -760,15 +760,18 @@ function drawFrame(
     const endX = tr[tr.length - 3], endY = tr[tr.length - 2]
     const detTypes: Record<number, string[]> = { 0: ['sm'], 1: ['hd'], 2: ['fd'], 3: ['fr'], 4: [] }
     let detonateTick = throwTick + nPts * ticksPerSeg  // fallback
+    let bestDetDist = Infinity
     for (const ev2 of replay.events) {
       const e2 = ev2 as Record<string, unknown>
       const detTys = detTypes[gtype] ?? []
       if (!detTys.includes(e2.ty as string)) continue
+      if ((e2.t as number) < throwTick) continue
       const ex = e2.x as number, ey = e2.y as number
       const dx = ex - endX, dy = ey - endY
-      if (dx * dx + dy * dy < 2500 && (e2.t as number) >= throwTick) {
+      const d2 = dx * dx + dy * dy
+      if (d2 < 90000 && d2 < bestDetDist) {  // 300 units radius
+        bestDetDist = d2
         detonateTick = e2.t as number
-        break
       }
     }
 
@@ -935,7 +938,6 @@ export default function ReplayPage() {
   const [frameIdx, setFrameIdx] = useState(0)
   const [playing, setPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
-  const [speedIdx, setSpeedIdx] = useState(1)
   const [err, setErr] = useState('')
   const [tx, setTx] = useState<Transform>({ scale: 1, ox: 0, oy: 0 })
   const [showEventLog, setShowEventLog] = useState(true)
@@ -1027,8 +1029,8 @@ export default function ReplayPage() {
       const tag = (e.target as HTMLElement).tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA') return
       if (e.key === ' ') { e.preventDefault(); setPlaying(p => !p) }
-      if (e.key === ',') setSpeedIdx(i => { const ni = Math.max(0, i - 1); setSpeed(SPEEDS[ni]); return ni })
-      if (e.key === '.') setSpeedIdx(i => { const ni = Math.min(SPEEDS.length - 1, i + 1); setSpeed(SPEEDS[ni]); return ni })
+      if (e.key === ',') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.max(0, i - 1)] })
+      if (e.key === '.') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.min(SPEEDS.length - 1, i + 1)] })
       if (e.key === '0') setTx({ scale: 1, ox: 0, oy: 0 })
     }
     window.addEventListener('keydown', onKey)
@@ -1200,10 +1202,10 @@ export default function ReplayPage() {
                   onClick={() => setNadeTrailMode('path')}
                 >🔴 Путь</button>
                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('speed')}</span>
-                {SPEEDS.map((s, si) => (
+                {SPEEDS.map((s) => (
                   <button key={s} className={speed === s ? 'btn-primary' : 'btn-ghost'}
                     style={{ fontSize: 12, padding: '3px 8px' }}
-                    onClick={() => { setSpeed(s); setSpeedIdx(si) }}>
+                    onClick={() => setSpeed(s)}>
                     {s}x
                   </button>
                 ))}

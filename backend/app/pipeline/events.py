@@ -230,12 +230,36 @@ def build_events(ctx, rb, fb):
     # grenade trails -----------------------------------------------------
     g = ctx.grenades
     if g is not None and len(g):
+        import numpy as _np
+        # build round boundaries: list of (freezeEndTick, endTick) for clipping
+        round_bounds = [(r["freezeEndTick"], r["endTick"]) for r in rb.rounds]
+        fe_arr = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
+        end_arr = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
+
+        def _round_for_tick(tick: int):
+            """Return (freezeEnd, endTick) of the round containing tick, or None."""
+            i = int(_np.searchsorted(fe_arr, tick, side="right")) - 1
+            if 0 <= i < len(fe_arr) and tick <= end_arr[i]:
+                return (int(fe_arr[i]), int(end_arr[i]))
+            return None
+
         g2 = g.dropna(subset=["steamid"])
         for (_sid_thrower, eid), grp in g2.groupby(["steamid", "grenade_entity_id"]):
             grp = grp.dropna(subset=["x"]).sort_values("tick")
             if not len(grp):
                 continue
             gtype = NADE_TYPE.get(str(grp["grenade_type"].iloc[0]), 4)
+
+            # Clip entity to a single round — find the round that contains the
+            # first tick of this entity.  Entities that span multiple rounds
+            # (a parser artifact) are truncated at the round's endTick.
+            first_tick = int(grp["tick"].iloc[0])
+            rnd = _round_for_tick(first_tick)
+            if rnd is not None:
+                grp = grp[grp["tick"] <= rnd[1]]
+            if not len(grp):
+                continue
+
             # downsample trail to ~4 points/sec
             step = max(1, int(ctx.tickrate / 4))
             pts = []
@@ -244,6 +268,8 @@ def build_events(ctx, rb, fb):
                 rows = rows._append(grp.iloc[-1])
             for _, r in rows.iterrows():
                 pts.extend((_f(r["x"]), _f(r["y"]), _f(r["z"])))
+            if len(pts) < 6:
+                continue
             events.append({"ty": "g", "t": int(grp["tick"].min()), "g": gtype,
                            "p": idx(_sid_thrower), "tr": pts})
 
