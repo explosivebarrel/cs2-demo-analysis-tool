@@ -4,8 +4,14 @@ import numpy as np
 from ..weapons import canon, weapon_id
 
 GUN_CLASSES = {"rifle", "sniper", "smg", "heavy", "pistol"}
-NADE_TYPE = {"CSmokeGrenade": 0, "CHEGrenade": 1, "CFlashbang": 2,
-             "CMolotovGrenade": 3, "CIncendiaryGrenade": 3, "CDecoyGrenade": 4}
+NADE_TYPE = {
+    "CSmokeGrenade": 0, "CSmokeGrenadeProjectile": 0,
+    "CHEGrenade": 1, "CHEGrenadeProjectile": 1,
+    "CFlashbang": 2, "CFlashbangProjectile": 2,
+    "CMolotovGrenade": 3, "CMolotovProjectile": 3,
+    "CIncendiaryGrenade": 3, "CIncendiaryGrenadeProjectile": 3,
+    "CDecoyGrenade": 4, "CDecoyProjectile": 4,
+}
 
 
 def _sid(v):

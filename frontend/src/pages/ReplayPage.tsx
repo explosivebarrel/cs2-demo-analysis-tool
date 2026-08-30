@@ -574,6 +574,12 @@ function WinProbGraph({
   )
 }
 
+// ── grenade trail colours ─────────────────────────────────────────────────────
+const TRAIL_COLORS = ['#88bb88', '#ff9930', '#ffec50', '#ff5020', '#aaaaaa'] // smoke, HE, flash, fire/molotov, decoy
+// NADE_TYPE indices: 0=smoke, 1=HE, 2=flash, 3=fire, 4=decoy
+
+type NadeTrailMode = 'trail' | 'path'
+
 // ── map drawing ───────────────────────────────────────────────────────────────
 function drawFrame(
   canvas: HTMLCanvasElement,
@@ -582,6 +588,7 @@ function drawFrame(
   ov: MapOverview,
   radarImg: HTMLImageElement | null,
   tx: Transform,
+  nadeTrailMode: NadeTrailMode = 'trail',
 ) {
   const ctx = canvas.getContext('2d')!
   const SZ = canvas.width
@@ -670,10 +677,94 @@ function drawFrame(
     ctx.lineWidth = 1.5; ctx.stroke()
   }
 
+  // grenade trails
+  // Each trail event: { ty:"g", t: throwTick, g: nadeType(0-4), p: pidx, tr: [x,y,z, x,y,z,...] }
+  // tr is downsampled at ~4 pts/sec, so each segment ≈ tickrate/4 ticks
+  const TRAIL_FADE_TICKS = replay.tickrate * 2.5  // trail mode: show last 2.5s of flight
+  for (const ev of replay.events) {
+    const e = ev as Record<string, unknown>
+    if (e.ty !== 'g') continue
+    const throwTick = e.t as number
+    if (throwTick > curTick || throwTick < roundStartT) continue
+
+    const tr = e.tr as number[]
+    const gtype = (e.g as number) ?? 4
+    const color = TRAIL_COLORS[gtype] ?? '#aaaaaa'
+    if (!tr || tr.length < 6) continue
+
+    const nPts = Math.floor(tr.length / 3)
+    // estimate ticks per segment based on ~4pts/sec downsampling
+    const ticksPerSeg = replay.tickrate / 4
+
+    // find detonate tick: look for matching fd/sm/hd/fr event near end position
+    const endX = tr[tr.length - 3], endY = tr[tr.length - 2]
+    const detTypes: Record<number, string[]> = { 0: ['sm'], 1: ['hd'], 2: ['fd'], 3: ['fr'], 4: [] }
+    let detonateTick = throwTick + nPts * ticksPerSeg  // fallback
+    for (const ev2 of replay.events) {
+      const e2 = ev2 as Record<string, unknown>
+      const detTys = detTypes[gtype] ?? []
+      if (!detTys.includes(e2.ty as string)) continue
+      const ex = e2.x as number, ey = e2.y as number
+      const dx = ex - endX, dy = ey - endY
+      if (dx * dx + dy * dy < 2500 && (e2.t as number) >= throwTick) {
+        detonateTick = e2.t as number
+        break
+      }
+    }
+
+    // only draw while in flight (throwTick → detonateTick)
+    if (curTick < throwTick || curTick > detonateTick + replay.tickrate * 0.5) continue
+
+    // how far along the trajectory are we? (fraction 0..1)
+    const flightDur = Math.max(1, detonateTick - throwTick)
+    const progressTick = Math.min(curTick, detonateTick) - throwTick
+    const progress = progressTick / flightDur
+
+    // number of trail points visible
+    const visiblePts = Math.max(2, Math.ceil(progress * nPts + 1))
+
+    // in trail mode: only show last TRAIL_FADE_TICKS worth of points
+    const trailSegs = Math.ceil(TRAIL_FADE_TICKS / ticksPerSeg)
+    const startPt = nadeTrailMode === 'trail' ? Math.max(0, visiblePts - trailSegs) : 0
+    const endPt = Math.min(nPts, visiblePts)
+
+    if (endPt - startPt < 2) continue
+
+    ctx.save()
+    for (let pi = startPt; pi < endPt - 1; pi++) {
+      const x0 = tr[pi * 3], y0 = tr[pi * 3 + 1]
+      const x1 = tr[(pi + 1) * 3], y1 = tr[(pi + 1) * 3 + 1]
+      const [cx0, cy0] = worldToCanvas(x0, y0, ov, SZ)
+      const [cx1, cy1] = worldToCanvas(x1, y1, ov, SZ)
+      // fade: older segments more transparent
+      const segFrac = (pi - startPt) / Math.max(1, endPt - startPt - 1)
+      const alpha = nadeTrailMode === 'trail' ? 0.2 + segFrac * 0.7 : 0.5
+      ctx.beginPath()
+      ctx.moveTo(cx0, cy0)
+      ctx.lineTo(cx1, cy1)
+      ctx.strokeStyle = color + Math.round(alpha * 0xff).toString(16).padStart(2, '0')
+      ctx.lineWidth = 2 * dotScale
+      ctx.stroke()
+    }
+    // draw grenade dot at current position
+    const headPt = Math.min(endPt - 1, nPts - 1)
+    const hx = tr[headPt * 3], hy = tr[headPt * 3 + 1]
+    const [hcx, hcy] = worldToCanvas(hx, hy, ov, SZ)
+    ctx.beginPath()
+    ctx.arc(hcx, hcy, 4 * dotScale, 0, Math.PI * 2)
+    ctx.fillStyle = color
+    ctx.fill()
+    ctx.restore()
+  }
+
   // players
   const n = replay.players.length
   const frameBase = frameIdx * n * FIELDS
   if (frameBase + n * FIELDS > replay.data.length) { ctx.restore(); return }
+
+  // velocity: compute per-player from prev frame position
+  const prevFrameBase = Math.max(0, frameIdx - 1) * n * FIELDS
+  const velScale = replay.tickrate / Math.max(1, replay.frameStep)
 
   for (let i = 0; i < n; i++) {
     const base = frameBase + i * FIELDS
@@ -693,10 +784,49 @@ function drawFrame(
     ctx.strokeStyle = hasBomb ? '#fff' : color
     ctx.lineWidth = (hasBomb ? 2.5 : 1.5) * dotScale; ctx.stroke()
 
-    const name = replay.players[i]?.name ?? ''
-    ctx.font = `${Math.round(10 * dotScale)}px monospace`
+    // weapon label above dot (instead of name)
+    const wid = replay.data[base + F_WID] ?? 0
+    const weapRaw = replay.weapons[wid]?.raw ?? ''
+    const weapKey = weapRaw.replace(/^weapon_/, '').toLowerCase()
+    const NADE_ICONS: Record<string, string> = {
+      smokegrenade: '💨', hegrenade: '💥', flashbang: '⚡',
+      molotov: '🔥', incgrenade: '🔥', decoy: '🔊', c4: '💣',
+    }
+    const WEAP_SHORT: Record<string, string> = {
+      ak47: 'AK', m4a1_silencer: 'M4S', m4a4: 'M4A4', m4a1: 'M4',
+      awp: 'AWP', ssg08: 'Scout', deagle: 'DEagle', revolver: 'R8',
+      galilar: 'Galil', famas: 'FAMAS', aug: 'AUG', sg556: 'SG556',
+      mp9: 'MP9', mac10: 'MAC10', mp7: 'MP7', ump45: 'UMP', p90: 'P90',
+      bizon: 'Bizon', mp5sd: 'MP5',
+      nova: 'Nova', xm1014: 'XM', mag7: 'MAG7', sawedoff: 'Sawed',
+      m249: 'M249', negev: 'Negev',
+      usp_silencer: 'USP-S', hkp2000: 'P2000', glock: 'Glock',
+      p250: 'P250', fiveseven: '57', cz75a: 'CZ', tec9: 'Tec9', elite: 'Elites',
+      knife: '🔪', knife_t: '🔪', knife_karambit: '🔪',
+    }
+    const nadIcon = NADE_ICONS[weapKey]
+    const weapShort = nadIcon ?? WEAP_SHORT[weapKey] ?? weapKey.slice(0, 6)
+    const isEmoji = !!nadIcon
+    ctx.font = isEmoji
+      ? `${Math.round(11 * dotScale)}px sans-serif`
+      : `${Math.round(10 * dotScale)}px monospace`
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'
-    ctx.fillText(name.slice(0, 8), cx, cy - r - 2 * dotScale)
+    ctx.fillText(weapShort, cx, cy - r - 2 * dotScale)
+
+    // velocity: units/sec from prev frame
+    const prevBase = prevFrameBase + i * FIELDS
+    const prevAlive = replay.data[prevBase + F_ALIVE] ?? 0
+    if (prevAlive) {
+      const px = replay.data[prevBase + F_X], py = replay.data[prevBase + F_Y]
+      const dx = x - px, dy = y - py
+      const vel = Math.round(Math.sqrt(dx * dx + dy * dy) * velScale)
+      if (vel > 5) {
+        ctx.font = `${Math.round(9 * dotScale)}px monospace`
+        ctx.fillStyle = 'rgba(255,255,255,0.7)'
+        ctx.textAlign = 'left'
+        ctx.fillText(`${vel}`, cx + r + 3 * dotScale, cy + 4 * dotScale)
+      }
+    }
 
     const yaw = replay.data[base + F_YAW]
     const rad = (yaw * Math.PI) / 180
@@ -749,6 +879,7 @@ export default function ReplayPage() {
   const [err, setErr] = useState('')
   const [tx, setTx] = useState<Transform>({ scale: 1, ox: 0, oy: 0 })
   const [showEventLog, setShowEventLog] = useState(true)
+  const [nadeTrailMode, setNadeTrailMode] = useState<NadeTrailMode>('trail')
 
   const txRef = useRef<Transform>({ scale: 1, ox: 0, oy: 0 })
   const dragRef = useRef<{ startX: number; startY: number; startOx: number; startOy: number } | null>(null)
@@ -810,8 +941,8 @@ export default function ReplayPage() {
 
   useEffect(() => {
     if (!canvasRef.current || !replay || !overview) return
-    drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx)
-  }, [frameIdx, replay, overview, tx, leftWidth])
+    drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx, nadeTrailMode)
+  }, [frameIdx, replay, overview, tx, leftWidth, nadeTrailMode])
 
   useEffect(() => {
     if (!playing || !replay) return
@@ -952,7 +1083,7 @@ export default function ReplayPage() {
         <div style={{ minWidth: 0 }}>
           <div className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
             <img ref={radarRef} src={api.radarUrl(mapName)} alt="" style={{ display: 'none' }}
-              onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current) }} />
+              onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current, nadeTrailMode) }} />
             <canvas
               ref={canvasRef} width={leftWidth} height={leftWidth}
               style={{ display: 'block', cursor, width: '100%', height: 'auto' }}
@@ -996,6 +1127,18 @@ export default function ReplayPage() {
                   style={{ fontSize: 11, padding: '3px 8px' }}
                   onClick={() => setShowEventLog(v => !v)}
                 >Лог</button>
+                <button
+                  className={nadeTrailMode === 'trail' ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  title="Трейл гранат: хвост во время полёта"
+                  onClick={() => setNadeTrailMode('trail')}
+                >🔴 Хвост</button>
+                <button
+                  className={nadeTrailMode === 'path' ? 'btn-primary' : 'btn-ghost'}
+                  style={{ fontSize: 11, padding: '3px 8px' }}
+                  title="Путь гранат: вся траектория с момента броска"
+                  onClick={() => setNadeTrailMode('path')}
+                >🔴 Путь</button>
                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('speed')}</span>
                 {SPEEDS.map((s, si) => (
                   <button key={s} className={speed === s ? 'btn-primary' : 'btn-ghost'}
