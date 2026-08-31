@@ -204,6 +204,8 @@ export interface PlayerMetrics {
   mainProblem: string | null
   tradeKillRounds: number[]
   tradedDeathRounds: number[]
+  tradeKillTicks: number[]
+  tradedDeathTicks: number[]
   // aim mechanics (Batch 2)
   counterStrafeErrors: number
   idealStrafePct: number

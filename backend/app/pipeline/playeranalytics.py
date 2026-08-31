@@ -383,6 +383,9 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
 
     trade_kill_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedKill"))
     traded_death_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedDeath"))
+    # ticks of the actual trade-kill / traded-death events for precise duel matching
+    trade_kill_ticks = sorted(int(pr["tradedKill"]) for pr in p.rounds.values() if pr.get("tradedKill") and pr["tradedKill"] is not True)
+    traded_death_ticks = sorted(int(pr["tradedDeath"]) for pr in p.rounds.values() if pr.get("tradedDeath") and pr["tradedDeath"] is not True)
 
     trade_kill_pct = round(trade_kills / total_kills * 100, 1) if total_kills else 0.0
     traded_death_pct = round(traded_deaths / total_deaths * 100, 1) if total_deaths else 0.0
@@ -414,6 +417,8 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         "mainProblem": main_problem,
         "tradeKillRounds": trade_kill_rounds,
         "tradedDeathRounds": traded_death_rounds,
+        "tradeKillTicks": trade_kill_ticks,
+        "tradedDeathTicks": traded_death_ticks,
     }
 
 

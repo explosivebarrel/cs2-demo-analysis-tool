@@ -224,9 +224,10 @@ def compute_players(ctx, rb, fb):
                 if pm is None or m == a or pm.team != pv.team:
                     continue
                 pm.tradeKills += 1
-                pm.r(round_of_tick(int(kt[j]))["n"] if round_of_tick(int(kt[j])) else 0)["tradedKill"] = True
+                trade_rn = round_of_tick(int(kt[j]))["n"] if round_of_tick(int(kt[j])) else 0
+                pm.r(trade_rn)["tradedKill"] = int(kt[j])  # store tick instead of True
                 pv.tradedDeaths += 1
-                pv.r(n)["tradedDeath"] = True
+                pv.r(n)["tradedDeath"] = int(kt[i])  # store original kill tick
                 break
 
         # opening kills
