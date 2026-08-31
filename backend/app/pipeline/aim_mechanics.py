@@ -227,11 +227,13 @@ def _compute_ttk(
     shot_ticks = sorted(int(t) for t in my_wf["tick"])
     kill_ticks = sorted(int(t) for t in my_kills["tick"])
 
-    # for each kill find the earliest shot in the same duel window
+    # for each kill find the earliest shot within a tight TTK window
+    # Use 0.5s max (not the full duel merge window) — pre-aim shots before
+    # the engagement are not part of TTK
+    TTK_MAX_TICKS = max(32, int(tickrate * 0.5))
     deltas: list[float] = []
     for kt in kill_ticks:
-        # look for shots up to DUEL_MERGE_TICKS before the kill
-        candidates = [st for st in shot_ticks if 0 <= kt - st <= DUEL_MERGE_TICKS]
+        candidates = [st for st in shot_ticks if 0 <= kt - st <= TTK_MAX_TICKS]
         if candidates:
             first_shot = min(candidates)
             delta_ms = round((kt - first_shot) / tickrate * 1000, 1)
