@@ -194,15 +194,52 @@ function HeaderBadge({ metricKey, value, lang }: { metricKey: string; value: num
   )
 }
 
-function HeaderCard({ p, lang }: { p: PlayerData; lang: 'ru' | 'en' }) {
-  const metrics: { l: string; v: string; key?: string; raw?: number | null; accent?: boolean }[] = [
-    { l: t('rating'), v: p.rating.toFixed(2), key: 'rating', raw: p.rating, accent: true },
+function MatchBadge({ metricKey, value, allPlayers, lang }: {
+  metricKey: keyof PlayerData; value: number | null | undefined; allPlayers: PlayerData[]; lang: 'ru' | 'en'
+}) {
+  const [showTip, setShowTip] = useState(false)
+  if (value == null) return null
+  const vals = allPlayers.map(pl => pl[metricKey] as number).filter(v => typeof v === 'number' && isFinite(v))
+  if (!vals.length) return null
+  const sorted = [...vals].sort((a, b) => b - a)
+  const rank = sorted.indexOf(value) + 1
+  const best = sorted[0]
+  const worst = sorted[sorted.length - 1]
+  const avg = vals.reduce((a, b) => a + b, 0) / vals.length
+  const tip = lang === 'ru'
+    ? `Лучший: ${best.toFixed(2)} · Средний: ${avg.toFixed(2)} · Худший: ${worst.toFixed(2)}`
+    : `Best: ${best.toFixed(2)} · Avg: ${avg.toFixed(2)} · Worst: ${worst.toFixed(2)}`
+  const color = rank === 1 ? 'var(--accent2)' : rank <= Math.ceil(vals.length / 3) ? 'var(--green)' : rank > Math.floor(vals.length * 2 / 3) ? 'var(--red)' : 'var(--text2)'
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setShowTip(true)} onMouseLeave={() => setShowTip(false)}>
+      <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}22`, borderRadius: 4, padding: '2px 6px', cursor: 'default', letterSpacing: '.04em' }}>
+        #{rank}/{vals.length}
+      </span>
+      {showTip && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+          padding: '6px 10px', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap',
+          zIndex: 100, marginBottom: 4, boxShadow: '0 4px 12px rgba(0,0,0,.5)', lineHeight: 1.6,
+        }}>
+          {tip.split(' · ').map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      )}
+    </span>
+  )
+}
+
+function HeaderCard({ p, allPlayers, lang }: { p: PlayerData; allPlayers: PlayerData[]; lang: 'ru' | 'en' }) {
+  const [matchMode, setMatchMode] = useState(false)
+  const metrics: { l: string; v: string; benchKey?: string; matchKey?: keyof PlayerData; raw?: number | null; accent?: boolean }[] = [
+    { l: t('rating'), v: p.rating.toFixed(2), benchKey: 'rating', matchKey: 'rating', raw: p.rating, accent: true },
     { l: 'RWS',       v: p.rws?.toFixed(1) ?? '—' },
     { l: t('impLabel'), v: p.imp != null ? (p.imp > 0 ? '+' : '') + p.imp.toFixed(2) : '—' },
-    { l: t('kd'),     v: p.kd.toFixed(2),   key: 'kd',     raw: p.kd },
-    { l: t('adr'),    v: p.adr.toFixed(1),  key: 'adr',    raw: p.adr },
-    { l: t('kast'),   v: p.kast.toFixed(1) + '%', key: 'kast', raw: p.kast },
-    { l: 'HS%',       v: p.hsPct != null ? p.hsPct.toFixed(1) + '%' : '—', key: 'hsPct', raw: p.hsPct },
+    { l: t('kd'),     v: p.kd.toFixed(2),   benchKey: 'kd',   matchKey: 'kd',   raw: p.kd },
+    { l: t('adr'),    v: p.adr.toFixed(1),  benchKey: 'adr',  matchKey: 'adr',  raw: p.adr },
+    { l: t('kast'),   v: p.kast.toFixed(1) + '%', benchKey: 'kast', matchKey: 'kast', raw: p.kast },
+    { l: 'HS%',       v: p.hsPct != null ? p.hsPct.toFixed(1) + '%' : '—', benchKey: 'hsPct', matchKey: 'hsPct', raw: p.hsPct },
   ]
   return (
     <div className="card" style={{ marginBottom: 14 }}>
@@ -211,14 +248,37 @@ function HeaderCard({ p, lang }: { p: PlayerData; lang: 'ru' | 'en' }) {
           <div style={{ fontSize: 22, fontWeight: 800 }}>{p.name}</div>
           {p.clan && <div style={{ color: 'var(--text2)', fontSize: 13 }}>[{p.clan}]</div>}
         </div>
-        <div className="flex gap-16 wrap" style={{ fontSize: 13 }}>
-          {metrics.map(({ l, v, key, raw, accent }) => (
-            <div key={l} className="kv">
-              <span className="kv-label">{l}</span>
-              <span className="kv-value" style={accent ? { color: 'var(--accent)' } : {}}>{v}</span>
-              {key && <HeaderBadge metricKey={key} value={raw} lang={lang} />}
-            </div>
-          ))}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button
+              onClick={() => setMatchMode(false)}
+              style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: !matchMode ? 'var(--accent)' : 'var(--bg3)',
+                color: !matchMode ? '#fff' : 'var(--text2)',
+              }}
+            >{lang === 'ru' ? 'Абсолют' : 'Global'}</button>
+            <button
+              onClick={() => setMatchMode(true)}
+              style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 4, border: 'none', cursor: 'pointer',
+                background: matchMode ? 'var(--accent)' : 'var(--bg3)',
+                color: matchMode ? '#fff' : 'var(--text2)',
+              }}
+            >{lang === 'ru' ? 'В матче' : 'In match'}</button>
+          </div>
+          <div className="flex gap-16 wrap" style={{ fontSize: 13 }}>
+            {metrics.map(({ l, v, benchKey, matchKey, raw, accent }) => (
+              <div key={l} className="kv">
+                <span className="kv-label">{l}</span>
+                <span className="kv-value" style={accent ? { color: 'var(--accent)' } : {}}>{v}</span>
+                {matchMode && matchKey && raw != null
+                  ? <MatchBadge metricKey={matchKey} value={raw} allPlayers={allPlayers} lang={lang} />
+                  : benchKey && <HeaderBadge metricKey={benchKey} value={raw} lang={lang} />
+                }
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -287,7 +347,7 @@ export default function PlayerPage() {
         ))}
       </div>
 
-      <HeaderCard p={p} lang={lang} />
+      <HeaderCard p={p} allPlayers={data.players} lang={lang} />
 
       {/* analytics not ready banner */}
       {analyticsErr && (
