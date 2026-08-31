@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { PlayerMetrics, DuelEpisode } from '../../api'
 import { useBenchmarks } from '../../App'
 import { getTier, TIER_COLORS, TIER_LABELS, formatTierTooltip } from '../../benchmarkUtils'
@@ -126,6 +127,8 @@ interface Props {
 }
 
 export default function PlayerOverview({ metrics, duels, playerNames, lang }: Props) {
+  const { id, steamid } = useParams<{ id: string; steamid: string }>()
+  const nav = useNavigate()
   const [drillDownDuels, setDrillDownDuels] = useState<DuelEpisode[] | null>(null)
   const [drillDownTitle, setDrillDownTitle] = useState('')
   const [drillIdx, setDrillIdx] = useState(0)
@@ -133,12 +136,15 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
   const mp = metrics.mainProblem
   const mpInfo = mp ? ERROR_LABELS[mp] : null
 
-  // count error types for "Дуэли" sub-section
   const movingShotPct = (() => {
     const won = duels.filter(d => d.won)
     if (!won.length) return 0
     return Math.round(won.filter(d => d.errors.includes('moving_shot')).length / won.length * 100)
   })()
+
+  function goMetric(key: string) {
+    nav(`/match/${id}/player/${steamid}/metrics/${key}`)
+  }
 
   function openDrill(filter: string, title: string) {
     const filtered = filter === 'won'
@@ -186,19 +192,21 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             value={metrics.openingWinPct.toFixed(1) + '%'}
             benchmarkKey="openingWinPct" benchmarkValue={metrics.openingWinPct} lang={lang}
             color={metrics.openingWinPct >= 50 ? 'var(--green)' : 'var(--red)'}
-            onClick={() => openDrill('won', lang === 'ru' ? 'Выигранные дуэли' : 'Won duels')}
+            onClick={() => goMetric('openingWinPct')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Трейд-килы' : 'Trade Kills'}
             value={metrics.tradeKillPct.toFixed(1) + '%'}
             sub={lang === 'ru' ? '% убийств — трейд' : '% of kills are trades'}
             benchmarkKey="tradeKillPct" benchmarkValue={metrics.tradeKillPct} lang={lang}
+            onClick={() => goMetric('tradeKillPct')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Трейд-смерти' : 'Traded Deaths'}
             value={metrics.tradedDeathPct.toFixed(1) + '%'}
             sub={lang === 'ru' ? '% смертей отомщены' : '% deaths avenged'}
             benchmarkKey="tradedDeathPct" benchmarkValue={metrics.tradedDeathPct} lang={lang}
+            onClick={() => goMetric('tradedDeathPct')}
           />
         </div>
       </div>
@@ -214,6 +222,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             value={metrics.clutchWinPct.toFixed(1) + '%'}
             benchmarkKey="clutchWinPct" benchmarkValue={metrics.clutchWinPct} lang={lang}
             color={metrics.clutchWinPct >= 30 ? 'var(--accent2)' : undefined}
+            onClick={() => goMetric('clutchWinPct')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Эфф. флешек' : 'Flash Efficiency'}
@@ -221,6 +230,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? '% флешек эффективны' : '% flashes effective'}
             benchmarkKey="flashEfficiency" benchmarkValue={metrics.flashEfficiency} lang={lang}
             color={metrics.flashEfficiency >= 40 ? 'var(--green)' : undefined}
+            onClick={() => goMetric('flashEfficiency')}
           />
         </div>
       </div>
@@ -237,7 +247,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? 'выстрелов в движении' : 'shots while moving'}
             benchmarkKey="counterStrafeErrors" benchmarkValue={metrics.counterStrafeErrors ?? 0} lang={lang}
             higherIsBetter={false}
-            onClick={(metrics.counterStrafeErrors ?? 0) > 0 ? () => openDrill('moving_shot', lang === 'ru' ? 'Движение при стрельбе' : 'Shot while moving') : undefined}
+            onClick={() => goMetric('counterStrafeErrors')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Идеальные стрейфы' : 'Ideal strafes'}
@@ -245,6 +255,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? '% килов на стопе' : '% kills while stopped'}
             benchmarkKey="idealStrafePct" benchmarkValue={metrics.idealStrafePct} lang={lang}
             color={(metrics.idealStrafePct ?? 0) >= 60 ? 'var(--green)' : undefined}
+            onClick={() => goMetric('idealStrafePct')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Точность первой пули' : 'First bullet acc'}
@@ -252,6 +263,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? '% первых выстрелов — попадание' : '% first shots hit'}
             benchmarkKey="firstBulletAcc" benchmarkValue={metrics.firstBulletAcc} lang={lang}
             color={(metrics.firstBulletAcc ?? 0) >= 40 ? 'var(--green)' : undefined}
+            onClick={() => goMetric('firstBulletAcc')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Время до фрага' : 'Time to kill'}
@@ -259,6 +271,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? 'ср. мс от выстрела до кила' : 'avg ms first shot to kill'}
             benchmarkKey="ttk_ms" benchmarkValue={(metrics.ttk_ms ?? 0) > 0 ? metrics.ttk_ms : null} lang={lang}
             higherIsBetter={false}
+            onClick={() => goMetric('ttk_ms')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Контроль угла' : 'Angle control'}
@@ -266,6 +279,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? 'позиций удержано ≥2с' : 'positions held ≥2s'}
             benchmarkKey="angleControlCount" benchmarkValue={metrics.angleControlCount ?? 0} lang={lang}
             color={(metrics.angleControlCount ?? 0) >= 3 ? 'var(--green)' : undefined}
+            onClick={() => goMetric('angleControlCount')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Перезарядки' : 'Reload errors'}
@@ -273,6 +287,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? 'перезарядок с патронами' : 'reloads with bullets left'}
             benchmarkKey="reloadErrors" benchmarkValue={metrics.reloadErrors ?? 0} lang={lang}
             higherIsBetter={false}
+            onClick={() => goMetric('reloadErrors')}
           />
         </div>
       </div>
@@ -301,15 +316,15 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
         {/* clickable drill-down chips */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 12 }}>
           {[
-            { key: 'shift_peek',  pct: metrics.shiftPeekPct },
-            { key: 'isolated',    pct: metrics.isolatedPct },
-            { key: 'moving_shot', pct: movingShotPct },
-          ].filter(({ pct }) => pct > 0).map(({ key }) => {
+            { key: 'shift_peek',  metricKey: 'shiftPeekPct',  pct: metrics.shiftPeekPct },
+            { key: 'isolated',    metricKey: 'isolatedPct',    pct: metrics.isolatedPct },
+            { key: 'moving_shot', metricKey: 'counterStrafeErrors', pct: movingShotPct },
+          ].filter(({ pct }) => pct > 0).map(({ key, metricKey }) => {
             const m = ERROR_LABELS[key]
             return (
               <button
                 key={key}
-                onClick={() => openDrill(key, lang === 'ru' ? m.ru : m.en)}
+                onClick={() => goMetric(metricKey)}
                 style={{
                   background: 'var(--bg2)', border: `1px solid ${m.color}`,
                   color: m.color, borderRadius: 4, padding: '3px 10px',

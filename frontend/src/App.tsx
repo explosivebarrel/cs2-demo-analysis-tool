@@ -5,6 +5,7 @@ import { api, Benchmarks } from './api'
 import DemosPage from './pages/DemosPage'
 import OverviewPage from './pages/OverviewPage'
 import PlayerPage from './pages/PlayerPage'
+import MetricsPage from './pages/MetricsPage'
 import HeatmapsPage from './pages/HeatmapsPage'
 import ReplayPage from './pages/ReplayPage'
 import AboutPage from './pages/AboutPage'
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/" element={<DemosPage />} />
             <Route path="/match/:id" element={<OverviewPage />} />
             <Route path="/match/:id/player/:steamid" element={<PlayerPage />} />
+            <Route path="/match/:id/player/:steamid/metrics/:key" element={<MetricsPage />} />
             <Route path="/match/:id/heatmaps" element={<HeatmapsPage />} />
             <Route path="/match/:id/replay" element={<ReplayPage />} />
             <Route path="/about" element={<AboutPage />} />
