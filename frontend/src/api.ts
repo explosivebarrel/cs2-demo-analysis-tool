@@ -195,6 +195,8 @@ export interface PlayerMetrics {
   shiftPeekPct: number
   isolatedPct: number
   mainProblem: string | null
+  tradeKillRounds: number[]
+  tradedDeathRounds: number[]
   // aim mechanics (Batch 2)
   counterStrafeErrors: number
   idealStrafePct: number

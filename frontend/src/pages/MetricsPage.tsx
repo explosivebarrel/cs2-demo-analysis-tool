@@ -327,6 +327,74 @@ function LostDuelsPage({ analytics, playerNames, lang }: {
 }
 
 
+function TradeKillsPage({ analytics, playerNames, lang }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
+}) {
+  const rounds = analytics.metrics.tradeKillRounds ?? []
+  const pct = analytics.metrics.tradeKillPct
+  const tradeEpisodes = analytics.duels.filter(d => d.won && rounds.includes(d.round))
+
+  return (
+    <div>
+      <MetricHeader
+        title={lang === 'ru' ? 'Трейд-килы' : 'Trade kills'}
+        value={pct.toFixed(1) + '%'}
+        metricKey="tradeKillPct"
+        lang={lang}
+      />
+      <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text2)' }}>
+        {lang === 'ru'
+          ? `${rounds.length} трейд-килов в раундах: ${rounds.join(', ') || '—'}`
+          : `${rounds.length} trade kills in rounds: ${rounds.join(', ') || '—'}`}
+      </div>
+      {tradeEpisodes.length > 0
+        ? <DuelListPanel duels={tradeEpisodes} playerNames={playerNames} lang={lang} title="" />
+        : (
+          <div style={{ color: 'var(--text2)', fontSize: 13 }}>
+            {lang === 'ru'
+              ? `Трейд-килы в раундах: ${rounds.join(', ') || '—'}`
+              : `Trade kills happened in rounds: ${rounds.join(', ') || '—'}`}
+          </div>
+        )}
+    </div>
+  )
+}
+
+
+function TradedDeathsPage({ analytics, playerNames, lang }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
+}) {
+  const rounds = analytics.metrics.tradedDeathRounds ?? []
+  const pct = analytics.metrics.tradedDeathPct
+  const tradeEpisodes = analytics.duels.filter(d => !d.won && rounds.includes(d.round))
+
+  return (
+    <div>
+      <MetricHeader
+        title={lang === 'ru' ? 'Трейд-смерти' : 'Traded deaths'}
+        value={pct.toFixed(1) + '%'}
+        metricKey="tradedDeathPct"
+        lang={lang}
+      />
+      <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text2)' }}>
+        {lang === 'ru'
+          ? `${rounds.length} трейд-смертей в раундах: ${rounds.join(', ') || '—'}`
+          : `${rounds.length} traded deaths in rounds: ${rounds.join(', ') || '—'}`}
+      </div>
+      {tradeEpisodes.length > 0
+        ? <DuelListPanel duels={tradeEpisodes} playerNames={playerNames} lang={lang} title="" />
+        : (
+          <div style={{ color: 'var(--text2)', fontSize: 13 }}>
+            {lang === 'ru'
+              ? `Трейд-смерти в раундах: ${rounds.join(', ') || '—'}`
+              : `Traded deaths happened in rounds: ${rounds.join(', ') || '—'}`}
+          </div>
+        )}
+    </div>
+  )
+}
+
+
 function FirstBulletAccPage({ analytics, lang }: {
   analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
 }) {
@@ -531,6 +599,10 @@ export default function MetricsPage() {
         return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} />
       case 'lostDuels':
         return <LostDuelsPage analytics={analytics} playerNames={playerNames} lang={lang} />
+      case 'tradeKillPct':
+        return <TradeKillsPage analytics={analytics} playerNames={playerNames} lang={lang} />
+      case 'tradedDeathPct':
+        return <TradedDeathsPage analytics={analytics} playerNames={playerNames} lang={lang} />
       case 'firstBulletAcc':
         return <FirstBulletAccPage analytics={analytics} lang={lang} />
       default:

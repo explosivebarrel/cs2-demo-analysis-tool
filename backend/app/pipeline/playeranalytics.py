@@ -381,6 +381,9 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
     shift_peek_count = sum(1 for d in attacker_duels if "shift_peek" in d["errors"])
     isolated_count = sum(1 for d in duels if "isolated" in d["errors"])
 
+    trade_kill_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedKill"))
+    traded_death_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedDeath"))
+
     trade_kill_pct = round(trade_kills / total_kills * 100, 1) if total_kills else 0.0
     traded_death_pct = round(traded_deaths / total_deaths * 100, 1) if total_deaths else 0.0
     opening_win_pct = (
@@ -409,6 +412,8 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         "shiftPeekPct": shift_peek_pct,
         "isolatedPct": isolated_pct,
         "mainProblem": main_problem,
+        "tradeKillRounds": trade_kill_rounds,
+        "tradedDeathRounds": traded_death_rounds,
     }
 
 
