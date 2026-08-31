@@ -46,8 +46,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     prog = progress or (lambda phase, pct, detail="": None)
     t0 = time.time()
 
-    prog("loading", 5)
-    ctx = DemoContext(demo_path)
+    prog("loading", 2)
+    ctx = DemoContext(demo_path, progress=lambda phase, pct: prog(phase, pct))
     ctx.load()
 
     prog("rounds", 62)

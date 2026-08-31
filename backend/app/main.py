@@ -63,7 +63,7 @@ _status_mtimes: dict[str, float] = {}
 async def _status_watcher():
     """Poll status files every 0.5 s and push diffs to WebSocket clients."""
     while True:
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.1)
         if _ws_manager.count == 0:
             continue
         try:
@@ -151,6 +151,11 @@ def _demo_fs_path(demo: dict) -> str:
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.get("/api/benchmarks")
+def benchmarks():
+    return config.BENCHMARKS
 
 
 @app.get("/api/demos")
