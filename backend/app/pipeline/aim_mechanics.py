@@ -135,17 +135,18 @@ def _compute_first_bullet_acc(
     hurt_df,
     kills_df,
     steamid: str,
-) -> float:
+    rb=None,
+) -> tuple[float, list[dict]]:
     """
-    % of duel-opening shots (first shot per duel) that hit an enemy.
-    A hit is a player_hurt event for an enemy within ~5 ticks after the shot.
+    % of duel-opening shots that hit an enemy.
+    Returns (pct, per_shot_list) where per_shot_list has {round, tick, hit, weapon}.
     """
     if wf_df is None or not len(wf_df):
-        return 0.0
+        return 0.0, []
 
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
-        return 0.0
+        return 0.0, []
 
     # enemy hurt ticks involving this attacker
     enemy_hurt_ticks: set[int] = set()
@@ -154,23 +155,54 @@ def _compute_first_bullet_acc(
         for t in ah["tick"]:
             enemy_hurt_ticks.add(int(t))
 
-    shot_ticks = sorted(int(t) for t in my_wf["tick"])
-    duel_first_shots: list[int] = []
+    # round-of-tick lookup
+    round_of: dict[int, int] = {}
+    if rb is not None:
+        import numpy as _np
+        fe_np = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
+        end_np = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
+        round_ns = [r["n"] for r in rb.rounds]
+
+        def _rof(t: int) -> int:
+            i = int(_np.searchsorted(fe_np, t, side="right")) - 1
+            if 0 <= i < len(round_ns) and t <= end_np[i]:
+                return round_ns[i]
+            return 0
+
+    _NON_BULLET = {
+        "weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade",
+        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
+        "weapon_c4", "weapon_knife", "weapon_knife_t", "weapon_knife_ct",
+        "weapon_knife_karambit", "weapon_knife_m9_bayonet", "weapon_knife_tactical",
+        "weapon_knife_falchion", "weapon_knife_survival_bowie", "weapon_knife_butterfly",
+        "weapon_knife_push", "weapon_knife_ursus", "weapon_knife_gypsy_jackknife",
+        "weapon_knife_stiletto", "weapon_knife_widowmaker", "weapon_knife_cord",
+        "weapon_knife_canis", "weapon_knife_outdoor", "weapon_knife_skeleton",
+        "weapon_knife_ghost",
+    }
+
+    all_shot_rows = sorted(zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))), key=lambda x: x[0])
+    # keep only actual bullet-firing weapons
+    shot_rows = [(t, w) for t, w in all_shot_rows if str(w) not in _NON_BULLET and not str(w).startswith("weapon_knife")]
+    duel_first_shots: list[tuple[int, str]] = []
     prev = None
-    for st in shot_ticks:
+    for st, wep in shot_rows:
         if prev is None or (st - prev) > DUEL_MERGE_TICKS:
-            duel_first_shots.append(st)
+            duel_first_shots.append((st, str(wep)))
         prev = st
 
-    hit = 0
-    for st in duel_first_shots:
-        for ht in enemy_hurt_ticks:
-            if 0 <= ht - st <= 8:  # ~5 ticks window
-                hit += 1
-                break
+    per_shot: list[dict] = []
+    hit_total = 0
+    for st, wep in duel_first_shots:
+        hit = any(0 <= ht - st <= 8 for ht in enemy_hurt_ticks)
+        if hit:
+            hit_total += 1
+        rn = _rof(st) if rb is not None else 0
+        per_shot.append({"round": rn, "tick": st, "hit": hit, "weapon": wep})
 
     total = len(duel_first_shots)
-    return round(hit / total * 100, 1) if total else 0.0
+    pct = round(hit_total / total * 100, 1) if total else 0.0
+    return pct, per_shot
 
 
 # ── Time-to-kill ─────────────────────────────────────────────────────────────
@@ -351,7 +383,7 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
 
     Returns a dict with keys:
       counterStrafeErrors, idealStrafePct, firstBulletAcc,
-      ttk_ms, reloadErrors, angleControlCount
+      firstBulletShots, ttk_ms, reloadErrors, angleControlCount
     """
     ticks_df = ctx.ticks
     tickrate = ctx.tickrate
@@ -383,9 +415,9 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         cs_errors, ideal_pct = 0, 0.0
 
     try:
-        first_bullet = _compute_first_bullet_acc(wf_df, hurt_df, kills_df, steamid)
+        first_bullet, first_bullet_shots = _compute_first_bullet_acc(wf_df, hurt_df, kills_df, steamid, rb)
     except Exception:
-        first_bullet = 0.0
+        first_bullet, first_bullet_shots = 0.0, []
 
     try:
         ttk = _compute_ttk(wf_df, kills_df, steamid, tickrate)
@@ -406,6 +438,7 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "counterStrafeErrors": cs_errors,
         "idealStrafePct": ideal_pct,
         "firstBulletAcc": first_bullet,
+        "firstBulletShots": first_bullet_shots,
         "ttk_ms": ttk,
         "reloadErrors": reload_err,
         "angleControlCount": angle_ctrl,

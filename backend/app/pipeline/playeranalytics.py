@@ -750,6 +750,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             "impact": impact,
             "mapEvents": map_events,
             "decisionsCost": decisions_cost,
+            "firstBulletShots": aim.get("firstBulletShots", []),
         }
 
     return result

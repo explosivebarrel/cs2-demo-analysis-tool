@@ -149,12 +149,20 @@ export interface DecisionEntry {
   side: string
 }
 
+export interface FirstBulletShot {
+  round: number
+  tick: number
+  hit: boolean
+  weapon: string
+}
+
 export interface PlayerAnalyticsData {
   duels: DuelEpisode[]
   metrics: PlayerMetrics
   impact: PlayerImpact
   mapEvents: MapEvent[]
   decisionsCost: DecisionEntry[]
+  firstBulletShots: FirstBulletShot[]
 }
 
 export interface DuelEpisode {
