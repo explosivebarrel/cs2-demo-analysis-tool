@@ -208,6 +208,12 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             benchmarkKey="tradedDeathPct" benchmarkValue={metrics.tradedDeathPct} lang={lang}
             onClick={() => goMetric('tradedDeathPct')}
           />
+          <MetricCard
+            label={lang === 'ru' ? 'Проигранные дуэли' : 'Lost Duels'}
+            value={String(duels.filter(d => !d.won).length)}
+            sub={lang === 'ru' ? 'смертей в дуэлях' : 'deaths in duels'}
+            onClick={() => goMetric('lostDuels')}
+          />
         </div>
       </div>
 

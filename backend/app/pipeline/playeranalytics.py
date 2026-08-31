@@ -271,9 +271,9 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             )
             context["victimVel"] = victim_vel
         else:
-            # player is victim — record context, no error classification
-            errors = []
+            # player is victim — classify from victim's perspective
             a_row = frame_rows.get(a_sid)
+            v_row = frame_rows.get(v_sid)
             a_vel = round(_f(vel_lookup.get((tick, a_sid), 0.0)), 1)
             a_flash = 0.0
             a_walking = False
@@ -283,13 +283,59 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                     a_walking = bool(a_row.get("is_walking"))
                 except (TypeError, ValueError):
                     pass
+
+            # victim-side context: team counts from victim's perspective
+            v_team = -1
+            if v_row is not None:
+                try:
+                    v_team = int(v_row.get("team_num", -1))
+                except (TypeError, ValueError):
+                    pass
+            alive_allies = 0
+            alive_enemies = 0
+            near_ally_dist_v = None
+            vx = _f(v_row["X"]) if v_row is not None else 0.0
+            vy = _f(v_row["Y"]) if v_row is not None else 0.0
+            for sid2, r2 in frame_rows.items():
+                if sid2 == v_sid:
+                    continue
+                try:
+                    alive2 = bool(r2.get("is_alive", False))
+                    team2 = int(r2.get("team_num", -1))
+                except (TypeError, ValueError):
+                    continue
+                if not alive2:
+                    continue
+                if team2 == v_team:
+                    alive_allies += 1
+                    dx = _f(r2.get("X", 0)) - vx
+                    dy = _f(r2.get("Y", 0)) - vy
+                    d = (dx * dx + dy * dy) ** 0.5
+                    if near_ally_dist_v is None or d < near_ally_dist_v:
+                        near_ally_dist_v = d
+                else:
+                    alive_enemies += 1
+
+            victim_flash = 0.0
+            if v_row is not None:
+                victim_flash = round(_f(v_row.get("flash_duration", 0) or 0), 2)
+
+            # victim-side errors
+            errors: list[str] = []
+            if victim_flash > 1.5:
+                errors.append("flashed")
+            if victim_vel > 50:
+                errors.append("moving")
+            if alive_enemies > alive_allies + 1:
+                errors.append("outnumbered")
+
             context = {
-                "nearAllyDist": None,
+                "nearAllyDist": round(near_ally_dist_v, 1) if near_ally_dist_v is not None else None,
                 "flashDur": a_flash,
                 "attackerVel": a_vel,
                 "victimVel": victim_vel,
-                "aliveAllies": 0,
-                "aliveEnemies": 0,
+                "aliveAllies": alive_allies,
+                "aliveEnemies": alive_enemies,
                 "attackerWalking": a_walking,
             }
 
@@ -368,7 +414,11 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
 
 # ------------------------------------------------------------------ impact block
 
-def _build_impact(series: list[dict]) -> dict:
+def _build_impact(series: list[dict], duels: list[dict] | None = None,
+                  winprob: list[float] | None = None,
+                  replay_ticks: list[int] | None = None,
+                  player_team: int | None = None,
+                  rounds: list[dict] | None = None) -> dict:
     """Build impact block from per-round series."""
     if not series:
         return {"topRoundsPositive": [], "topRoundsNegative": [], "avgWinProbAtDuel": None}
@@ -377,10 +427,48 @@ def _build_impact(series: list[dict]) -> dict:
     top_pos = [{"n": s["n"], "imp": s["imp"]} for s in sorted_by_imp[:3] if s["imp"] > 0]
     top_neg = [{"n": s["n"], "imp": s["imp"]} for s in reversed(sorted_by_imp) if s["imp"] < 0][:3]
 
+    avg_win_prob = None
+    if duels and winprob and replay_ticks and rounds:
+        import bisect
+        ticks_arr = replay_ticks
+
+        def _prob_at(t: int) -> float | None:
+            if not ticks_arr:
+                return None
+            i = bisect.bisect_left(ticks_arr, t)
+            if i >= len(ticks_arr):
+                i = len(ticks_arr) - 1
+            elif i > 0 and abs(ticks_arr[i - 1] - t) < abs(ticks_arr[i] - t):
+                i -= 1
+            return winprob[i] if i < len(winprob) else None
+
+        # build round -> player side mapping
+        side_by_round: dict[int, str] = {}
+        for r in rounds:
+            side0 = r.get("sideTeam0", "T")
+            if player_team == 0:
+                side_by_round[r["n"]] = side0
+            else:
+                side_by_round[r["n"]] = "CT" if side0 == "T" else "T"
+
+        probs: list[float] = []
+        for d in duels:
+            if not d["won"]:
+                continue
+            p_ct = _prob_at(d["tick"])
+            if p_ct is None:
+                continue
+            side = side_by_round.get(d["round"], "T")
+            prob = p_ct if side == "CT" else 1.0 - p_ct
+            probs.append(prob)
+
+        if probs:
+            avg_win_prob = round(sum(probs) / len(probs), 3)
+
     return {
         "topRoundsPositive": top_pos,
         "topRoundsNegative": top_neg,
-        "avgWinProbAtDuel": None,
+        "avgWinProbAtDuel": avg_win_prob,
     }
 
 
@@ -633,7 +721,12 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             }
 
         try:
-            impact = _build_impact(series)
+            impact = _build_impact(
+                series, duels,
+                winprob or [], replay_ticks or [],
+                rb.steamid_team.get(steamid),
+                rb.rounds,
+            )
         except Exception:
             impact = {"topRoundsPositive": [], "topRoundsNegative": [],
                       "avgWinProbAtDuel": None}

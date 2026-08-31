@@ -56,6 +56,11 @@ function MetricHeader({ title, value, metricKey, lang }: {
   )
 }
 
+const ERROR_LABELS_MAP: Record<string, string> = {
+  shift_peek: 'shift peek', moving_shot: 'moving shot', isolated: 'isolated',
+  flashed: 'flashed', strong_duel: 'clean', moving: 'was moving', outnumbered: 'outnumbered',
+}
+
 function DuelRow({ duel, playerNames, idx, selected, onClick }: {
   duel: DuelEpisode; playerNames: Record<string, string>; idx: number
   selected: boolean; onClick: () => void
@@ -81,11 +86,11 @@ function DuelRow({ duel, playerNames, idx, selected, onClick }: {
       <span style={{ fontSize: 12 }}>{attName} → {vicName}</span>
       <span style={{ fontSize: 11, color: 'var(--text2)', marginLeft: 'auto' }}>{duel.weapon}</span>
       {duel.headshot && <span style={{ fontSize: 11, color: 'var(--accent2)' }}>HS</span>}
-      {duel.errors.length > 0 && (
-        <span style={{ fontSize: 10, color: 'var(--red)', background: 'rgba(220,80,80,.15)', borderRadius: 3, padding: '1px 5px' }}>
-          {duel.errors.join(', ')}
+      {duel.errors.filter(e => e !== 'strong_duel').map(e => (
+        <span key={e} style={{ fontSize: 10, color: 'var(--red)', background: 'rgba(220,80,80,.15)', borderRadius: 3, padding: '1px 5px' }}>
+          {ERROR_LABELS_MAP[e] ?? e}
         </span>
-      )}
+      ))}
     </div>
   )
 }
@@ -227,7 +232,56 @@ function DisciplinePage({ analytics, playerNames, lang }: {
   )
 }
 
-function GenericMetricPage({ analytics, playerNames, metricKey, lang }: {
+function LostDuelsPage({ analytics, playerNames, lang }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
+}) {
+  const lost = analytics.duels.filter(d => !d.won)
+  const flashed = lost.filter(d => d.errors.includes('flashed'))
+  const moving = lost.filter(d => d.errors.includes('moving'))
+  const outnumbered = lost.filter(d => d.errors.includes('outnumbered'))
+  const clean = lost.filter(d => d.errors.length === 0)
+  const [filter, setFilter] = useState<'all' | 'flashed' | 'moving' | 'outnumbered' | 'clean'>('all')
+  const shown = filter === 'flashed' ? flashed
+    : filter === 'moving' ? moving
+    : filter === 'outnumbered' ? outnumbered
+    : filter === 'clean' ? clean
+    : lost
+
+  const btnData = [
+    { key: 'all' as const,         label: lang === 'ru' ? `Все (${lost.length})` : `All (${lost.length})` },
+    { key: 'flashed' as const,     label: lang === 'ru' ? `Флеш (${flashed.length})` : `Flashed (${flashed.length})` },
+    { key: 'moving' as const,      label: lang === 'ru' ? `В движении (${moving.length})` : `Moving (${moving.length})` },
+    { key: 'outnumbered' as const, label: lang === 'ru' ? `Числе (${outnumbered.length})` : `Outnumbered (${outnumbered.length})` },
+    { key: 'clean' as const,       label: lang === 'ru' ? `Чистые (${clean.length})` : `Clean (${clean.length})` },
+  ]
+
+  return (
+    <div>
+      <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+        {lang === 'ru' ? 'Проигранные дуэли' : 'Lost duels'}
+      </div>
+      <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text2)' }}>
+        {lang === 'ru' ? `${lost.length} смертей` : `${lost.length} deaths`}
+        {flashed.length > 0 && ` · ${lang === 'ru' ? `${flashed.length} на флеше` : `${flashed.length} flashed`}`}
+        {moving.length > 0 && ` · ${lang === 'ru' ? `${moving.length} в движении` : `${moving.length} moving`}`}
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+        {btnData.map(b => (
+          <button key={b.key} onClick={() => setFilter(b.key)} style={{
+            background: filter === b.key ? 'var(--accent)' : 'var(--bg3)',
+            color: filter === b.key ? '#fff' : 'var(--text2)',
+            border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: 12,
+          }}>{b.label}</button>
+        ))}
+      </div>
+      <DuelListPanel duels={shown} playerNames={playerNames} lang={lang} title="" />
+    </div>
+  )
+}
+
+
+function GenericMetricPage({
+  analytics, playerNames, metricKey, lang }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; metricKey: string; lang: 'ru' | 'en'
 }) {
   const value = (analytics.metrics as unknown as Record<string, number>)[metricKey]
@@ -364,6 +418,8 @@ export default function MetricsPage() {
       case 'shiftPeekPct':
       case 'isolatedPct':
         return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} />
+      case 'lostDuels':
+        return <LostDuelsPage analytics={analytics} playerNames={playerNames} lang={lang} />
       default:
         return <GenericMetricPage analytics={analytics} playerNames={playerNames} metricKey={key} lang={lang} />
     }
