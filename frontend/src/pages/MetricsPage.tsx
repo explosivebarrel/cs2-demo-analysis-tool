@@ -394,8 +394,14 @@ function TradeKillsPage({ analytics, playerNames, lang }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
 }) {
   const rounds = analytics.metrics.tradeKillRounds ?? []
+  const ticks = analytics.metrics.tradeKillTicks ?? []
   const pct = analytics.metrics.tradeKillPct
-  const tradeEpisodes = analytics.duels.filter(d => d.won && rounds.includes(d.round))
+
+  // trade kill window: ~0.5s at 64 ticks/s — tight enough to match the actual trade, not nearby kills
+  const TICK_WINDOW = 64
+  const tradeEpisodes = ticks.length > 0
+    ? analytics.duels.filter(d => d.won && ticks.some(t => Math.abs(d.tick - t) <= TICK_WINDOW))
+    : analytics.duels.filter(d => d.won && rounds.includes(d.round))
 
   return (
     <div>
@@ -428,8 +434,14 @@ function TradedDeathsPage({ analytics, playerNames, lang }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
 }) {
   const rounds = analytics.metrics.tradedDeathRounds ?? []
+  const ticks = analytics.metrics.tradedDeathTicks ?? []
   const pct = analytics.metrics.tradedDeathPct
-  const tradeEpisodes = analytics.duels.filter(d => !d.won && rounds.includes(d.round))
+
+  // traded death window: same tight window as trade kills
+  const TICK_WINDOW = 64
+  const tradeEpisodes = ticks.length > 0
+    ? analytics.duels.filter(d => !d.won && ticks.some(t => Math.abs(d.tick - t) <= TICK_WINDOW))
+    : analytics.duels.filter(d => !d.won && rounds.includes(d.round))
 
   return (
     <div>
