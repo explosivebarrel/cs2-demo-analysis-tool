@@ -219,8 +219,18 @@ export interface MapOverview {
   sections?: { id: string; altitudeMax: number; altitudeMin: number; pos_x?: number; pos_y?: number; scale?: number }[]
 }
 
+export interface BenchmarkTiers {
+  weak: number
+  avg: number
+  good: number
+  elite: number
+}
+
+export type Benchmarks = Record<string, BenchmarkTiers>
+
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
+  benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
   upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
     const fd = new FormData(); fd.append('file', file)
     return req('/demos/upload', { method: 'POST', body: fd })

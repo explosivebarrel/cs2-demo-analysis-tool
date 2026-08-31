@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, AnalysisData, PlayerData, PlayerAnalyticsData } from '../api'
 import { t } from '../i18n'
-import { useLang } from '../App'
+import { useLang, useBenchmarks } from '../App'
+import { getTier, TIER_COLORS, TIER_LABELS, formatTierTooltip } from '../benchmarkUtils'
 import MatchNav from '../components/MatchNav'
 import PlayerOverview from '../components/player/PlayerOverview'
+import PlayerStrengths from '../components/player/PlayerStrengths'
 import PlayerImpact from '../components/player/PlayerImpact'
 import PlayerDuels from '../components/player/PlayerDuels'
 import PlayerWeapons from '../components/player/PlayerWeapons'
@@ -162,7 +164,46 @@ function SeriesView({ series }: { series: PlayerData['series'] }) {
 }
 
 // ------------------------------------------------------------------ header
+function HeaderBadge({ metricKey, value, lang }: { metricKey: string; value: number | null | undefined; lang: 'ru' | 'en' }) {
+  const benchmarks = useBenchmarks()
+  const [showTip, setShowTip] = useState(false)
+  if (value == null) return null
+  const tier = getTier(benchmarks, metricKey, value)
+  if (!tier) return null
+  const color = TIER_COLORS[tier]
+  const label = TIER_LABELS[tier][lang]
+  const tiers = benchmarks[metricKey]
+  const tip = tiers ? formatTierTooltip(tiers, value, lang) : label
+  return (
+    <span style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setShowTip(true)} onMouseLeave={() => setShowTip(false)}>
+      <span style={{ fontSize: 10, fontWeight: 700, color, background: `${color}22`, borderRadius: 4, padding: '2px 6px', cursor: 'default', letterSpacing: '.04em' }}>
+        {label}
+      </span>
+      {showTip && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+          padding: '6px 10px', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap',
+          zIndex: 100, marginBottom: 4, boxShadow: '0 4px 12px rgba(0,0,0,.5)', lineHeight: 1.6,
+        }}>
+          {tip.split(' · ').map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      )}
+    </span>
+  )
+}
+
 function HeaderCard({ p, lang }: { p: PlayerData; lang: 'ru' | 'en' }) {
+  const metrics: { l: string; v: string; key?: string; raw?: number | null; accent?: boolean }[] = [
+    { l: t('rating'), v: p.rating.toFixed(2), key: 'rating', raw: p.rating, accent: true },
+    { l: 'RWS',       v: p.rws?.toFixed(1) ?? '—' },
+    { l: t('impLabel'), v: p.imp != null ? (p.imp > 0 ? '+' : '') + p.imp.toFixed(2) : '—' },
+    { l: t('kd'),     v: p.kd.toFixed(2),   key: 'kd',     raw: p.kd },
+    { l: t('adr'),    v: p.adr.toFixed(1),  key: 'adr',    raw: p.adr },
+    { l: t('kast'),   v: p.kast.toFixed(1) + '%', key: 'kast', raw: p.kast },
+    { l: 'HS%',       v: p.hsPct != null ? p.hsPct.toFixed(1) + '%' : '—', key: 'hsPct', raw: p.hsPct },
+  ]
   return (
     <div className="card" style={{ marginBottom: 14 }}>
       <div className="flex items-center justify-between wrap gap-12">
@@ -171,17 +212,11 @@ function HeaderCard({ p, lang }: { p: PlayerData; lang: 'ru' | 'en' }) {
           {p.clan && <div style={{ color: 'var(--text2)', fontSize: 13 }}>[{p.clan}]</div>}
         </div>
         <div className="flex gap-16 wrap" style={{ fontSize: 13 }}>
-          {[
-            { l: t('rating'), v: p.rating.toFixed(2), accent: true },
-            { l: 'RWS', v: p.rws?.toFixed(1) ?? '—' },
-            { l: t('impLabel'), v: p.imp != null ? (p.imp > 0 ? '+' : '') + p.imp.toFixed(2) : '—' },
-            { l: t('kd'), v: p.kd.toFixed(2) },
-            { l: t('adr'), v: p.adr.toFixed(1) },
-            { l: t('kast'), v: p.kast.toFixed(1) + '%' },
-          ].map(({ l, v, accent }) => (
+          {metrics.map(({ l, v, key, raw, accent }) => (
             <div key={l} className="kv">
               <span className="kv-label">{l}</span>
               <span className="kv-value" style={accent ? { color: 'var(--accent)' } : {}}>{v}</span>
+              {key && <HeaderBadge metricKey={key} value={raw} lang={lang} />}
             </div>
           ))}
         </div>
@@ -426,7 +461,8 @@ export default function PlayerPage() {
 
               {/* deep analytics below base stats */}
               {analytics && (
-                <div style={{ marginTop: 12 }}>
+                <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
+                  <PlayerStrengths player={p} metrics={analytics.metrics} lang={lang} />
                   <PlayerOverview metrics={analytics.metrics} duels={analytics.duels} playerNames={playerNames} lang={lang} />
                 </div>
               )}

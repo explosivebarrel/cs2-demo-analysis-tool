@@ -1,5 +1,7 @@
 import { useState } from 'react'
 import { PlayerMetrics, DuelEpisode } from '../../api'
+import { useBenchmarks } from '../../App'
+import { getTier, TIER_COLORS, TIER_LABELS, formatTierTooltip } from '../../benchmarkUtils'
 import EpisodeDrillDown from './EpisodeDrillDown'
 
 const ERROR_LABELS: Record<string, { ru: string; en: string; color: string; icon: string }> = {
@@ -10,11 +12,48 @@ const ERROR_LABELS: Record<string, { ru: string; en: string; color: string; icon
   strong_duel:  { ru: 'Сильная дуэль',         en: 'Strong duel',      color: 'var(--green)',   icon: '💪' },
 }
 
-function ratingLabel(value: number, goodAbove: number, lang: 'ru' | 'en'): { text: string; color: string } {
-  if (value >= goodAbove * 1.2) return { text: lang === 'ru' ? 'ОТЛИЧНО' : 'GREAT',  color: 'var(--green)' }
-  if (value >= goodAbove)       return { text: lang === 'ru' ? 'ХОРОШО' : 'GOOD',   color: '#7ec8e3' }
-  if (value >= goodAbove * 0.6) return { text: lang === 'ru' ? 'СРЕДНЕЕ' : 'AVG',   color: 'var(--text2)' }
-  return                               { text: lang === 'ru' ? 'СЛАБО'  : 'WEAK',   color: 'var(--red)' }
+interface BenchmarkBadgeProps {
+  metricKey: string
+  value: number | null | undefined
+  lang: 'ru' | 'en'
+  higherIsBetter?: boolean
+}
+
+function BenchmarkBadge({ metricKey, value, lang, higherIsBetter = true }: BenchmarkBadgeProps) {
+  const benchmarks = useBenchmarks()
+  const [showTip, setShowTip] = useState(false)
+  if (value == null) return null
+  const tier = getTier(benchmarks, metricKey, value, higherIsBetter)
+  if (!tier) return null
+  const color = TIER_COLORS[tier]
+  const label = TIER_LABELS[tier][lang]
+  const tiers = benchmarks[metricKey]
+  const tip = tiers ? formatTierTooltip(tiers, value, lang, higherIsBetter) : label
+  return (
+    <span
+      style={{ position: 'relative', display: 'inline-block' }}
+      onMouseEnter={() => setShowTip(true)}
+      onMouseLeave={() => setShowTip(false)}
+    >
+      <span style={{
+        fontSize: 10, fontWeight: 700, color, background: `${color}22`,
+        borderRadius: 4, padding: '2px 6px', cursor: 'default', letterSpacing: '.04em',
+      }}>
+        {label}
+      </span>
+      {showTip && (
+        <div style={{
+          position: 'absolute', bottom: '100%', left: '50%', transform: 'translateX(-50%)',
+          background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6,
+          padding: '6px 10px', fontSize: 11, color: 'var(--text)', whiteSpace: 'nowrap',
+          zIndex: 100, marginBottom: 4, boxShadow: '0 4px 12px rgba(0,0,0,.5)',
+          lineHeight: 1.6,
+        }}>
+          {tip.split(' · ').map((line, i) => <div key={i}>{line}</div>)}
+        </div>
+      )}
+    </span>
+  )
 }
 
 interface MetricCardProps {
@@ -22,11 +61,15 @@ interface MetricCardProps {
   value: string
   sub?: string
   rating?: { text: string; color: string }
+  benchmarkKey?: string
+  benchmarkValue?: number | null
+  lang?: 'ru' | 'en'
   color?: string
   onClick?: () => void
+  higherIsBetter?: boolean
 }
 
-function MetricCard({ label, value, sub, rating, color, onClick }: MetricCardProps) {
+function MetricCard({ label, value, sub, rating, benchmarkKey, benchmarkValue, lang = 'ru', color, onClick, higherIsBetter = true }: MetricCardProps) {
   return (
     <div
       onClick={onClick}
@@ -47,11 +90,14 @@ function MetricCard({ label, value, sub, rating, color, onClick }: MetricCardPro
         {value}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        {rating && (
-          <span style={{ fontSize: 10, fontWeight: 700, color: rating.color }}>
-            {rating.text}
-          </span>
-        )}
+        {benchmarkKey != null && benchmarkValue != null
+          ? <BenchmarkBadge metricKey={benchmarkKey} value={benchmarkValue} lang={lang} higherIsBetter={higherIsBetter} />
+          : rating && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: rating.color }}>
+              {rating.text}
+            </span>
+          )
+        }
         {sub && <div style={{ fontSize: 11, color: 'var(--text2)' }}>{sub}</div>}
       </div>
     </div>
@@ -138,7 +184,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
           <MetricCard
             label={lang === 'ru' ? 'Открывашки Win%' : 'Opening Win%'}
             value={metrics.openingWinPct.toFixed(1) + '%'}
-            rating={ratingLabel(metrics.openingWinPct, 50, lang)}
+            benchmarkKey="openingWinPct" benchmarkValue={metrics.openingWinPct} lang={lang}
             color={metrics.openingWinPct >= 50 ? 'var(--green)' : 'var(--red)'}
             onClick={() => openDrill('won', lang === 'ru' ? 'Выигранные дуэли' : 'Won duels')}
           />
@@ -146,13 +192,13 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             label={lang === 'ru' ? 'Трейд-килы' : 'Trade Kills'}
             value={metrics.tradeKillPct.toFixed(1) + '%'}
             sub={lang === 'ru' ? '% убийств — трейд' : '% of kills are trades'}
-            rating={ratingLabel(metrics.tradeKillPct, 20, lang)}
+            benchmarkKey="tradeKillPct" benchmarkValue={metrics.tradeKillPct} lang={lang}
           />
           <MetricCard
             label={lang === 'ru' ? 'Трейд-смерти' : 'Traded Deaths'}
             value={metrics.tradedDeathPct.toFixed(1) + '%'}
             sub={lang === 'ru' ? '% смертей отомщены' : '% deaths avenged'}
-            rating={ratingLabel(metrics.tradedDeathPct, 25, lang)}
+            benchmarkKey="tradedDeathPct" benchmarkValue={metrics.tradedDeathPct} lang={lang}
           />
         </div>
       </div>
@@ -166,14 +212,14 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
           <MetricCard
             label={lang === 'ru' ? 'Клатч Win%' : 'Clutch Win%'}
             value={metrics.clutchWinPct.toFixed(1) + '%'}
-            rating={ratingLabel(metrics.clutchWinPct, 30, lang)}
+            benchmarkKey="clutchWinPct" benchmarkValue={metrics.clutchWinPct} lang={lang}
             color={metrics.clutchWinPct >= 30 ? 'var(--accent2)' : undefined}
           />
           <MetricCard
             label={lang === 'ru' ? 'Эфф. флешек' : 'Flash Efficiency'}
             value={metrics.flashEfficiency.toFixed(1) + '%'}
             sub={lang === 'ru' ? '% флешек эффективны' : '% flashes effective'}
-            rating={ratingLabel(metrics.flashEfficiency, 40, lang)}
+            benchmarkKey="flashEfficiency" benchmarkValue={metrics.flashEfficiency} lang={lang}
             color={metrics.flashEfficiency >= 40 ? 'var(--green)' : undefined}
           />
         </div>
@@ -189,41 +235,44 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             label={lang === 'ru' ? 'Ошибки контрстрейфа' : 'Counter-strafe errors'}
             value={String(metrics.counterStrafeErrors ?? 0)}
             sub={lang === 'ru' ? 'выстрелов в движении' : 'shots while moving'}
-            rating={ratingLabel(100 - Math.min(100, (metrics.counterStrafeErrors ?? 0) * 5), 70, lang)}
-            onClick={() => openDrill('moving_shot', lang === 'ru' ? 'Движение при стрельбе' : 'Shot while moving')}
+            benchmarkKey="counterStrafeErrors" benchmarkValue={metrics.counterStrafeErrors ?? 0} lang={lang}
+            higherIsBetter={false}
+            onClick={(metrics.counterStrafeErrors ?? 0) > 0 ? () => openDrill('moving_shot', lang === 'ru' ? 'Движение при стрельбе' : 'Shot while moving') : undefined}
           />
           <MetricCard
             label={lang === 'ru' ? 'Идеальные стрейфы' : 'Ideal strafes'}
             value={(metrics.idealStrafePct ?? 0).toFixed(1) + '%'}
             sub={lang === 'ru' ? '% килов на стопе' : '% kills while stopped'}
-            rating={ratingLabel(metrics.idealStrafePct ?? 0, 60, lang)}
+            benchmarkKey="idealStrafePct" benchmarkValue={metrics.idealStrafePct} lang={lang}
             color={(metrics.idealStrafePct ?? 0) >= 60 ? 'var(--green)' : undefined}
           />
           <MetricCard
             label={lang === 'ru' ? 'Точность первой пули' : 'First bullet acc'}
             value={(metrics.firstBulletAcc ?? 0).toFixed(1) + '%'}
             sub={lang === 'ru' ? '% первых выстрелов — попадание' : '% first shots hit'}
-            rating={ratingLabel(metrics.firstBulletAcc ?? 0, 40, lang)}
+            benchmarkKey="firstBulletAcc" benchmarkValue={metrics.firstBulletAcc} lang={lang}
             color={(metrics.firstBulletAcc ?? 0) >= 40 ? 'var(--green)' : undefined}
           />
           <MetricCard
             label={lang === 'ru' ? 'Время до фрага' : 'Time to kill'}
             value={(metrics.ttk_ms ?? 0) > 0 ? (metrics.ttk_ms ?? 0).toFixed(0) + ' мс' : '—'}
             sub={lang === 'ru' ? 'ср. мс от выстрела до кила' : 'avg ms first shot to kill'}
-            rating={(metrics.ttk_ms ?? 0) > 0 ? ratingLabel(1200 - (metrics.ttk_ms ?? 0), 500, lang) : undefined}
+            benchmarkKey="ttk_ms" benchmarkValue={(metrics.ttk_ms ?? 0) > 0 ? metrics.ttk_ms : null} lang={lang}
+            higherIsBetter={false}
           />
           <MetricCard
             label={lang === 'ru' ? 'Контроль угла' : 'Angle control'}
             value={String(metrics.angleControlCount ?? 0)}
             sub={lang === 'ru' ? 'позиций удержано ≥2с' : 'positions held ≥2s'}
-            rating={ratingLabel((metrics.angleControlCount ?? 0) * 10, 30, lang)}
+            benchmarkKey="angleControlCount" benchmarkValue={metrics.angleControlCount ?? 0} lang={lang}
             color={(metrics.angleControlCount ?? 0) >= 3 ? 'var(--green)' : undefined}
           />
           <MetricCard
             label={lang === 'ru' ? 'Перезарядки' : 'Reload errors'}
             value={String(metrics.reloadErrors ?? 0)}
             sub={lang === 'ru' ? 'перезарядок с патронами' : 'reloads with bullets left'}
-            rating={ratingLabel(100 - Math.min(100, (metrics.reloadErrors ?? 0) * 10), 70, lang)}
+            benchmarkKey="reloadErrors" benchmarkValue={metrics.reloadErrors ?? 0} lang={lang}
+            higherIsBetter={false}
           />
         </div>
       </div>
