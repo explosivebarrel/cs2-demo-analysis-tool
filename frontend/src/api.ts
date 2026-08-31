@@ -186,6 +186,13 @@ export interface DuelEpisode {
   }
 }
 
+export interface FirstBulletShot {
+  round: number
+  tick: number
+  hit: boolean
+  weapon: string
+}
+
 export interface PlayerMetrics {
   tradeKillPct: number
   tradedDeathPct: number
@@ -201,6 +208,7 @@ export interface PlayerMetrics {
   counterStrafeErrors: number
   idealStrafePct: number
   firstBulletAcc: number
+  firstBulletShots: FirstBulletShot[]
   ttk_ms: number
   reloadErrors: number
   angleControlCount: number

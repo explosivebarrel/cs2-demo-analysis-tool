@@ -279,6 +279,69 @@ function DisciplinePage({ analytics, playerNames, lang }: {
   )
 }
 
+function FirstBulletAccPage({ analytics, lang }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
+}) {
+  const shots: FirstBulletShot[] = analytics.metrics.firstBulletShots ?? []
+  const pct = analytics.metrics.firstBulletAcc
+  const hits = shots.filter(s => s.hit)
+  const misses = shots.filter(s => !s.hit)
+  const [filter, setFilter] = useState<'all' | 'hit' | 'miss'>('all')
+  const shown = filter === 'hit' ? hits : filter === 'miss' ? misses : shots
+
+  const ru = lang === 'ru'
+
+  const btnData = [
+    { key: 'all' as const,  label: ru ? `Все (${shots.length})` : `All (${shots.length})` },
+    { key: 'hit' as const,  label: ru ? `Попадания (${hits.length})` : `Hits (${hits.length})` },
+    { key: 'miss' as const, label: ru ? `Промахи (${misses.length})` : `Misses (${misses.length})` },
+  ]
+
+  return (
+    <div>
+      <MetricHeader
+        title={ru ? 'Точность первой пули' : 'First bullet accuracy'}
+        value={pct.toFixed(1) + '%'}
+        metricKey="firstBulletAcc"
+        lang={lang}
+      />
+      <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text2)' }}>
+        {ru
+          ? `${hits.length} попаданий · ${misses.length} промахов · ${shots.length} дуэлей`
+          : `${hits.length} hits · ${misses.length} misses · ${shots.length} duels`}
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {btnData.map(b => (
+          <button key={b.key} onClick={() => setFilter(b.key)} style={{
+            background: filter === b.key
+              ? b.key === 'hit' ? 'var(--green)' : b.key === 'miss' ? 'var(--red)' : 'var(--accent)'
+              : 'var(--bg3)',
+            color: filter === b.key ? '#fff' : 'var(--text2)',
+            border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: 12,
+          }}>{b.label}</button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 480, overflowY: 'auto' }}>
+        {shown.map((s, i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            background: s.hit ? 'rgba(80,200,120,0.05)' : 'rgba(220,80,80,0.05)',
+            border: `1px solid ${s.hit ? 'var(--green)' : 'var(--red)'}`,
+            borderRadius: 6, padding: '7px 12px',
+          }}>
+            <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{s.round}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: s.hit ? 'var(--green)' : 'var(--red)', minWidth: 60 }}>
+              {s.hit ? (ru ? '✓ Попал' : '✓ Hit') : (ru ? '✗ Промах' : '✗ Miss')}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--text2)' }}>{prettyWeapon(s.weapon, lang)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+
 function LostDuelsPage({ analytics, playerNames, lang }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
 }) {
@@ -390,70 +453,6 @@ function TradedDeathsPage({ analytics, playerNames, lang }: {
               : `Traded deaths happened in rounds: ${rounds.join(', ') || '—'}`}
           </div>
         )}
-    </div>
-  )
-}
-
-
-function FirstBulletAccPage({ analytics, lang }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
-}) {
-  const shots: FirstBulletShot[] = analytics.firstBulletShots ?? []
-  const pct = analytics.metrics.firstBulletAcc
-  const hits = shots.filter(s => s.hit)
-  const misses = shots.filter(s => !s.hit)
-  const [filter, setFilter] = useState<'all' | 'hit' | 'miss'>('all')
-  const shown = filter === 'hit' ? hits : filter === 'miss' ? misses : shots
-
-  return (
-    <div>
-      <MetricHeader
-        title={lang === 'ru' ? 'Точность первой пули' : 'First bullet accuracy'}
-        value={pct.toFixed(1) + '%'}
-        metricKey="firstBulletAcc"
-        lang={lang}
-      />
-      <div style={{ marginBottom: 16, fontSize: 13, color: 'var(--text2)' }}>
-        {lang === 'ru'
-          ? `${hits.length} попаданий · ${misses.length} промахов · ${shots.length} дуэлей`
-          : `${hits.length} hits · ${misses.length} misses · ${shots.length} duels`}
-      </div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {(['all', 'hit', 'miss'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)} style={{
-            background: filter === f ? 'var(--accent)' : 'var(--bg3)',
-            color: filter === f ? '#fff' : 'var(--text2)',
-            border: 'none', borderRadius: 4, padding: '4px 12px', cursor: 'pointer', fontSize: 12,
-          }}>
-            {f === 'all'
-              ? (lang === 'ru' ? `Все (${shots.length})` : `All (${shots.length})`)
-              : f === 'hit'
-                ? (lang === 'ru' ? `Попадание (${hits.length})` : `Hit (${hits.length})`)
-                : (lang === 'ru' ? `Промах (${misses.length})` : `Miss (${misses.length})`)}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 480, overflowY: 'auto' }}>
-        {shown.map((s, i) => (
-          <div key={i} style={{
-            display: 'flex', alignItems: 'center', gap: 12,
-            background: s.hit ? 'rgba(80,200,120,0.05)' : 'rgba(220,80,80,0.05)',
-            border: `1px solid ${s.hit ? 'var(--green)' : 'var(--red)'}`,
-            borderRadius: 6, padding: '8px 12px',
-          }}>
-            <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{s.round}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: s.hit ? 'var(--green)' : 'var(--red)', minWidth: 60 }}>
-              {s.hit ? (lang === 'ru' ? '✓ Попал' : '✓ Hit') : (lang === 'ru' ? '✗ Промах' : '✗ Miss')}
-            </span>
-            <span style={{ fontSize: 12, color: 'var(--text2)' }}>{prettyWeapon(s.weapon, lang)}</span>
-          </div>
-        ))}
-        {shown.length === 0 && (
-          <div style={{ color: 'var(--text2)', fontSize: 13, padding: 16 }}>
-            {lang === 'ru' ? 'Нет данных' : 'No data'}
-          </div>
-        )}
-      </div>
     </div>
   )
 }
