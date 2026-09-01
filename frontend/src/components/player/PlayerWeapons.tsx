@@ -105,7 +105,8 @@ export default function PlayerWeapons({ weapons, lang }: { weapons: WeaponRow[];
   const visible = showAll ? weapons : weapons.slice(0, INITIAL)
 
   return (
-    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+    <div style={{ overflowX: 'auto' }}>
+    <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', minWidth: 520 }}>
       {/* header */}
       <div style={{
         display: 'grid',
@@ -150,6 +151,7 @@ export default function PlayerWeapons({ weapons, lang }: { weapons: WeaponRow[];
               : `Show all (+${weapons.length - INITIAL})`)}
         </button>
       )}
+    </div>
     </div>
   )
 }

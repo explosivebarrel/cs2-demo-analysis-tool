@@ -217,7 +217,20 @@ export default function HeatmapsPage() {
   function onMouseUp() { dragRef.current = null }
 
   if (error) return <div className="page"><div className="text-muted">{error}</div></div>
-  if (!analysis || !heatmap || !overview) return <div className="page"><div className="text-muted">{t('loading')}</div></div>
+  if (!analysis || !heatmap || !overview) return (
+    <div className="page">
+      <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 20 }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '600px 8px 1fr', gap: 0, alignItems: 'start' }}>
+        <div className="skeleton" style={{ height: 600, borderRadius: 8 }} />
+        <div />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 14 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 32, borderRadius: 6 }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
   const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
   const SIZE = leftWidth

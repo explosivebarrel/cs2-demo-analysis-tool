@@ -197,7 +197,26 @@ export default function OverviewPage() {
   }, [id])
 
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
-  if (!data) return <div className="page"><div className="spinner" /> <span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span></div>
+  if (!data) return (
+    <div className="page">
+      <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 20 }} />
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div className="skeleton" style={{ width: 120, height: 24 }} />
+          <div className="skeleton" style={{ width: 80, height: 48 }} />
+          <div className="skeleton" style={{ width: 120, height: 24 }} />
+        </div>
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 20, marginBottom: 8, borderRadius: 4 }} />
+        ))}
+      </div>
+      <div className="card" style={{ overflowX: 'auto' }}>
+        {[...Array(11)].map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 36, marginBottom: 6, borderRadius: 4 }} />
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="page">

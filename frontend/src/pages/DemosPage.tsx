@@ -120,7 +120,7 @@ function FilterDrawer({
       }}>
         <div className="flex items-center justify-between">
           <span style={{ fontWeight: 600 }}>{t('filterBtn')}</span>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+          <button onClick={onClose} aria-label="Close filters" style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -437,7 +437,13 @@ export default function DemosPage() {
 
       <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} filters={filters} onChange={setFilters} allMaps={allMaps} />
 
-      {loading ? <div className="text-muted">{t('loading')}</div> : (
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 64, borderRadius: 8 }} />
+          ))}
+        </div>
+      ) : (
         <DemoList rows={rows} groupByDate={groupByDate} onAnalyze={startAnalyze} onDelete={deletDemo} onNavigate={id => navigate(`/match/${id}`)} />
       )}
     </div>

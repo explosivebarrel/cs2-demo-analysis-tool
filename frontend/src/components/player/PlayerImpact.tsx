@@ -189,7 +189,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
       )}
 
       {/* ── top/bottom rounds ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
         <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
           <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--green)', marginBottom: 8 }}>
             {lang === 'ru' ? '🔥 Лучшие раунды' : '🔥 Best rounds'}

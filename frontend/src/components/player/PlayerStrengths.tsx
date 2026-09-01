@@ -156,7 +156,7 @@ export default function PlayerStrengths({ player, metrics, lang }: Props) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 4 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16, marginBottom: 4 }}>
       {strengths.length > 0 && (
         <div>
           <div style={{ fontSize: 10, color: TIER_COLORS.elite, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8, fontWeight: 700 }}>

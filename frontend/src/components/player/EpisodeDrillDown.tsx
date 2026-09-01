@@ -98,6 +98,7 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
             </div>
             <button
               onClick={onClose}
+              aria-label="Close"
               style={{ background: 'none', border: 'none', color: 'var(--text2)', fontSize: 20, cursor: 'pointer', lineHeight: 1, padding: 4 }}
             >×</button>
           </div>
@@ -140,7 +141,7 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
           </div>
 
           {/* context grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 14 }}>
             {[
               { label: lang === 'ru' ? 'Скор. атак.' : 'Atk vel.', value: `${kc.attackerVel} u/s`, warn: kc.attackerVel > 50 },
               { label: lang === 'ru' ? 'Скор. жертвы' : 'Vic vel.', value: `${kc.victimVel} u/s` },

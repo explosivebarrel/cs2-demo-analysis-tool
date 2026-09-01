@@ -1159,7 +1159,19 @@ export default function ReplayPage() {
   const currentRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
 
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
-  if (!replay || !overview) return <div className="page"><span className="spinner" /><span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span></div>
+  if (!replay || !overview) return (
+    <div className="page">
+      <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 20 }} />
+      <div style={{ display: 'flex', gap: 16 }}>
+        <div className="skeleton" style={{ flex: 1, height: 600, borderRadius: 8 }} />
+        <div style={{ width: 260, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {[...Array(10)].map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 44, borderRadius: 6 }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
   const mapName = analysis?.meta.map ?? ''
   const cursor = dragRef.current ? 'grabbing' : tx.scale > 1 ? 'grab' : 'default'

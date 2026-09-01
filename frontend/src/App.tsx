@@ -9,6 +9,7 @@ import MetricsPage from './pages/MetricsPage'
 import HeatmapsPage from './pages/HeatmapsPage'
 import ReplayPage from './pages/ReplayPage'
 import AboutPage from './pages/AboutPage'
+import ChatPage from './pages/ChatPage'
 
 export const LangCtx = createContext<{ lang: Lang; toggle: () => void }>({
   lang: 'ru', toggle: () => {},
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="/match/:id/player/:steamid/metrics/:key" element={<MetricsPage />} />
             <Route path="/match/:id/heatmaps" element={<HeatmapsPage />} />
             <Route path="/match/:id/replay" element={<ReplayPage />} />
+            <Route path="/match/:id/chat" element={<ChatPage />} />
             <Route path="/about" element={<AboutPage />} />
           </Routes>
         </BrowserRouter>

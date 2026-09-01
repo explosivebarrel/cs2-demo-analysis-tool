@@ -17,6 +17,7 @@ from .rating import compute_ratings
 from .heatmaps import build_heatmap
 from .events import build_events
 from .winprob import compute_winprob
+from .chat import build_chat
 
 
 def _gz_write(path, payload):
@@ -80,6 +81,9 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     from .playeranalytics import build_player_analytics
     pa = build_player_analytics(ctx, rb, fb, players, winprob=winprob, replay_ticks=replay["ticks"])
 
+    prog("chat", 94)
+    chat_messages = build_chat(ctx, rb)
+
     prog("writing", 95)
     analysis = _build_analysis(ctx, rb, fb, players)
     replay_payload = {
@@ -108,6 +112,7 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "replay.json.gz"), replay_payload)
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
     _gz_write(os.path.join(out_dir, "player_analytics.json.gz"), pa)
+    _gz_write(os.path.join(out_dir, "chat.json.gz"), chat_messages)
 
     prog("done", 100)
     return {

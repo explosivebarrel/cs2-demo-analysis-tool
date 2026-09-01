@@ -174,6 +174,9 @@ export interface DuelEpisode {
   weapon: string
   headshot: boolean
   won: boolean
+  opening: boolean
+  isTradeKill: boolean
+  isTradedDeath: boolean
   errors: string[]
   context: {
     nearAllyDist: number | null
@@ -248,6 +251,14 @@ export interface BenchmarkTiers {
 
 export type Benchmarks = Record<string, BenchmarkTiers>
 
+export interface ChatMessage {
+  tick: number
+  steamid: string
+  name: string
+  text: string
+  round: number | null
+}
+
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
   benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
@@ -262,6 +273,7 @@ export const api = {
   analysis: (id: string): Promise<AnalysisData> => req(`/demos/${id}/analysis`),
   heatmap: (id: string): Promise<HeatmapData> => req(`/demos/${id}/heatmap`),
   replay: (id: string): Promise<ReplayData> => req(`/demos/${id}/replay`),
+  chat: (id: string): Promise<ChatMessage[]> => req(`/demos/${id}/chat`),
   mapOverview: (map: string): Promise<MapOverview> => req(`/maps/${map}/overview`),
   radarUrl: (map: string) => `/api/maps/${map}/radar`,
   playerAnalytics: (id: string, steamid: string): Promise<PlayerAnalyticsData> =>

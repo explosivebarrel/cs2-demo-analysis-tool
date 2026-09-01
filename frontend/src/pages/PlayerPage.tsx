@@ -314,8 +314,27 @@ export default function PlayerPage() {
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
   if (!data) return (
     <div className="page">
-      <span className="spinner" />
-      <span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span>
+      {/* skeleton for header card + stat sections */}
+      <div style={{ height: 36, marginBottom: 16, background: 'var(--bg2)', borderRadius: 6 }} className="skeleton" />
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', gap: 16, marginBottom: 16 }}>
+          {[120, 80, 80, 80, 80].map((w, i) => (
+            <div key={i} className="skeleton" style={{ width: w, height: 48, borderRadius: 6 }} />
+          ))}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 64, borderRadius: 6 }} />
+          ))}
+        </div>
+      </div>
+      <div className="card">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 72, borderRadius: 6 }} />
+          ))}
+        </div>
+      </div>
     </div>
   )
 
@@ -400,7 +419,7 @@ export default function PlayerPage() {
               {/* base stats grid */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12, marginBottom: 12 }}>
                 <Section title={t('kills') + ' / ' + t('deaths') + ' / ' + t('assists')}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('kills')} value={p.kills} />
                     <Kv label={t('deaths')} value={p.deaths} />
                     <Kv label={t('assists')} value={p.assists} />
@@ -413,7 +432,7 @@ export default function PlayerPage() {
                 </Section>
 
                 <Section title={t('opening')}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('kills')} value={p.opening.kills} />
                     <Kv label={t('deaths')} value={p.opening.deaths} />
                     <Kv label="Win%" value={p.opening.success !== null ? p.opening.success.toFixed(1) + '%' : '—'} />
@@ -425,7 +444,7 @@ export default function PlayerPage() {
                 </Section>
 
                 <Section title={t('multiKills')}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
                     {(['2k', '3k', '4k', '5k'] as const).map(k => (
                       <Kv key={k} label={k.toUpperCase()} value={p.multiKills[k]} />
                     ))}
@@ -446,7 +465,7 @@ export default function PlayerPage() {
                 </Section>
 
                 <Section title={t('utility')}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('flashThrown')} value={p.flashes.thrown} />
                     <Kv label={t('enemiesFlashed')} value={p.flashes.enemiesFlashed} />
                     <Kv label={t('blindSec')} value={p.flashes.blindSec.toFixed(1)} />
@@ -460,7 +479,7 @@ export default function PlayerPage() {
                 </Section>
 
                 <Section title="Bomb">
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('plants')} value={p.bomb.plants} />
                     <Kv label={t('defuses')} value={p.bomb.defuses} />
                     <Kv label="Attempts" value={p.bomb.defuseAttempts} />
@@ -476,7 +495,7 @@ export default function PlayerPage() {
                 </Section>
 
                 <Section title={t('movement')}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('distKm')} value={p.movement.distanceKm.toFixed(2)} />
                     <Kv label="Alive/R (s)" value={p.movement.aliveSecPerRound.toFixed(1)} />
                     <Kv label={t('survival')} value={p.movement.survivalPct.toFixed(1) + '%'} />
@@ -490,7 +509,7 @@ export default function PlayerPage() {
                     return (
                       <div key={side} style={{ marginBottom: 12 }}>
                         <span className={`tag tag-${side}`} style={{ marginBottom: 8, display: 'inline-block' }}>{side} ({s.rounds} {t('roundsCount')})</span>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(72px, 1fr))', gap: 8 }}>
                           <Kv label={t('kills')} value={s.kills} />
                           <Kv label={t('deaths')} value={s.deaths} />
                           <Kv label={t('kd')} value={s.kd.toFixed(2)} />
@@ -527,8 +546,10 @@ export default function PlayerPage() {
                 </div>
               )}
               {!analytics && !analyticsErr && (
-                <div className="text-muted" style={{ marginTop: 16 }}>
-                  <span className="spinner" style={{ marginRight: 8 }} />{t('loading')}
+                <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="skeleton" style={{ height: 72, borderRadius: 8 }} />
+                  ))}
                 </div>
               )}
             </div>
@@ -539,14 +560,22 @@ export default function PlayerPage() {
           <PlayerImpact impact={analytics.impact} series={p.series} duels={analytics.duels} decisionsCost={analytics.decisionsCost ?? []} playerNames={playerNames} lang={lang} allPlayers={data.players} playerData={p} currentSteamid={steamid} />
         )}
         {tab === 'impact' && !analytics && !analyticsErr && (
-          <div className="text-muted"><span className="spinner" style={{ marginRight: 8 }} />{t('loading')}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {[120, 80, 160, 80].map((h, i) => (
+              <div key={i} className="skeleton" style={{ height: h, borderRadius: 8 }} />
+            ))}
+          </div>
         )}
 
         {tab === 'duels' && analytics && (
           <PlayerDuels duels={analytics.duels} playerNames={playerNames} lang={lang} />
         )}
         {tab === 'duels' && !analytics && !analyticsErr && (
-          <div className="text-muted"><span className="spinner" style={{ marginRight: 8 }} />{t('loading')}</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="skeleton" style={{ height: 52, borderRadius: 6 }} />
+            ))}
+          </div>
         )}
 
         {tab === 'weapons' && (
@@ -557,7 +586,7 @@ export default function PlayerPage() {
           <PlayerMap mapEvents={analytics.mapEvents} mapName={data.meta.map} lang={lang} />
         )}
         {tab === 'map' && !analytics && !analyticsErr && (
-          <div className="text-muted"><span className="spinner" style={{ marginRight: 8 }} />{t('loading')}</div>
+          <div className="skeleton" style={{ height: 512, borderRadius: 8 }} />
         )}
 
         {tab === 'rounds' && (

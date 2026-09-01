@@ -41,11 +41,14 @@ export default function MatchNav({ id, players, currentSteamid }: Props) {
       <NavLink to={base} end style={({ isActive }) => linkStyle(isActive)}>{t('overview')}</NavLink>
       <NavLink to={`${base}/heatmaps`} style={({ isActive }) => linkStyle(isActive)}>{t('heatmaps')}</NavLink>
       <NavLink to={`${base}/replay`} style={({ isActive }) => linkStyle(isActive)}>{t('replay')}</NavLink>
+      <NavLink to={`${base}/chat`} style={({ isActive }) => linkStyle(isActive)}>{t('chat')}</NavLink>
 
       {players && players.length > 0 && (
         <div ref={ref} style={{ position: 'relative' }}>
           <button
             onClick={() => setOpen(v => !v)}
+            aria-haspopup="listbox"
+            aria-expanded={open}
             style={{
               background: 'none',
               border: 'none',
@@ -84,6 +87,7 @@ export default function MatchNav({ id, players, currentSteamid }: Props) {
               {players.map(p => (
                 <button
                   key={p.steamid}
+                  aria-label={p.name}
                   onClick={() => { setOpen(false); navigate(`/match/${id}/player/${p.steamid}`) }}
                   style={{
                     display: 'block',

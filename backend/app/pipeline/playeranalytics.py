@@ -208,6 +208,13 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             return None
         return round_ns[i]
 
+    # opening kill tick per round — used to tag duel episodes as opening
+    opening_tick_by_round: dict[int, int] = {}
+    for r in rb.rounds:
+        ok = r.get("openingKill")
+        if ok and ok.get("tick") is not None:
+            opening_tick_by_round[r["n"]] = int(ok["tick"])
+
     # weapon_fire ticks per (steamid, round) for walking-at-shot checks
     wf_df = ctx.ev("weapon_fire")
     wf_ticks: dict[tuple[str, int], list[int]] = defaultdict(list)
@@ -348,6 +355,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             "weapon": weapon,
             "headshot": headshot,
             "won": won,
+            "opening": opening_tick_by_round.get(rn) == tick,
             "errors": errors,
             "context": context,
         })
@@ -690,6 +698,27 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             duels = _build_duels(ctx, rb, fb, players, steamid)
         except Exception:
             duels = []
+
+        # tag duel episodes that correspond to actual trade kills / traded deaths
+        trade_kill_tick_set: set[int] = set()
+        traded_death_tick_set: set[int] = set()
+        if p is not None:
+            for pr in p.rounds.values():
+                tk = pr.get("tradedKill")
+                if tk and tk is not True:
+                    try:
+                        trade_kill_tick_set.add(int(tk))
+                    except (TypeError, ValueError):
+                        pass
+                td = pr.get("tradedDeath")
+                if td and td is not True:
+                    try:
+                        traded_death_tick_set.add(int(td))
+                    except (TypeError, ValueError):
+                        pass
+        for d in duels:
+            d["isTradeKill"] = d["tick"] in trade_kill_tick_set
+            d["isTradedDeath"] = d["tick"] in traded_death_tick_set
 
         # series comes from run.py's _player_payload — we recompute it here
         # to avoid coupling; use same formula as run._imp_round

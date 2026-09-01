@@ -252,6 +252,12 @@ def replay(did: str):
     return _read_artifact(did, "replay.json.gz")
 
 
+@app.get("/api/demos/{did}/chat")
+def chat(did: str):
+    _find_demo(did)
+    return _read_artifact(did, "chat.json.gz")
+
+
 @app.get("/api/demos/{did}/player/{steamid}/analytics")
 async def get_player_analytics(did: str, steamid: str):
     data = storage.read_player_analytics(did)
