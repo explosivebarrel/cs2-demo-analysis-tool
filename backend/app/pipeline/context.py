@@ -14,6 +14,7 @@ TICK_PROPS = [
     "game_phase", "is_freeze_period", "is_bomb_planted", "total_rounds_played",
     "game_time", "flash_duration", "has_defuser", "has_helmet", "is_walking",
     "is_scoped", "duck_amount", "cash_spent_this_round", "total_cash_spent",
+    "button_states", "velocity_X", "velocity_Y", "velocity_Z",
     P_MONEY, P_START_MONEY,
 ]
 

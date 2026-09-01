@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
-import { DuelEpisode } from '../../api'
+import { DuelEpisode, DuelFrame } from '../../api'
 
 const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: string }> = {
   shift_peek:  { ru: 'Пик на шифте',         en: 'Shift peek',       color: 'var(--accent2)', icon: '🚶' },
@@ -8,6 +8,17 @@ const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: 
   flashed:     { ru: 'Вышел на флеше',        en: 'Entered flashed',  color: 'var(--accent2)', icon: '🌟' },
   strong_duel: { ru: 'Сильная дуэль',         en: 'Strong duel',      color: 'var(--green)',   icon: '💪' },
 }
+
+// Keys to display in input bar, in order
+const INPUT_KEYS: { key: keyof DuelFrame; label: string; color: string }[] = [
+  { key: 'w',    label: 'W',     color: '#4fc3f7' },
+  { key: 's',    label: 'S',     color: '#4fc3f7' },
+  { key: 'a',    label: 'A',     color: '#4fc3f7' },
+  { key: 'd',    label: 'D',     color: '#4fc3f7' },
+  { key: 'jump', label: 'Space', color: '#aed581' },
+  { key: 'duck', label: 'Ctrl',  color: '#ffb74d' },
+  { key: 'walk', label: 'Shift', color: '#ce93d8' },
+]
 
 function fmtTime(ts: number): string {
   const m = Math.floor(ts / 60)
@@ -22,9 +33,105 @@ interface Props {
   onClose: () => void
 }
 
+function VelocityGraph({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en' }) {
+  if (!frames.length) return null
+
+  const W = 480, H = 72, PAD_L = 28, PAD_R = 8, PAD_T = 6, PAD_B = 18
+  const innerW = W - PAD_L - PAD_R
+  const innerH = H - PAD_T - PAD_B
+
+  const maxVel = Math.max(200, ...frames.map(f => f.vel))
+  const tMin = frames[0].t
+  const tMax = frames[frames.length - 1].t
+  const tRange = tMax - tMin || 1
+
+  const toX = (t: number) => PAD_L + ((t - tMin) / tRange) * innerW
+  const toY = (v: number) => PAD_T + innerH - (v / maxVel) * innerH
+
+  const pts = frames.map(f => `${toX(f.t).toFixed(1)},${toY(f.vel).toFixed(1)}`).join(' ')
+  const killX = toX(0)
+  const thresh50Y = toY(50)
+
+  // x-axis tick positions
+  const tickTs = [tMin, 0, tMax].filter((v, i, a) => a.indexOf(v) === i)
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>
+        {lang === 'ru' ? 'Скорость (u/s)' : 'Velocity (u/s)'}
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+        {/* grid */}
+        <line x1={PAD_L} y1={PAD_T} x2={PAD_L} y2={PAD_T + innerH} stroke="var(--border)" strokeWidth={1} />
+        <line x1={PAD_L} y1={PAD_T + innerH} x2={PAD_L + innerW} y2={PAD_T + innerH} stroke="var(--border)" strokeWidth={1} />
+        {/* 50 u/s threshold */}
+        <line x1={PAD_L} y1={thresh50Y} x2={PAD_L + innerW} y2={thresh50Y}
+          stroke="#ffb74d" strokeWidth={1} strokeDasharray="4 3" opacity={0.6} />
+        <text x={PAD_L + innerW + 2} y={thresh50Y + 3} fontSize={8} fill="#ffb74d" opacity={0.8}>50</text>
+        {/* kill moment reference */}
+        {killX >= PAD_L && killX <= PAD_L + innerW && (
+          <line x1={killX} y1={PAD_T} x2={killX} y2={PAD_T + innerH}
+            stroke="var(--red)" strokeWidth={1} strokeDasharray="4 2" opacity={0.8} />
+        )}
+        {/* velocity line */}
+        <polyline points={pts} fill="none" stroke="var(--accent)" strokeWidth={1.8} strokeLinejoin="round" />
+        {/* x axis labels */}
+        {tickTs.map(t => (
+          <text key={t} x={toX(t)} y={H - 3} fontSize={8} fill="var(--text2)" textAnchor="middle">
+            {t > 0 ? `+${t}` : t}ms
+          </text>
+        ))}
+        {/* y axis labels */}
+        <text x={PAD_L - 2} y={PAD_T + 4} fontSize={8} fill="var(--text2)" textAnchor="end">{Math.round(maxVel)}</text>
+        <text x={PAD_L - 2} y={PAD_T + innerH + 3} fontSize={8} fill="var(--text2)" textAnchor="end">0</text>
+      </svg>
+    </div>
+  )
+}
+
+function InputChart({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en' }) {
+  if (!frames.length) return null
+
+  // compute active % per key across all frames
+  const total = frames.length
+  const stats = INPUT_KEYS.map(({ key, label, color }) => ({
+    label,
+    color,
+    pct: Math.round(frames.filter(f => Boolean(f[key])).length / total * 100),
+  }))
+
+  // only show keys with at least 1 active frame
+  const active = stats.filter(s => s.pct > 0)
+  if (!active.length) return null
+
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 600 }}>
+        {lang === 'ru' ? 'Нажатия клавиш (% времени в окне)' : 'Key presses (% of window)'}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {active.map(({ label, color, pct }) => (
+          <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 36, textAlign: 'center', fontSize: 11, fontWeight: 700,
+              background: 'var(--bg3)', borderRadius: 4, padding: '2px 0',
+              color: 'var(--text2)', flexShrink: 0,
+            }}>{label}</div>
+            <div style={{ flex: 1, height: 14, background: 'var(--bg3)', borderRadius: 4, overflow: 'hidden' }}>
+              <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width 0.3s' }} />
+            </div>
+            <div style={{ width: 32, textAlign: 'right', fontSize: 11, color: 'var(--text2)', flexShrink: 0 }}>{pct}%</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: Props) {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
+  const frames = duel.frames ?? []
 
   const errMeta = duel.errors.map(e => ERROR_META[e]).filter(Boolean)
   const primaryErr = errMeta[0]
@@ -73,8 +180,9 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
       {/* modal panel */}
       <div
         style={{
-          background: 'var(--bg2)', borderRadius: 12, width: '100%', maxWidth: 500,
+          background: 'var(--bg2)', borderRadius: 12, width: '100%', maxWidth: 560,
           border: `1px solid ${headerColor}`, overflow: 'hidden',
+          maxHeight: '90vh', display: 'flex', flexDirection: 'column',
         }}
         onClick={e => e.stopPropagation()}
       >
@@ -105,7 +213,7 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
         </div>
 
         {/* body */}
-        <div style={{ padding: '16px 18px' }}>
+        <div style={{ padding: '16px 18px', overflowY: 'auto', flex: 1 }}>
           {/* participants */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, fontSize: 13 }}>
             <span style={{ fontWeight: 700, color: duel.won ? 'var(--green)' : 'var(--red)' }}>
@@ -158,6 +266,14 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
               </div>
             ))}
           </div>
+
+          {/* velocity graph + input chart */}
+          {frames.length > 0 && (
+            <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
+              <VelocityGraph frames={frames} lang={lang} />
+              <InputChart frames={frames} lang={lang} />
+            </div>
+          )}
 
           {/* error badges */}
           {errMeta.length > 0 && (

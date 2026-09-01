@@ -165,6 +165,18 @@ export interface PlayerAnalyticsData {
   firstBulletShots: FirstBulletShot[]
 }
 
+export interface DuelFrame {
+  t: number      // ms offset from kill tick (negative = before)
+  vel: number    // speed in u/s
+  w: boolean
+  s: boolean
+  a: boolean
+  d: boolean
+  jump: boolean
+  duck: boolean
+  walk: boolean
+}
+
 export interface DuelEpisode {
   round: number
   tick: number
@@ -187,13 +199,7 @@ export interface DuelEpisode {
     aliveEnemies: number
     attackerWalking: boolean
   }
-}
-
-export interface FirstBulletShot {
-  round: number
-  tick: number
-  hit: boolean
-  weapon: string
+  frames: DuelFrame[]
 }
 
 export interface PlayerMetrics {

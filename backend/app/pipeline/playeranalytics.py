@@ -61,6 +61,110 @@ def _build_ticks_by_tick(ticks_df) -> dict:
         return {}
 
 
+# Source 2 IN_ button bitmask constants
+_IN_FORWARD   = 1 << 3   # W
+_IN_BACK      = 1 << 4   # S
+_IN_MOVELEFT  = 1 << 9   # A
+_IN_MOVERIGHT = 1 << 10  # D
+_IN_JUMP      = 1 << 1   # Space
+_IN_DUCK      = 1 << 2   # Ctrl / crouch
+_IN_SPEED     = 1 << 16  # Shift / walk (same as is_walking)
+
+
+def _decode_buttons(bs) -> dict:
+    """Decode button_states bitmask into individual key flags."""
+    try:
+        b = int(bs)
+    except (TypeError, ValueError):
+        b = 0
+    return {
+        "w": bool(b & _IN_FORWARD),
+        "s": bool(b & _IN_BACK),
+        "a": bool(b & _IN_MOVELEFT),
+        "d": bool(b & _IN_MOVERIGHT),
+        "jump": bool(b & _IN_JUMP),
+        "duck": bool(b & _IN_DUCK),
+        "walk": bool(b & _IN_SPEED),
+    }
+
+
+def _build_duel_frames(
+    ticks_df,
+    steamid: str,
+    kill_tick: int,
+    round_start_tick: int,
+    round_end_tick: int,
+    tickrate: float,
+    window_ticks: int = 192,  # ≈ 3s at 64-tick (1.5s before + 1.5s after)
+) -> list[dict]:
+    """
+    Extract per-tick snapshots for the player in a ±window around kill_tick.
+    Returns list of {t, vel, w, s, a, d, jump, duck, walk} dicts.
+    Uses velocity_X/Y/Z columns when available, falls back to positional diff.
+    """
+    if ticks_df is None or not len(ticks_df):
+        return []
+
+    t_lo = max(round_start_tick, kill_tick - window_ticks // 2)
+    t_hi = min(round_end_tick, kill_tick + window_ticks // 2)
+
+    try:
+        mask = (
+            (ticks_df["steamid"].astype(str) == steamid) &
+            (ticks_df["tick"] >= t_lo) &
+            (ticks_df["tick"] <= t_hi)
+        )
+        sub = ticks_df[mask].sort_values("tick")
+        if sub.empty:
+            return []
+
+        has_vel_cols = all(c in sub.columns for c in ("velocity_X", "velocity_Y"))
+        has_buttons = "button_states" in sub.columns
+
+        frames: list[dict] = []
+        prev_x = prev_y = None
+        prev_tick = None
+
+        for _, row in sub.iterrows():
+            tick = int(row["tick"])
+
+            # velocity
+            if has_vel_cols:
+                vx = _f(row.get("velocity_X", 0))
+                vy = _f(row.get("velocity_Y", 0))
+                vel = round((vx * vx + vy * vy) ** 0.5, 1)
+            elif prev_x is not None and prev_tick is not None:
+                dx = _f(row["X"]) - prev_x
+                dy = _f(row["Y"]) - prev_y
+                dt = max(1, tick - prev_tick)
+                vel = round((dx * dx + dy * dy) ** 0.5 / dt * tickrate, 1)
+            else:
+                vel = 0.0
+
+            prev_x = _f(row["X"])
+            prev_y = _f(row["Y"])
+            prev_tick = tick
+
+            # buttons
+            btns = _decode_buttons(row.get("button_states")) if has_buttons else {
+                "w": False, "s": False, "a": False, "d": False,
+                "jump": False, "duck": False, "walk": False,
+            }
+
+            # relative tick offset from kill (positive = after kill)
+            offset = round((tick - kill_tick) / tickrate * 1000)  # ms
+
+            frames.append({
+                "t": offset,
+                "vel": vel,
+                **btns,
+            })
+
+        return frames
+    except Exception:
+        return []
+
+
 def _nearest_tick(ticks_by_tick: dict, target: int):
     """Return the frame closest to target tick, or None if no ticks at all."""
     if not ticks_by_tick:
@@ -346,6 +450,16 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                 "attackerWalking": a_walking,
             }
 
+        # per-tick frames for EpisodeDrillDown visualisation
+        if r_info is not None:
+            frames = _build_duel_frames(
+                ticks_df, steamid, tick,
+                r_info["freezeEndTick"], r_info["endTick"],
+                ctx.tickrate,
+            )
+        else:
+            frames = []
+
         duels.append({
             "round": rn,
             "tick": tick,
@@ -358,6 +472,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             "opening": opening_tick_by_round.get(rn) == tick,
             "errors": errors,
             "context": context,
+            "frames": frames,
         })
 
     return duels
