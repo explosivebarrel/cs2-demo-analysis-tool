@@ -54,15 +54,15 @@ function prettyWeapon(raw: string, lang: 'ru' | 'en'): string {
 
 // ------------------------------------------------------------------ MetricHero
 
-function MetricHero({ title, subtitle, value, metricKey, lang }: {
-  title: string; subtitle?: string; value: string; metricKey: string; lang: 'ru' | 'en'
+function MetricHero({ title, subtitle, value, metricKey, lang, higherIsBetter = true }: {
+  title: string; subtitle?: string; value: string; metricKey: string; lang: 'ru' | 'en'; higherIsBetter?: boolean
 }) {
   const benchmarks = useBenchmarks()
   const [showTip, setShowTip] = useState(false)
   const rawNum = parseFloat(value)
-  const tier = isNaN(rawNum) ? null : getTier(benchmarks, metricKey, rawNum)
+  const tier = isNaN(rawNum) ? null : getTier(benchmarks, metricKey, rawNum, higherIsBetter)
   const tiers = benchmarks[metricKey]
-  const tip = tiers && !isNaN(rawNum) ? formatTierTooltip(tiers, rawNum, lang) : null
+  const tip = tiers && !isNaN(rawNum) ? formatTierTooltip(tiers, rawNum, lang, higherIsBetter) : null
   const color = tier ? TIER_COLORS[tier] : 'var(--text)'
   const label = tier ? TIER_LABELS[tier][lang] : null
   return (
@@ -268,6 +268,41 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
   )
 }
 
+// ------------------------------------------------------------------ WinRateComparison
+
+function WinRateComparison({ cleanCount, cleanWins, otherCount, otherWins, lang }: {
+  cleanCount: number; cleanWins: number
+  otherCount: number; otherWins: number
+  lang: 'ru' | 'en'
+}) {
+  const ru = lang === 'ru'
+  const cleanPct = cleanCount > 0 ? (cleanWins / cleanCount * 100) : 0
+  const otherPct = otherCount > 0 ? (otherWins / otherCount * 100) : 0
+  const delta = cleanPct - otherPct
+  const deltaColor = delta >= 5 ? 'var(--green)' : delta <= -5 ? 'var(--red)' : 'var(--text2)'
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
+      {[
+        { label: ru ? 'Когда механика чистая' : 'With clean mechanics', pct: cleanPct, n: cleanCount, good: true },
+        { label: ru ? 'Во всех остальных' : 'All other duels', pct: otherPct, n: otherCount, good: false },
+      ].map(({ label, pct, n, good }) => (
+        <div key={label} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+          <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>{label}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: good ? 'var(--green)' : 'var(--text)', lineHeight: 1, marginBottom: 4 }}>
+            {pct.toFixed(1)}%
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text2)' }}>{ru ? `${n} дуэлей` : `${n} duels`}</div>
+        </div>
+      ))}
+      {cleanCount > 0 && otherCount > 0 && (
+        <div style={{ gridColumn: '1 / -1', fontSize: 12, color: deltaColor, fontWeight: 700, textAlign: 'center', paddingTop: 2 }}>
+          {delta >= 0 ? '+' : ''}{delta.toFixed(1)}% {ru ? 'к победе' : 'to win rate'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ metric pages
 
 function OpeningWinPctPage({ analytics, playerNames, lang, totalRounds }: {
@@ -313,9 +348,16 @@ function IdealStrafePctPage({ analytics, playerNames, lang, totalRounds }: {
   lang: 'ru' | 'en'; totalRounds: number
 }) {
   const pct = analytics.metrics.idealStrafePct
-  const won = analytics.duels.filter(d => d.won)
+  const allDuels = analytics.duels
+  const won = allDuels.filter(d => d.won)
+  const lost = allDuels.filter(d => !d.won)
   const ideal = won.filter(d => !d.errors.includes('moving_shot'))
   const moving = won.filter(d => d.errors.includes('moving_shot'))
+  // clean = stopped shot duels (won + lost); other = moving shot duels (won + lost)
+  const cleanAll = allDuels.filter(d => !d.errors.includes('moving_shot'))
+  const movingAll = allDuels.filter(d => d.errors.includes('moving_shot'))
+  const cleanWins = cleanAll.filter(d => d.won).length
+  const movingWins = movingAll.filter(d => d.won).length
   const [filter, setFilter] = useState<'ideal' | 'moving'>('moving')
   const shown = filter === 'ideal' ? ideal : moving
   const roundOutcomes: Record<number, RoundOutcome> = {}
@@ -327,6 +369,12 @@ function IdealStrafePctPage({ analytics, playerNames, lang, totalRounds }: {
         title={ru ? 'Идеальные стрейфы' : 'Ideal strafes'}
         subtitle={ru ? `${ideal.length} на стопе · ${moving.length} в движении (из ${won.length} побед)` : `${ideal.length} stopped · ${moving.length} moving (of ${won.length} wins)`}
         value={pct.toFixed(1) + '%'} metricKey="idealStrafePct" lang={lang}
+      />
+      <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+      <WinRateComparison
+        cleanCount={cleanAll.length} cleanWins={cleanWins}
+        otherCount={movingAll.length} otherWins={movingWins}
+        lang={lang}
       />
       <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
       <FilterBar
@@ -486,6 +534,60 @@ function LostDuelsPage({ analytics, playerNames, lang }: {
   )
 }
 
+function CounterStrafeErrorsPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const m = analytics.metrics
+  const allDuels = analytics.duels
+  const movingDuels = allDuels.filter(d => d.errors.includes('moving_shot'))
+  const cleanDuels = allDuels.filter(d => !d.errors.includes('moving_shot'))
+  const movingWins = movingDuels.filter(d => d.won).length
+  const cleanWins = cleanDuels.filter(d => d.won).length
+  const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all')
+  const shown = filter === 'won' ? movingDuels.filter(d => d.won) : filter === 'lost' ? movingDuels.filter(d => !d.won) : movingDuels
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of movingDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
+  const ru = lang === 'ru'
+  const errCount = m.counterStrafeErrors ?? 0
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Ошибки контрстрейфа' : 'Counter-strafe errors'}
+        subtitle={ru ? 'Выстрелов сделано в движении (нет остановки перед выстрелом)' : 'Shots fired while moving (no stop before shooting)'}
+        value={String(errCount)} metricKey="counterStrafeErrors" lang={lang} higherIsBetter={false}
+      />
+      <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+      <WinRateComparison
+        cleanCount={cleanDuels.length} cleanWins={cleanWins}
+        otherCount={movingDuels.length} otherWins={movingWins}
+        lang={lang}
+      />
+      <SectionHeading label={ru ? 'Дуэли с выстрелами в движении' : 'Duels with moving shots'} />
+      {movingDuels.length > 0 ? (
+        <>
+          <FilterBar
+            options={[
+              { key: 'all'  as const, label: ru ? `Все (${movingDuels.length})` : `All (${movingDuels.length})` },
+              { key: 'won'  as const, label: ru ? `Выигранные (${movingWins})` : `Won (${movingWins})`, color: 'var(--green)' },
+              { key: 'lost' as const, label: ru ? `Проигранные (${movingDuels.length - movingWins})` : `Lost (${movingDuels.length - movingWins})`, color: 'var(--red)' },
+            ]}
+            active={filter} onChange={setFilter}
+          />
+          <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+          <div style={{ marginTop: 24 }}>
+            <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+            <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+          </div>
+        </>
+      ) : (
+        <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
+          {ru ? 'Нет дуэлей с выстрелами в движении' : 'No duels with moving shots'}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DisciplinePage({ analytics, playerNames, lang }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
 }) {
@@ -536,7 +638,7 @@ function TtkPage({ analytics, playerNames, lang, totalRounds }: {
       <MetricHero
         title={ru ? 'Время до фрага' : 'Time to kill'}
         subtitle={ru ? 'Среднее время от первого выстрела до кила' : 'Avg ms from first shot to kill'}
-        value={val} metricKey="ttk_ms" lang={lang}
+        value={val} metricKey="ttk_ms" lang={lang} higherIsBetter={false}
       />
       <SectionHeading label={ru ? 'Победные дуэли' : 'Won duels'} />
       <FilterBar
@@ -635,7 +737,7 @@ function ReloadErrorsPage({ analytics, playerNames, lang, totalRounds }: {
       <MetricHero
         title={ru ? 'Перезарядки' : 'Reload errors'}
         subtitle={ru ? 'Перезарядок с патронами в магазине' : 'Reloads with bullets still in magazine'}
-        value={String(m.reloadErrors ?? 0)} metricKey="reloadErrors" lang={lang}
+        value={String(m.reloadErrors ?? 0)} metricKey="reloadErrors" lang={lang} higherIsBetter={false}
       />
       <SectionHeading label={ru ? 'Дуэли с перезарядкой' : 'Duels with reload'} />
       {reloadDuels.length > 0 ? (
@@ -734,8 +836,9 @@ export default function MetricsPage() {
         return <LostDuelsPage analytics={analytics} playerNames={playerNames} lang={lang} />
       case 'shiftPeekPct':
       case 'isolatedPct':
-      case 'counterStrafeErrors':
         return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} />
+      case 'counterStrafeErrors':
+        return <CounterStrafeErrorsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'ttk_ms':
         return <TtkPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'clutchWinPct':
