@@ -240,11 +240,11 @@ export default function HeatmapsPage() {
                 style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
             </div>
           </div>
-          {scale > 1 && (
-            <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
-              {scale.toFixed(1)}x · scroll out to {t('zoomReset')}
-            </div>
-          )}
+          <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
+            {scale > 1
+              ? `${scale.toFixed(1)}× · ${t('zoomReset')}`
+              : t('zoomHint')}
+          </div>
         </div>
 
         {/* resizer */}
