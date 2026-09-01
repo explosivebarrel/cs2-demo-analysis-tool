@@ -11,10 +11,6 @@ const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: 
 
 // Keys to display in input bar, in order
 const INPUT_KEYS: { key: keyof DuelFrame; label: string; color: string }[] = [
-  { key: 'w',    label: 'W',     color: '#4fc3f7' },
-  { key: 's',    label: 'S',     color: '#4fc3f7' },
-  { key: 'a',    label: 'A',     color: '#4fc3f7' },
-  { key: 'd',    label: 'D',     color: '#4fc3f7' },
   { key: 'jump', label: 'Space', color: '#aed581' },
   { key: 'duck', label: 'Ctrl',  color: '#ffb74d' },
   { key: 'walk', label: 'Shift', color: '#ce93d8' },

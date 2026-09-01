@@ -168,13 +168,9 @@ export interface PlayerAnalyticsData {
 export interface DuelFrame {
   t: number      // ms offset from kill tick (negative = before)
   vel: number    // speed in u/s
-  w: boolean
-  s: boolean
-  a: boolean
-  d: boolean
-  jump: boolean
-  duck: boolean
-  walk: boolean
+  jump: boolean  // player_jump event in this tick window
+  duck: boolean  // duck_amount > 0.3
+  walk: boolean  // is_walking (Shift)
 }
 
 export interface DuelEpisode {
