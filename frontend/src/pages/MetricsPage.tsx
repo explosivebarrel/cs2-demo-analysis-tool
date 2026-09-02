@@ -773,24 +773,29 @@ function CounterStrafeErrorsPage({ analytics, playerNames, lang, totalRounds }: 
   )
 }
 
-function DisciplinePage({ analytics, playerNames, lang, activeKey }: {
+function DisciplinePage({ analytics, playerNames, lang, activeKey, totalRounds }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>
-  lang: 'ru' | 'en'; activeKey: 'shiftPeekPct' | 'isolatedPct'
+  lang: 'ru' | 'en'; activeKey: 'shiftPeekPct' | 'isolatedPct'; totalRounds: number
 }) {
   const m = analytics.metrics
   const shiftDuels = analytics.duels.filter(d => d.errors.includes('shift_peek'))
   const isoDuels = analytics.duels.filter(d => d.errors.includes('isolated'))
+  const cleanDuels = analytics.duels.filter(d => !d.errors.includes('shift_peek') && !d.errors.includes('isolated'))
   const defaultFilter = activeKey === 'shiftPeekPct' ? 'shift_peek' : 'isolated'
   const [filter, setFilter] = useState<'shift_peek' | 'isolated'>(defaultFilter)
   const shown = filter === 'shift_peek' ? shiftDuels : isoDuels
   const ru = lang === 'ru'
 
   const isShift = activeKey === 'shiftPeekPct'
+  const activeDuels = isShift ? shiftDuels : isoDuels
   const heroValue = isShift ? m.shiftPeekPct.toFixed(1) + '%' : m.isolatedPct.toFixed(1) + '%'
   const heroTitle = isShift ? (ru ? 'Шифт-пики' : 'Shift peeks') : (ru ? 'Игра в изоляции' : 'Isolated plays')
   const heroSub = isShift
     ? (ru ? '% дуэлей начато из шифта' : '% of duels started while walking')
     : (ru ? '% дуэлей без поддержки союзников' : '% of duels without nearby allies')
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of activeDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
 
   return (
     <div>
@@ -798,6 +803,18 @@ function DisciplinePage({ analytics, playerNames, lang, activeKey }: {
         title={heroTitle} subtitle={heroSub}
         value={heroValue} metricKey={activeKey} lang={lang} higherIsBetter={false}
       />
+      {activeDuels.length > 0 && cleanDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={activeDuels.length} cleanWins={activeDuels.filter(d => d.won).length}
+            otherCount={cleanDuels.length} otherWins={cleanDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={isShift ? (ru ? 'Шифт-пики' : 'Shift peeks') : (ru ? 'В изоляции' : 'Isolated')}
+            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+          />
+        </>
+      )}
       <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 16px', marginBottom: 20 }}>
         <StatBar label={ru ? 'Шифт-пики' : 'Shift peeks'} value={m.shiftPeekPct} max={100} color={m.shiftPeekPct > 30 ? 'var(--accent2)' : 'var(--green)'} />
         <StatBar label={ru ? 'Игра в изоляции' : 'Isolated plays'} value={m.isolatedPct} max={100} color={m.isolatedPct > 30 ? 'var(--red)' : 'var(--green)'} />
@@ -811,6 +828,12 @@ function DisciplinePage({ analytics, playerNames, lang, activeKey }: {
         active={filter} onChange={setFilter}
       />
       <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+      {activeDuels.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1862,9 +1885,9 @@ export default function MetricsPage() {
       case 'lostDuels':
         return <LostDuelsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'shiftPeekPct':
-        return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} activeKey="shiftPeekPct" />
+        return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} activeKey="shiftPeekPct" totalRounds={totalRounds} />
       case 'isolatedPct':
-        return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} activeKey="isolatedPct" />
+        return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} activeKey="isolatedPct" totalRounds={totalRounds} />
       case 'counterStrafeErrors':
         return <CounterStrafeErrorsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'ttk_ms':
