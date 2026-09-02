@@ -8,8 +8,9 @@ const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: 
   isolated:    { ru: 'Игра в изоляции',       en: 'Playing isolated', color: 'var(--accent)',  icon: '🔇' },
   flashed:     { ru: 'Вышел на флеше',        en: 'Entered flashed',  color: 'var(--accent2)', icon: '🌟' },
   strong_duel: { ru: 'Сильная дуэль',         en: 'Strong duel',      color: 'var(--green)',   icon: '💪' },
-  overshoot:   { ru: 'Перелёт прицела',       en: 'Aim overshoot',    color: 'var(--red)',     icon: '→' },
-  undershoot:  { ru: 'Недолёт прицела',       en: 'Aim undershoot',   color: 'var(--accent2)', icon: '←' },
+  overshoot:    { ru: 'Перелёт прицела',         en: 'Aim overshoot',      color: 'var(--red)',     icon: '→' },
+  undershoot:   { ru: 'Недолёт прицела',         en: 'Aim undershoot',     color: 'var(--accent2)', icon: '←' },
+  missed_first: { ru: 'Неточный первый выстрел', en: 'Inaccurate 1st shot', color: 'var(--accent)',  icon: '✗' },
 }
 
 // pseudo-groups for "no errors" bucket

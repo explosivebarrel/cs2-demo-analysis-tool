@@ -1266,6 +1266,105 @@ function CrosshairPlacementPage({ analytics, lang }: {
   )
 }
 
+// ------------------------------------------------------------------ missed first shot page
+
+function MissedFirstPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>
+  lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const ru = lang === 'ru'
+  const wonDuels = analytics.duels.filter(d => d.won)
+  const missedDuels = wonDuels.filter(d => d.errors.includes('missed_first'))
+  const hitDuels = wonDuels.filter(d => !d.errors.includes('missed_first'))
+
+  const [filter, setFilter] = useState<'missed' | 'hit'>('missed')
+  const shown = filter === 'missed' ? missedDuels : hitDuels
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of wonDuels) {
+    if (d.errors.includes('missed_first')) roundOutcomes[d.round] = 'death'
+    else if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  }
+
+  const pct = wonDuels.length > 0 ? Math.round(missedDuels.length / wonDuels.length * 100) : 0
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Неточный первый выстрел' : 'Inaccurate first shot'}
+        subtitle={ru
+          ? `${missedDuels.length} промахов первой пулей из ${wonDuels.length} выигранных дуэлей`
+          : `${missedDuels.length} first-bullet misses out of ${wonDuels.length} won duels`}
+        value={`${pct}%`} metricKey="firstBulletAcc" lang={lang} higherIsBetter={false}
+      />
+
+      {wonDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Структура побед' : 'Win breakdown'} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
+            {[
+              { key: 'missed' as const, label: ru ? 'Промах 1-й пулей' : 'Missed 1st bullet', count: missedDuels.length, color: 'var(--red)' },
+              { key: 'hit' as const, label: ru ? 'Попал 1-й пулей' : 'Hit 1st bullet', count: hitDuels.length, color: 'var(--green)' },
+            ].map(({ key, label, count, color }) => {
+              const barPct = wonDuels.length > 0 ? Math.round(count / wonDuels.length * 100) : 0
+              return (
+                <div key={key} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>{count}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{barPct}% {ru ? 'от побед' : 'of wins'}</div>
+                  <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ width: `${barPct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      {missedDuels.length > 0 && hitDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={hitDuels.length} cleanWins={hitDuels.filter(d => d.won).length}
+            otherCount={missedDuels.length} otherWins={missedDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Попал первой пулей' : 'Hit 1st bullet'}
+            otherLabel={ru ? 'Промахнулся 1-й пулей' : 'Missed 1st bullet'}
+          />
+        </>
+      )}
+
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {ru
+          ? 'Неточный первый выстрел — первая пуля в дуэли не нанесла урона врагу. Даже если ты выиграл дуэль, это означает, что ты потерял преимущество первого выстрела. Улучши пре-аим и контрстрейф, чтобы снизить этот показатель.'
+          : 'Inaccurate first shot — the first bullet fired in the duel did no damage. Even when you won, it means you lost the first-bullet advantage. Improve your pre-aim and counter-strafe to reduce this number.'}
+      </div>
+
+      {wonDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+          <FilterBar
+            options={[
+              { key: 'missed' as const, label: ru ? `Промах (${missedDuels.length})` : `Missed (${missedDuels.length})`, color: 'var(--red)' },
+              { key: 'hit' as const, label: ru ? `Попал (${hitDuels.length})` : `Hit (${hitDuels.length})`, color: 'var(--green)' },
+            ]}
+            active={filter} onChange={setFilter}
+          />
+          <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+        </>
+      )}
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ excellent contacts page
 
 function ExcellentContactsPage({ analytics, lang, totalRounds }: {
@@ -1413,6 +1512,8 @@ export default function MetricsPage() {
         return <ExcellentContactsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'crosshairPlacementPct':
         return <CrosshairPlacementPage analytics={analytics} lang={lang} />
+      case 'missedFirst':
+        return <MissedFirstPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       default:
         return (
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>

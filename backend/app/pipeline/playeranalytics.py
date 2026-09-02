@@ -385,6 +385,14 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             if rn is not None:
                 wf_ticks[(steamid, rn)].append(int(wrow["tick"]))
 
+    # enemy hurt ticks by this player — for missed_first detection
+    enemy_hurt_ticks: set[int] = set()
+    hurt_df = ctx.ev("player_hurt")
+    if len(hurt_df):
+        adf = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
+        for t in adf["tick"]:
+            enemy_hurt_ticks.add(int(t))
+
     # jump ticks for this player (player_jump event)
     jump_ticks: set[int] = set()
     jmp_df = ctx.ev("player_jump")
@@ -457,6 +465,10 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                     )
                     if aim_err and aim_err not in errors:
                         errors.append(aim_err)
+                    # missed first shot: first bullet had no hurt event within 8 ticks
+                    first_hit = any(0 <= ht - first_fire <= 8 for ht in enemy_hurt_ticks)
+                    if not first_hit and "missed_first" not in errors:
+                        errors.append("missed_first")
             except Exception:
                 pass
         else:
