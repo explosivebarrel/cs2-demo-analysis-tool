@@ -842,7 +842,9 @@ function TtkPage({ analytics, playerNames, lang, totalRounds }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
-  const won = analytics.duels.filter(d => d.won)
+  const allDuels = analytics.duels
+  const won = allDuels.filter(d => d.won)
+  const lost = allDuels.filter(d => !d.won)
   const [filter, setFilter] = useState<'all' | 'stopped' | 'moving'>('all')
   const stopped = won.filter(d => !d.errors.includes('moving_shot'))
   const moving = won.filter(d => d.errors.includes('moving_shot'))
@@ -858,6 +860,18 @@ function TtkPage({ analytics, playerNames, lang, totalRounds }: {
         subtitle={ru ? 'Среднее время от первого выстрела до кила' : 'Avg ms from first shot to kill'}
         value={val} metricKey="ttk_ms" lang={lang} higherIsBetter={false}
       />
+      {stopped.length > 0 && moving.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'На стопе vs в движении' : 'Stopped vs moving'} />
+          <WinRateComparison
+            cleanCount={stopped.length} cleanWins={stopped.length}
+            otherCount={moving.length} otherWins={moving.length}
+            lang={lang}
+            cleanLabel={ru ? 'Остановился' : 'Stopped'}
+            otherLabel={ru ? 'В движении' : 'Moving'}
+          />
+        </>
+      )}
       <SectionHeading label={ru ? 'Победные дуэли' : 'Won duels'} />
       <FilterBar
         options={[
@@ -1262,10 +1276,16 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
   const m = analytics.metrics
   const ov = m.overshootCount ?? 0
   const ru = lang === 'ru'
-  const wonDuels = analytics.duels.filter(d => d.won)
+  const allDuels = analytics.duels
+  const wonDuels = allDuels.filter(d => d.won)
+  const lostDuels = allDuels.filter(d => !d.won)
   const overshootDuels = wonDuels.filter(d => d.errors.includes('overshoot'))
   const undershootDuels = wonDuels.filter(d => d.errors.includes('undershoot'))
   const cleanDuels = wonDuels.filter(d => !d.errors.includes('overshoot') && !d.errors.includes('undershoot'))
+
+  // for WinRateComparison: clean won duels vs all lost duels (overshoot = aim issue)
+  const aimErrDuels = [...overshootDuels, ...undershootDuels]
+  const otherDuels = allDuels.filter(d => !d.errors.includes('overshoot') && !d.errors.includes('undershoot'))
 
   const [filter, setFilter] = useState<'overshoot' | 'undershoot' | 'clean'>('overshoot')
   const shown = filter === 'overshoot' ? overshootDuels : filter === 'undershoot' ? undershootDuels : cleanDuels
@@ -1286,6 +1306,19 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
         value={String(ov)}
         metricKey="overshootCount" lang={lang}
       />
+
+      {aimErrDuels.length > 0 && otherDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={otherDuels.length} cleanWins={otherDuels.filter(d => d.won).length}
+            otherCount={aimErrDuels.length} otherWins={aimErrDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Без ошибок прицела' : 'Clean aim'}
+            otherLabel={ru ? 'Перелёт / недолёт' : 'Overshoot / undershoot'}
+          />
+        </>
+      )}
 
       {/* split bar */}
       {wonDuels.length > 0 && (
@@ -1349,8 +1382,8 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
 
 // ------------------------------------------------------------------ crosshair placement page
 
-function CrosshairPlacementPage({ analytics, lang }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
+function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
   const pct = m.crosshairPlacementPct ?? 0
@@ -1386,6 +1419,18 @@ function CrosshairPlacementPage({ analytics, lang }: {
   const totalHits = shots.filter(s => s.hit).length
   const headHitsEst = hitRoundWeaponMap.filter(r => r.headshot).length
 
+  // WinRateComparison: head-hit rounds vs body-hit rounds
+  const headRounds = new Set(hitRoundWeaponMap.filter(r => r.headshot).map(r => r.round))
+  const bodyRounds = new Set(hitRoundWeaponMap.filter(r => !r.headshot).map(r => r.round))
+  const headDuels = duels.filter(d => headRounds.has(d.round))
+  const bodyDuels = duels.filter(d => bodyRounds.has(d.round))
+
+  // RoundGrid: color by duel outcome
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of duels) {
+    if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
+  }
+
   return (
     <div>
       <MetricHero
@@ -1395,6 +1440,20 @@ function CrosshairPlacementPage({ analytics, lang }: {
           : `${headHitsEst} head hits out of ${totalHits} first-bullet hits`}
         value={pct.toFixed(1) + '%'} metricKey="crosshairPlacementPct" lang={lang}
       />
+
+      {headDuels.length > 0 && bodyDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={headDuels.length} cleanWins={headDuels.filter(d => d.won).length}
+            otherCount={bodyDuels.length} otherWins={bodyDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Первая пуля — голова' : 'First bullet — head'}
+            otherLabel={ru ? 'Первая пуля — тело' : 'First bullet — body'}
+          />
+        </>
+      )}
+
       <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
@@ -1459,6 +1518,11 @@ function CrosshairPlacementPage({ analytics, lang }: {
             </div>
           )
         })}
+      </div>
+
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
   )
@@ -1909,7 +1973,7 @@ export default function MetricsPage() {
       case 'excellentContacts':
         return <ExcellentContactsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'crosshairPlacementPct':
-        return <CrosshairPlacementPage analytics={analytics} lang={lang} />
+        return <CrosshairPlacementPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'missedFirst':
         return <MissedFirstPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'passiveAngle':
