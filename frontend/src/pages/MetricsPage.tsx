@@ -596,18 +596,31 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
   )
 }
 
-function LostDuelsPage({ analytics, playerNames, lang }: {
-  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
+function LostDuelsPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const lost = analytics.duels.filter(d => !d.won)
   const flashed = lost.filter(d => d.errors.includes('flashed'))
   const moving = lost.filter(d => d.errors.includes('moving_shot'))
   const outnumbered = lost.filter(d => d.errors.includes('outnumbered'))
   const clean = lost.filter(d => d.errors.length === 0)
+  const other = lost.filter(d => d.errors.length > 0 && !d.errors.includes('flashed') && !d.errors.includes('moving_shot') && !d.errors.includes('outnumbered'))
   const [filter, setFilter] = useState<'all' | 'flashed' | 'moving' | 'outnumbered' | 'clean'>('all')
   const shown = filter === 'flashed' ? flashed : filter === 'moving' ? moving
     : filter === 'outnumbered' ? outnumbered : filter === 'clean' ? clean : lost
   const ru = lang === 'ru'
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of lost) roundOutcomes[d.round] = 'death'
+
+  const breakdownItems = [
+    { label: ru ? 'Под флешкой' : 'Flashed', count: flashed.length, color: 'var(--accent2)' },
+    { label: ru ? 'В движении' : 'Moving', count: moving.length, color: 'var(--accent)' },
+    { label: ru ? 'В меньшинстве' : 'Outnumbered', count: outnumbered.length, color: 'var(--red)' },
+    { label: ru ? 'Прочие ошибки' : 'Other errors', count: other.length, color: 'var(--text2)' },
+    { label: ru ? 'Чистые' : 'Clean', count: clean.length, color: '#7ec8e3' },
+  ].filter(b => b.count > 0)
+
   return (
     <div>
       <MetricHero
@@ -615,6 +628,29 @@ function LostDuelsPage({ analytics, playerNames, lang }: {
         subtitle={ru ? `${lost.length} смертей` : `${lost.length} deaths`}
         value={String(lost.length)} metricKey="lostDuels" lang={lang}
       />
+
+      {breakdownItems.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Причины проигрышей' : 'Loss causes'} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+            {breakdownItems.map(({ label, count, color }) => {
+              const pct = lost.length > 0 ? Math.round(count / lost.length * 100) : 0
+              return (
+                <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 120, fontSize: 12, color: 'var(--text2)', flexShrink: 0 }}>{label}</div>
+                  <div style={{ flex: 1, height: 8, background: 'var(--bg2)', borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 4, transition: 'width .3s' }} />
+                  </div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color, minWidth: 52, textAlign: 'right' }}>
+                    {count} ({pct}%)
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
       <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
       <FilterBar
         options={[
@@ -627,6 +663,10 @@ function LostDuelsPage({ analytics, playerNames, lang }: {
         active={filter} onChange={setFilter}
       />
       <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
     </div>
   )
 }
@@ -869,8 +909,8 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
   )
 }
 
-function FlashEfficiencyPage({ analytics, playerNames, lang }: {
-  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'
+function FlashEfficiencyPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
   const flashedDuels = analytics.duels.filter(d => d.errors.includes('flashed'))
@@ -879,6 +919,10 @@ function FlashEfficiencyPage({ analytics, playerNames, lang }: {
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all')
   const shown = filter === 'won' ? flashedWon : filter === 'lost' ? flashedLost : flashedDuels
   const ru = lang === 'ru'
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of flashedDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
+
   return (
     <div>
       <MetricHero
@@ -888,6 +932,15 @@ function FlashEfficiencyPage({ analytics, playerNames, lang }: {
       />
       {flashedDuels.length > 0 ? (
         <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={flashedDuels.length} cleanWins={flashedWon.length}
+            otherCount={analytics.duels.filter(d => !d.errors.includes('flashed')).length}
+            otherWins={analytics.duels.filter(d => !d.errors.includes('flashed') && d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Под флешкой' : 'While flashed'}
+            otherLabel={ru ? 'Без флешки' : 'Not flashed'}
+          />
           <SectionHeading label={ru ? 'Дуэли, где тебя ослепили' : 'Duels where you were flashed'} />
           <FilterBar
             options={[
@@ -898,6 +951,10 @@ function FlashEfficiencyPage({ analytics, playerNames, lang }: {
             active={filter} onChange={setFilter}
           />
           <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+          <div style={{ marginTop: 24 }}>
+            <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+            <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+          </div>
         </>
       ) : (
         <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
@@ -1746,7 +1803,7 @@ export default function MetricsPage() {
       case 'tradedDeathPct':
         return <TradedDeathsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'lostDuels':
-        return <LostDuelsPage analytics={analytics} playerNames={playerNames} lang={lang} />
+        return <LostDuelsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'shiftPeekPct':
         return <DisciplinePage analytics={analytics} playerNames={playerNames} lang={lang} activeKey="shiftPeekPct" />
       case 'isolatedPct':
@@ -1758,7 +1815,7 @@ export default function MetricsPage() {
       case 'clutchWinPct':
         return <ClutchWinPctPage analytics={analytics} playerData={p!} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'flashEfficiency':
-        return <FlashEfficiencyPage analytics={analytics} playerNames={playerNames} lang={lang} />
+        return <FlashEfficiencyPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'reloadErrors':
         return <ReloadErrorsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'angleControlCount':
