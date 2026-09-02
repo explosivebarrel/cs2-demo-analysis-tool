@@ -999,6 +999,86 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
   )
 }
 
+// ------------------------------------------------------------------ reaction time page
+
+function ReactionTimePage({ analytics, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const m = analytics.metrics
+  const rt = (m as any).reactionTimeMs ?? 0
+  const ru = lang === 'ru'
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of analytics.duels) {
+    if (d.won && !(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  }
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Время реакции' : 'Reaction time'}
+        subtitle={ru ? 'Ср. мс от появления врага в FOV до первого выстрела' : 'Avg ms from enemy entering FOV to first shot'}
+        value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
+        metricKey="reactionTimeMs" lang={lang}
+      />
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {ru
+          ? `Время реакции — сколько миллисекунд прошло с момента, когда враг появился в твоём поле зрения (конус ${40}°), до первого выстрела в этой дуэли. Измеряется только по выигранным дуэлям. Ниже = быстрее.`
+          : `Reaction time measures how many milliseconds elapsed from when the enemy first appeared in your field of view (${40}° cone) until your first shot in the duel. Measured on winning duels only. Lower is better.`}
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ overshoot page
+
+function OvershootPage({ analytics, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const m = analytics.metrics
+  const ov = (m as any).overshootCount ?? 0
+  const ru = lang === 'ru'
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of analytics.duels) {
+    if (d.won && !(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  }
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Промахи прицела' : 'Overshoot count'}
+        subtitle={ru ? 'Раз прицел перелетал мимо врага от появления до кила' : 'Times aim crossed past enemy from first visibility to kill'}
+        value={String(ov)}
+        metricKey="overshootCount" lang={lang}
+      />
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {ru
+          ? `Промахи прицела считают, сколько раз прицел «пролетел» через врага в выигранных дуэлях — смена знака угла относительно врага означает перелёт. Чем меньше, тем точнее управление мышью.`
+          : `Overshoot counts how many times your aim crossed past the enemy in winning duels — each sign-change of the angle to the enemy is one overshoot. Fewer is better and indicates tighter mouse control.`}
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ main page
 
 export default function MetricsPage() {
@@ -1078,6 +1158,10 @@ export default function MetricsPage() {
         return <ReloadErrorsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'angleControlCount':
         return <AngleControlPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+      case 'reactionTimeMs':
+        return <ReactionTimePage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+      case 'overshootCount':
+        return <OvershootPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       default:
         return (
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>

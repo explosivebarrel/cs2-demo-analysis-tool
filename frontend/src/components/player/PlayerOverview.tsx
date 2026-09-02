@@ -295,6 +295,22 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             higherIsBetter={false}
             onClick={() => goMetric('reloadErrors')}
           />
+          <MetricCard
+            label={lang === 'ru' ? 'Время реакции' : 'Reaction time'}
+            value={(metrics.reactionTimeMs ?? 0) > 0 ? (metrics.reactionTimeMs ?? 0).toFixed(0) + ' мс' : '—'}
+            sub={lang === 'ru' ? 'ср. мс от появления врага до выстрела' : 'avg ms enemy in FOV to first shot'}
+            benchmarkKey="reactionTimeMs" benchmarkValue={(metrics.reactionTimeMs ?? 0) > 0 ? metrics.reactionTimeMs : null} lang={lang}
+            higherIsBetter={false}
+            onClick={() => goMetric('reactionTimeMs')}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Промахи прицела' : 'Overshoot count'}
+            value={String(metrics.overshootCount ?? 0)}
+            sub={lang === 'ru' ? 'раз перевёл прицел мимо' : 'times aim crossed past enemy'}
+            benchmarkKey="overshootCount" benchmarkValue={metrics.overshootCount ?? 0} lang={lang}
+            higherIsBetter={false}
+            onClick={() => goMetric('overshootCount')}
+          />
         </div>
       </div>
 

@@ -219,6 +219,8 @@ export interface PlayerMetrics {
   ttk_ms: number
   reloadErrors: number
   angleControlCount: number
+  reactionTimeMs: number
+  overshootCount: number
 }
 
 export interface PlayerImpact {

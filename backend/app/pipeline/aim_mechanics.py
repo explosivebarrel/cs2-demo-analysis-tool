@@ -377,6 +377,175 @@ def _compute_angle_control(ticks_df, steamid: str, tickrate: float, rb) -> int:
         return 0
 
 
+
+# ── Reaction time & overshoot ────────────────────────────────────────────────
+
+RT_WINDOW_SEC = 2.0     # look back up to 2s before first shot for victim motion onset
+RT_MAX_MS = 1500.0      # cap: longer values are pre-aim scenarios, not true reaction
+RT_MOTION_THRESH = 30.0 # u/s — victim speed above this = "victim is moving/peeking"
+FOV_HALF_DEG = 40.0     # half-FOV for overshoot tracking
+
+
+def _angle_diff(a: float, b: float) -> float:
+    """Signed difference a-b in degrees, wrapped to (-180, 180]."""
+    d = (a - b) % 360.0
+    return d - 360.0 if d > 180.0 else d
+
+
+def _compute_reaction_time(
+    ticks_df,
+    wf_df,
+    kills_df,
+    steamid: str,
+    tickrate: float,
+) -> tuple[float, int]:
+    """
+    Returns (avg_reaction_time_ms, overshoot_count).
+
+    reaction_time_ms: avg ms from when the victim started moving (peek onset)
+                      to the attacker's first shot in winning duels.
+    overshoot_count: total times attacker yaw crossed past victim's bearing
+                     between peek onset and kill tick across all winning duels.
+    """
+    if ticks_df is None or not len(ticks_df) or kills_df is None or not len(kills_df):
+        return 0.0, 0
+
+    my_kills = kills_df[kills_df["attacker_steamid"].astype(str) == steamid]
+    if my_kills.empty:
+        return 0.0, 0
+
+    if wf_df is None or not len(wf_df):
+        return 0.0, 0
+
+    my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
+    if my_wf.empty:
+        return 0.0, 0
+
+    import bisect
+    import numpy as _np
+
+    try:
+        atk_ticks = ticks_df[ticks_df["steamid"].astype(str) == steamid][
+            ["tick", "X", "Y", "yaw"]
+        ].sort_values("tick")
+        atk_tick_arr = atk_ticks["tick"].to_numpy(dtype="int64")
+        atk_x_arr    = atk_ticks["X"].to_numpy(dtype=float)
+        atk_y_arr    = atk_ticks["Y"].to_numpy(dtype=float)
+        atk_yaw_arr  = atk_ticks["yaw"].to_numpy(dtype=float)
+    except Exception:
+        return 0.0, 0
+
+    wf_ticks_sorted = sorted(int(t) for t in my_wf["tick"])
+    window_ticks = int(tickrate * RT_WINDOW_SEC)
+    TTK_MAX_TICKS = max(32, int(tickrate * 0.5))
+
+    reaction_deltas: list[float] = []
+    overshoot_total = 0
+
+    for _, k in my_kills.iterrows():
+        kill_tick = int(k["tick"])
+        v_sid = str(k.get("user_steamid", ""))
+        if not v_sid or v_sid in ("None", "nan", "0"):
+            continue
+
+        # first shot leading to kill (within TTK window before kill)
+        fire_cands = [ft for ft in wf_ticks_sorted
+                      if 0 <= kill_tick - ft <= TTK_MAX_TICKS]
+        if not fire_cands:
+            continue
+        first_fire_tick = min(fire_cands)
+
+        # victim ticks in [first_fire - window, first_fire]
+        t_lo = first_fire_tick - window_ticks
+        try:
+            vic_ticks = ticks_df[
+                (ticks_df["steamid"].astype(str) == v_sid) &
+                (ticks_df["tick"] >= t_lo) &
+                (ticks_df["tick"] <= first_fire_tick)
+            ][["tick", "X", "Y"]].sort_values("tick")
+            if len(vic_ticks) < 3:
+                continue
+            vic_tick_arr = vic_ticks["tick"].to_numpy(dtype="int64")
+            vic_x_arr    = vic_ticks["X"].to_numpy(dtype=float)
+            vic_y_arr    = vic_ticks["Y"].to_numpy(dtype=float)
+        except Exception:
+            continue
+
+        # compute victim speed at each frame step
+        dt = _np.diff(vic_tick_arr).clip(1)
+        dx = _np.diff(vic_x_arr)
+        dy = _np.diff(vic_y_arr)
+        speeds = _np.sqrt(dx ** 2 + dy ** 2) / dt * tickrate  # u/s
+
+        # find last tick where victim's speed crossed from low to high
+        # (most recent "peek onset") before first_fire_tick
+        peek_onset_tick: int | None = None
+        for i in range(len(speeds) - 1, -1, -1):
+            if speeds[i] > RT_MOTION_THRESH:
+                # walk back to find where the high-speed run started
+                j = i - 1
+                while j >= 0 and speeds[j] > RT_MOTION_THRESH:
+                    j -= 1
+                peek_onset_tick = int(vic_tick_arr[j + 1]) if j >= 0 else int(vic_tick_arr[i])
+                break
+
+        if peek_onset_tick is None:
+            # victim was stationary — attacker was pre-aiming; skip
+            continue
+
+        rt_ms = (first_fire_tick - peek_onset_tick) / tickrate * 1000.0
+        if rt_ms < 0 or rt_ms > RT_MAX_MS:
+            continue
+
+        reaction_deltas.append(rt_ms)
+
+        # overshoot: yaw sign-changes past victim bearing from peek onset to kill
+        try:
+            oi_lo = bisect.bisect_left(atk_tick_arr, peek_onset_tick)
+            oi_hi = bisect.bisect_right(atk_tick_arr, kill_tick)
+            # get victim positions for this range
+            vi_lo = bisect.bisect_left(vic_tick_arr, peek_onset_tick)
+            vi_hi = bisect.bisect_right(vic_tick_arr, kill_tick)
+            # extend vic range with full array for closest-tick lookup
+            full_vic = ticks_df[
+                (ticks_df["steamid"].astype(str) == v_sid) &
+                (ticks_df["tick"] >= peek_onset_tick) &
+                (ticks_df["tick"] <= kill_tick)
+            ][["tick", "X", "Y"]].sort_values("tick")
+            if full_vic.empty:
+                continue
+            fv_tick = full_vic["tick"].to_numpy(dtype="int64")
+            fv_x = full_vic["X"].to_numpy(dtype=float)
+            fv_y = full_vic["Y"].to_numpy(dtype=float)
+
+            prev_sign = None
+            crosses = 0
+            import math as _math
+            for oi in range(oi_lo, oi_hi):
+                if oi >= len(atk_tick_arr):
+                    break
+                t = int(atk_tick_arr[oi])
+                vi2 = bisect.bisect_left(fv_tick, t)
+                if vi2 >= len(fv_tick):
+                    vi2 = len(fv_tick) - 1
+                vx2 = fv_x[vi2] - atk_x_arr[oi]
+                vy2 = fv_y[vi2] - atk_y_arr[oi]
+                if abs(vx2) < 1e-3 and abs(vy2) < 1e-3:
+                    continue
+                bearing2 = _math.degrees(_math.atan2(vy2, vx2))
+                diff2 = _angle_diff(atk_yaw_arr[oi], bearing2)
+                sign = 1 if diff2 >= 0 else -1
+                if prev_sign is not None and sign != prev_sign:
+                    crosses += 1
+                prev_sign = sign
+            overshoot_total += crosses
+        except Exception:
+            pass
+
+    avg_rt = round(sum(reaction_deltas) / len(reaction_deltas), 1) if reaction_deltas else 0.0
+    return avg_rt, overshoot_total
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
@@ -436,6 +605,13 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     except Exception:
         angle_ctrl = 0
 
+    try:
+        reaction_time_ms, overshoot_count = _compute_reaction_time(
+            ticks_df, wf_df, kills_df, steamid, tickrate
+        )
+    except Exception:
+        reaction_time_ms, overshoot_count = 0.0, 0
+
     return {
         "counterStrafeErrors": cs_errors,
         "idealStrafePct": ideal_pct,
@@ -444,4 +620,6 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "ttk_ms": ttk,
         "reloadErrors": reload_err,
         "angleControlCount": angle_ctrl,
+        "reactionTimeMs": reaction_time_ms,
+        "overshootCount": overshoot_count,
     }
