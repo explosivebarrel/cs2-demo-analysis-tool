@@ -968,13 +968,19 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
 }) {
   const m = analytics.metrics
   const count = m.angleControlCount ?? 0
+  const byPhase = (m as any).angleControlByPhase as { early: number; mid: number; late: number } | undefined
   const ru = lang === 'ru'
 
-  // build per-round presence from duels (shows activity, not holds specifically)
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of analytics.duels) {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
   }
+
+  const phaseRows = byPhase ? [
+    { key: 'early', label: ru ? 'Начало раунда (0–15с)' : 'Early (0–15s)', count: byPhase.early, color: 'var(--green)' },
+    { key: 'mid',   label: ru ? 'Середина раунда (15–45с)' : 'Mid (15–45s)',   count: byPhase.mid,   color: 'var(--accent2)' },
+    { key: 'late',  label: ru ? 'Поздняя фаза (45с+)' : 'Late (45s+)',      count: byPhase.late,  color: 'var(--red)' },
+  ] : []
 
   return (
     <div>
@@ -983,6 +989,33 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
         subtitle={ru ? 'Позиций удержано ≥2 секунды без движения' : 'Positions held ≥2 seconds without movement'}
         value={String(count)} metricKey="angleControlCount" lang={lang}
       />
+
+      {phaseRows.length > 0 && count > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Когда в раунде это происходит' : 'When in the round this occurs'} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
+            {phaseRows.map(({ key, label, count: c, color }) => {
+              const pct = count > 0 ? Math.round(c / count * 100) : 0
+              return (
+                <div key={key} style={{
+                  background: 'var(--bg3)', borderRadius: 8, padding: '10px 14px',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{ fontSize: 22, fontWeight: 800, color, minWidth: 36, textAlign: 'right' }}>{c}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 4 }}>{label}</div>
+                    <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', minWidth: 36 }}>{pct}%</div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
       <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
@@ -990,9 +1023,10 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
         marginBottom: 16,
       }}>
         {ru
-          ? `Контроль угла — количество уникальных позиций, где ты стоял неподвижно ≥2 секунды во время живых раундов. Высокое значение означает терпеливое удержание углов и ожидание врага. Норма — чем больше, тем лучше.`
-          : `Angle control counts unique positions where you stood still for ≥2 seconds during live rounds. A higher value means patient angle holding and waiting for enemies. Higher is better.`}
+          ? 'Контроль угла — уникальные позиции, где ты стоял неподвижно ≥2 секунды во время живых раундов. Высокое значение = терпеливое удержание углов. Фазы раунда показывают, когда именно ты предпочитаешь держать угол.'
+          : 'Angle control counts unique positions held still for ≥2 seconds during live rounds. A higher value means patient angle holding. Phase breakdown shows when in the round you prefer to hold angles.'}
       </div>
+
       <div style={{ marginTop: 24 }}>
         <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />

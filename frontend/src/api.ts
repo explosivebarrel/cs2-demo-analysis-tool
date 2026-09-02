@@ -219,6 +219,7 @@ export interface PlayerMetrics {
   ttk_ms: number
   reloadErrors: number
   angleControlCount: number
+  angleControlByPhase?: { early: number; mid: number; late: number }
   reactionTimeMs: number
   overshootCount: number
   excellentContacts: number

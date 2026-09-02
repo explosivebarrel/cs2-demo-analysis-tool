@@ -306,54 +306,58 @@ def _compute_reload_errors(ctx, rb, steamid: str, tickrate: float) -> int:
 
 # ── Angle control count ───────────────────────────────────────────────────────
 
-def _compute_angle_control(ticks_df, steamid: str, tickrate: float, rb) -> int:
+def _compute_angle_control(ticks_df, steamid: str, tickrate: float, rb) -> tuple[int, dict]:
     """
     Count distinct map positions where the player stood still for >= ANGLE_HOLD_SEC
     without moving, during live rounds (not freeze time).
 
-    Uses position grid snapping for deduplication across rounds.
+    Returns (count, byPhase) where byPhase has keys 'early', 'mid', 'late'.
+    Phase boundaries from config: OPENING_PHASE_SECONDS and MID_PHASE_SECONDS.
     """
+    from app.config import OPENING_PHASE_SECONDS, MID_PHASE_SECONDS
+
+    by_phase = {"early": 0, "mid": 0, "late": 0}
     if ticks_df is None or not len(ticks_df):
-        return 0
+        return 0, by_phase
 
     try:
         import numpy as _np
 
-        # freeze-end and end tick arrays for live-round filtering
         fe_arr = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
         end_arr = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
 
         mask_sid = ticks_df["steamid"].astype(str) == steamid
         pticks = ticks_df[mask_sid][["tick", "X", "Y"]].copy().sort_values("tick")
         if pticks.empty:
-            return 0
+            return 0, by_phase
 
         ticks_arr = pticks["tick"].to_numpy(dtype="int64")
         x_arr = pticks["X"].to_numpy(dtype="float64")
         y_arr = pticks["Y"].to_numpy(dtype="float64")
 
-        # filter to live-round ticks only
+        # filter to live-round ticks only; record which fe_tick each belongs to
         live_mask = _np.zeros(len(ticks_arr), dtype=bool)
+        fe_for_tick = _np.full(len(ticks_arr), -1, dtype="int64")
         for i, t in enumerate(ticks_arr):
             ri = int(_np.searchsorted(fe_arr, t, side="right")) - 1
             if 0 <= ri < len(fe_arr) and t <= end_arr[ri]:
                 live_mask[i] = True
+                fe_for_tick[i] = fe_arr[ri]
 
         ticks_arr = ticks_arr[live_mask]
         x_arr = x_arr[live_mask]
         y_arr = y_arr[live_mask]
+        fe_for_tick = fe_for_tick[live_mask]
         if len(ticks_arr) < 2:
-            return 0
+            return 0, by_phase
 
-        # compute velocity between consecutive ticks
         dt = _np.diff(ticks_arr).clip(min=1)
         dx = _np.diff(x_arr)
         dy = _np.diff(y_arr)
         vel = _np.sqrt(dx**2 + dy**2) / dt * tickrate
 
-        # find stationary runs
         stationary = _np.concatenate([[False], vel < ANGLE_MOVE_THRESHOLD])
-        min_frames = max(1, int(ANGLE_HOLD_SEC * tickrate / 8))  # ticks are every frame_step
+        min_frames = max(1, int(ANGLE_HOLD_SEC * tickrate / 8))
 
         positions_seen: set[tuple[int, int]] = set()
         held_count = 0
@@ -369,12 +373,21 @@ def _compute_angle_control(ticks_df, steamid: str, tickrate: float, rb) -> int:
                     if cell not in positions_seen:
                         positions_seen.add(cell)
                         held_count += 1
+                        # classify by phase: seconds since freeze end
+                        fe = fe_for_tick[i]
+                        offset_sec = (ticks_arr[i] - fe) / tickrate if fe >= 0 else 0
+                        if offset_sec <= OPENING_PHASE_SECONDS:
+                            by_phase["early"] += 1
+                        elif offset_sec <= MID_PHASE_SECONDS:
+                            by_phase["mid"] += 1
+                        else:
+                            by_phase["late"] += 1
             else:
                 run_len = 0
 
-        return held_count
+        return held_count, by_phase
     except Exception:
-        return 0
+        return 0, {"early": 0, "mid": 0, "late": 0}
 
 
 
@@ -754,9 +767,9 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         reload_err = 0
 
     try:
-        angle_ctrl = _compute_angle_control(ticks_df, steamid, tickrate, rb)
+        angle_ctrl, angle_ctrl_by_phase = _compute_angle_control(ticks_df, steamid, tickrate, rb)
     except Exception:
-        angle_ctrl = 0
+        angle_ctrl, angle_ctrl_by_phase = 0, {"early": 0, "mid": 0, "late": 0}
 
     try:
         reaction_time_ms, overshoot_count, successful_reaction_time_ms, rt_deltas, rt_deltas_hit = _compute_reaction_time(
@@ -786,6 +799,7 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "ttk_ms": ttk,
         "reloadErrors": reload_err,
         "angleControlCount": angle_ctrl,
+        "angleControlByPhase": angle_ctrl_by_phase,
         "reactionTimeMs": reaction_time_ms,
         "overshootCount": overshoot_count,
         "excellentContacts": excellent_contacts,
