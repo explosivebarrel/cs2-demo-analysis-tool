@@ -661,6 +661,12 @@ function LostDuelsPage({ analytics, playerNames, lang, totalRounds }: {
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of lost) roundOutcomes[d.round] = 'death'
 
+  // WinRateComparison: rounds with no deaths vs rounds with at least one death
+  const lostRounds = new Set(lost.map(d => d.round))
+  const allDuels = analytics.duels
+  const cleanRoundDuels = allDuels.filter(d => !lostRounds.has(d.round))
+  const lostRoundDuels = allDuels.filter(d => lostRounds.has(d.round))
+
   const breakdownItems = [
     { label: ru ? 'Под флешкой' : 'Flashed', count: flashed.length, color: 'var(--accent2)' },
     { label: ru ? 'В движении' : 'Moving', count: moving.length, color: 'var(--accent)' },
@@ -676,6 +682,19 @@ function LostDuelsPage({ analytics, playerNames, lang, totalRounds }: {
         subtitle={ru ? `${lost.length} смертей` : `${lost.length} deaths`}
         value={String(lost.length)} metricKey="lostDuels" lang={lang}
       />
+
+      {lostRoundDuels.length > 0 && cleanRoundDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={cleanRoundDuels.length} cleanWins={cleanRoundDuels.filter(d => d.won).length}
+            otherCount={lostRoundDuels.length} otherWins={lostRoundDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Раунды без смерти' : 'Rounds without death'}
+            otherLabel={ru ? 'Раунды со смертью' : 'Rounds with death'}
+          />
+        </>
+      )}
 
       {breakdownItems.length > 0 && (
         <>
@@ -1689,8 +1708,8 @@ function ExcellentContactsPage({ analytics, lang, totalRounds }: {
 
 // ------------------------------------------------------------------ successful reaction time page
 
-function SuccessfulReactionTimePage({ analytics, lang }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
+function SuccessfulReactionTimePage({ analytics, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
   const rt = m.successfulReactionTimeMs ?? 0
@@ -1699,6 +1718,12 @@ function SuccessfulReactionTimePage({ analytics, lang }: {
 
   const deltas: number[] = m.reactionDeltasHit ?? []
   const deltasAll: number[] = m.reactionDeltas ?? []
+
+  const wonDuels = analytics.duels.filter(d => d.won)
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of wonDuels) {
+    if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  }
 
   // histogram buckets: <100, 100-200, 200-300, 300-400, 400-500, >500
   const BUCKETS = [
@@ -1797,6 +1822,11 @@ function SuccessfulReactionTimePage({ analytics, lang }: {
           ? 'Реакция в попаданиях — время реакции только в тех дуэлях, где первая пуля попала во врага. Это точнее оценивает, как быстро ты реагируешь, когда правильно целишься — без промахов, которые искажают общее среднее. Ниже = быстрее.'
           : 'Reaction on hits shows your reaction time only in duels where your first bullet hit the enemy. This is a cleaner measure of how fast you react when you are properly aimed — without misses that inflate the overall average. Lower is better.'}
       </div>
+
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
     </div>
   )
 }
@@ -1829,6 +1859,19 @@ function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
           : `${count} duels — stood still in an exposed position before shooting`}
         value={String(count)} metricKey="passiveAngleCount" lang={lang} higherIsBetter={false}
       />
+
+      {passiveDuels.length > 0 && cleanDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={cleanDuels.length} cleanWins={cleanDuels.filter(d => d.won).length}
+            otherCount={passiveDuels.length} otherWins={passiveDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Активный угол' : 'Active peek'}
+            otherLabel={ru ? 'Пассивный угол' : 'Passive angle'}
+          />
+        </>
+      )}
 
       {passiveDuels.length > 0 && (
         <>
@@ -1967,7 +2010,7 @@ export default function MetricsPage() {
       case 'reactionTimeMs':
         return <ReactionTimePage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'successfulReactionTimeMs':
-        return <SuccessfulReactionTimePage analytics={analytics} lang={lang} />
+        return <SuccessfulReactionTimePage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'overshootCount':
         return <OvershootPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'excellentContacts':
