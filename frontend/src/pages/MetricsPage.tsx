@@ -1575,9 +1575,8 @@ function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
   const m = analytics.metrics
   const count = (m as any).passiveAngleCount ?? 0
   const ru = lang === 'ru'
-  const attDuels = analytics.duels.filter(d => d.attacker === analytics.duels[0]?.attacker || d.won !== undefined)
   // passive_angle is an attacker error: duels where we were attacker and had passive_angle
-  const passiveDuels = analytics.duels.filter(d => d.won !== undefined && d.errors.includes('passive_angle'))
+  const passiveDuels = analytics.duels.filter(d => d.errors.includes('passive_angle'))
   const cleanDuels = analytics.duels.filter(d => d.won !== undefined && !d.errors.includes('passive_angle') && d.won)
 
   const [filter, setFilter] = useState<'passive' | 'clean'>('passive')

@@ -298,12 +298,18 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
             const r2 = ratingLabel(100 - shiftPeekPct, 70, lang)
             const r3 = ratingLabel(100 - isolatedPct, 70, lang)
             const r4 = ratingLabel(100 - movingPct, 70, lang)
-            return [
+            const avgProb = impact.avgWinProbAtDuel
+            const items: { label: string; value: string; r: { text: string; color: string } }[] = [
               { label: lang === 'ru' ? 'Выиграно дуэлей' : 'Duels won', value: `${totalWon}/${duels.length}`, r: r1 },
               { label: lang === 'ru' ? 'Без шифт-пика'   : 'No shift-peek', value: `${100 - shiftPeekPct}%`, r: r2 },
               { label: lang === 'ru' ? 'Не изолирован'   : 'Not isolated',  value: `${100 - isolatedPct}%`,  r: r3 },
               { label: lang === 'ru' ? 'Стоя при стрельбе' : 'Still when shooting', value: `${100 - movingPct}%`, r: r4 },
-            ].map(({ label, value, r }) => (
+            ]
+            if (avgProb != null) {
+              const r5 = ratingLabel((1 - avgProb) * 100, 50, lang)
+              items.push({ label: lang === 'ru' ? 'Шанс победы в дуэлях' : 'Win prob at duels', value: `${Math.round(avgProb * 100)}%`, r: r5 })
+            }
+            return items.map(({ label, value, r }) => (
               <UtilMetricCard key={label} label={label} value={value} rating={r.text} color={r.color} />
             ))
           })()}
