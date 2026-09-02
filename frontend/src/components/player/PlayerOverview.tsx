@@ -319,6 +319,14 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             color={((metrics as any).excellentContacts ?? 0) >= 3 ? 'var(--green)' : undefined}
             onClick={() => goMetric('excellentContacts')}
           />
+          <MetricCard
+            label={lang === 'ru' ? 'Прицел на голове' : 'Crosshair placement'}
+            value={(metrics.crosshairPlacementPct ?? 0).toFixed(1) + '%'}
+            sub={lang === 'ru' ? '% первых попаданий — в голову' : '% first-bullet hits to head'}
+            benchmarkKey="crosshairPlacementPct" benchmarkValue={metrics.crosshairPlacementPct ?? 0} lang={lang}
+            color={(metrics.crosshairPlacementPct ?? 0) >= 50 ? 'var(--green)' : undefined}
+            onClick={() => goMetric('crosshairPlacementPct')}
+          />
         </div>
       </div>
 

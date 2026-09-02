@@ -75,4 +75,5 @@ BENCHMARKS: dict[str, dict[str, float]] = {
     "reactionTimeMs":  {"weak": 600,  "avg": 450,  "good": 300,  "elite": 180},
     "overshootCount":  {"weak": 20,   "avg": 12,   "good": 6,    "elite": 2  },
     "excellentContacts": {"weak": 1,  "avg": 3,    "good": 6,    "elite": 10 },
+    "crosshairPlacementPct": {"weak": 20, "avg": 35, "good": 50,  "elite": 65 },
 }

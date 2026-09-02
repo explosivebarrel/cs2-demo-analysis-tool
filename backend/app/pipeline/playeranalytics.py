@@ -166,6 +166,81 @@ def _nearest_tick(ticks_by_tick: dict, target: int):
 
 # ------------------------------------------------------------------ duel classifier
 
+def _compute_duel_aim_error(
+    ticks_df,
+    attacker_sid: str,
+    victim_sid: str,
+    kill_tick: int,
+    first_fire_tick: int,
+    tickrate: float,
+) -> str | None:
+    """
+    Classify the attacker's aim adjustment during a duel as 'overshoot' or
+    'undershoot' (or None if not determinable).
+
+    overshoot: yaw crossed past victim's bearing at least once (sign changed)
+    undershoot: yaw never reached victim's bearing (final yaw diff still large)
+    """
+    import math
+    import bisect
+
+    try:
+        atk = ticks_df[
+            (ticks_df["steamid"].astype(str) == attacker_sid) &
+            (ticks_df["tick"] >= first_fire_tick) &
+            (ticks_df["tick"] <= kill_tick)
+        ][["tick", "X", "Y", "yaw"]].sort_values("tick")
+
+        vic = ticks_df[
+            (ticks_df["steamid"].astype(str) == victim_sid) &
+            (ticks_df["tick"] >= first_fire_tick) &
+            (ticks_df["tick"] <= kill_tick)
+        ][["tick", "X", "Y"]].sort_values("tick")
+
+        if len(atk) < 2 or len(vic) < 1:
+            return None
+
+        atk_tick_arr = atk["tick"].to_numpy()
+        atk_x_arr   = atk["X"].to_numpy(dtype=float)
+        atk_y_arr   = atk["Y"].to_numpy(dtype=float)
+        atk_yaw_arr = atk["yaw"].to_numpy(dtype=float)
+        vic_tick_arr = vic["tick"].to_numpy()
+        vic_x_arr    = vic["X"].to_numpy(dtype=float)
+        vic_y_arr    = vic["Y"].to_numpy(dtype=float)
+
+        diffs: list[float] = []
+        for i, t in enumerate(atk_tick_arr):
+            vi = bisect.bisect_right(vic_tick_arr, t) - 1
+            if vi < 0:
+                vi = 0
+            dvx = vic_x_arr[vi] - atk_x_arr[i]
+            dvy = vic_y_arr[vi] - atk_y_arr[i]
+            if abs(dvx) < 1e-3 and abs(dvy) < 1e-3:
+                continue
+            bearing = math.degrees(math.atan2(dvy, dvx))
+            d = (atk_yaw_arr[i] - bearing) % 360.0
+            diff = d - 360.0 if d > 180.0 else d
+            diffs.append(diff)
+
+        if len(diffs) < 2:
+            return None
+
+        # overshoot: at least one sign change in the diff series
+        for j in range(1, len(diffs)):
+            if diffs[j - 1] * diffs[j] < 0:
+                return "overshoot"
+
+        # undershoot: all diffs have the same sign and magnitude stayed > 5° (never zeroed)
+        if all(abs(d) > 5.0 for d in diffs):
+            return "undershoot"
+
+        return None
+    except Exception:
+        return None
+
+
+# ------------------------------------------------------------------ duel classifier
+
 def _classify_duel(
     attacker_sid: str,
     frame_rows: dict,  # steamid -> row at kill tick
@@ -370,6 +445,20 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                 headshot, won,
             )
             context["victimVel"] = victim_vel
+            # per-duel aim direction error: overshoot / undershoot
+            try:
+                fire_ticks_rn = wf_ticks.get((steamid, rn), [])
+                TTK_MAX = max(32, int(ctx.tickrate * 0.5))
+                fire_cands = [ft for ft in fire_ticks_rn if 0 <= tick - ft <= TTK_MAX]
+                if fire_cands:
+                    first_fire = min(fire_cands)
+                    aim_err = _compute_duel_aim_error(
+                        ticks_df, steamid, v_sid, tick, first_fire, ctx.tickrate
+                    )
+                    if aim_err and aim_err not in errors:
+                        errors.append(aim_err)
+            except Exception:
+                pass
         else:
             # player is victim — classify from victim's perspective
             a_row = frame_rows.get(a_sid)
@@ -788,7 +877,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                     "firstBulletAcc": 0.0, "ttk_ms": 0.0,
                     "reloadErrors": 0, "angleControlCount": 0,
                     "reactionTimeMs": 0.0, "overshootCount": 0,
-                    "excellentContacts": 0,
+                    "excellentContacts": 0, "crosshairPlacementPct": 0.0,
                 },
                 "impact": {"topRoundsPositive": [], "topRoundsNegative": [],
                            "avgWinProbAtDuel": None},
@@ -851,7 +940,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "firstBulletAcc": 0.0, "ttk_ms": 0.0,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "reactionTimeMs": 0.0, "overshootCount": 0,
-                "excellentContacts": 0,
+                "excellentContacts": 0, "crosshairPlacementPct": 0.0,
             }
 
         try:
@@ -867,7 +956,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "firstBulletAcc": 0.0, "ttk_ms": 0.0,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "reactionTimeMs": 0.0, "overshootCount": 0,
-                "excellentContacts": 0,
+                "excellentContacts": 0, "crosshairPlacementPct": 0.0,
             }
         try:
             impact = _build_impact(

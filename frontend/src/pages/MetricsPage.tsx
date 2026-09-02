@@ -271,10 +271,12 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
 
 // ------------------------------------------------------------------ WinRateComparison
 
-function WinRateComparison({ cleanCount, cleanWins, otherCount, otherWins, lang }: {
+function WinRateComparison({ cleanCount, cleanWins, otherCount, otherWins, lang, cleanLabel, otherLabel }: {
   cleanCount: number; cleanWins: number
   otherCount: number; otherWins: number
   lang: 'ru' | 'en'
+  cleanLabel?: string
+  otherLabel?: string
 }) {
   const ru = lang === 'ru'
   const cleanPct = cleanCount > 0 ? (cleanWins / cleanCount * 100) : 0
@@ -284,8 +286,8 @@ function WinRateComparison({ cleanCount, cleanWins, otherCount, otherWins, lang 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: 20 }}>
       {[
-        { label: ru ? 'Когда механика чистая' : 'With clean mechanics', pct: cleanPct, n: cleanCount, good: true },
-        { label: ru ? 'Во всех остальных' : 'All other duels', pct: otherPct, n: otherCount, good: false },
+        { label: cleanLabel ?? (ru ? 'Когда механика чистая' : 'With clean mechanics'), pct: cleanPct, n: cleanCount, good: true },
+        { label: otherLabel ?? (ru ? 'Во всех остальных' : 'All other duels'), pct: otherPct, n: otherCount, good: false },
       ].map(({ label, pct, n, good }) => (
         <div key={label} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
           <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>{label}</div>
@@ -1079,6 +1081,123 @@ function OvershootPage({ analytics, lang, totalRounds }: {
   )
 }
 
+// ------------------------------------------------------------------ crosshair placement page
+
+function CrosshairPlacementPage({ analytics, lang }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
+}) {
+  const m = analytics.metrics
+  const pct = m.crosshairPlacementPct ?? 0
+  const shots = m.firstBulletShots ?? []
+  const ru = lang === 'ru'
+
+  // Build per-weapon breakdown from firstBulletShots + hurt events
+  // We use the shots list and pair hits with the hitgroup from duels
+  // Pair by round: crosshair = % head hits among first-bullet HITS per weapon
+  const duels = analytics.duels
+
+  // Approximate: for first-bullet hits, check if the duel kill was a headshot
+  const hitRoundWeaponMap: { round: number; weapon: string; headshot: boolean }[] = []
+  for (const s of shots) {
+    if (!s.hit) continue
+    const duel = duels.find(d => d.round === s.round && d.won)
+    if (duel) {
+      hitRoundWeaponMap.push({ round: s.round, weapon: s.weapon, headshot: duel.headshot })
+    }
+  }
+
+  // weapon breakdown
+  const weaponStats: Record<string, { hits: number; headHits: number }> = {}
+  for (const { weapon, headshot } of hitRoundWeaponMap) {
+    if (!weaponStats[weapon]) weaponStats[weapon] = { hits: 0, headHits: 0 }
+    weaponStats[weapon].hits++
+    if (headshot) weaponStats[weapon].headHits++
+  }
+  const weaponRows = Object.entries(weaponStats)
+    .filter(([, v]) => v.hits > 0)
+    .sort((a, b) => b[1].hits - a[1].hits)
+
+  const totalHits = shots.filter(s => s.hit).length
+  const headHitsEst = hitRoundWeaponMap.filter(r => r.headshot).length
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Прицел на голове' : 'Crosshair placement'}
+        subtitle={ru
+          ? `${headHitsEst} попаданий в голову из ${totalHits} первых пуль`
+          : `${headHitsEst} head hits out of ${totalHits} first-bullet hits`}
+        value={pct.toFixed(1) + '%'} metricKey="crosshairPlacementPct" lang={lang}
+      />
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {ru
+          ? 'Показывает, насколько точно ты держишь прицел на уровне головы до начала дуэли. Считается как % первых попаданий по врагу, которые пришлись в голову. Высокий показатель означает правильное пре-аимирование и snappy флики.'
+          : 'Measures how accurately you pre-aim at head level before duels start. Calculated as % of first-bullet hits on an enemy that landed on the head. A high value means good pre-aim and snappy flicks.'}
+      </div>
+
+      {weaponRows.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'По оружию' : 'By weapon'} />
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+            {weaponRows.map(([wep, { hits, headHits }]) => {
+              const wpct = hits > 0 ? Math.round(headHits / hits * 100) : 0
+              const color = wpct >= 50 ? 'var(--green)' : wpct >= 30 ? 'var(--accent2)' : 'var(--red)'
+              const label = wep.replace('weapon_', '')
+              return (
+                <div key={wep} style={{
+                  background: 'var(--bg3)', borderRadius: 8, padding: '10px 14px',
+                  minWidth: 110, flex: '1 1 110px',
+                }}>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>
+                    {label}
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>
+                    {wpct}%
+                  </div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>
+                    {headHits}/{hits} {ru ? 'в голову' : 'head hits'}
+                  </div>
+                  <div style={{ marginTop: 6, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ width: `${wpct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 400, overflowY: 'auto' }}>
+        {shots.filter(s => s.hit).map((s, i) => {
+          const duel = duels.find(d => d.round === s.round && d.won)
+          const isHead = duel?.headshot ?? false
+          const wepLabel = s.weapon.replace('weapon_', '')
+          return (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              background: isHead ? 'rgba(80,200,120,0.05)' : 'rgba(200,200,100,0.04)',
+              border: `1px solid ${isHead ? 'var(--green)' : 'var(--border)'}`,
+              borderRadius: 6, padding: '7px 12px',
+            }}>
+              <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{s.round}</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: isHead ? 'var(--green)' : 'var(--text2)', minWidth: 80 }}>
+                {isHead ? (ru ? '✓ Голова' : '✓ Head') : (ru ? '— Тело' : '— Body')}
+              </span>
+              <span style={{ fontSize: 11, color: 'var(--text2)' }}>{wepLabel}</span>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ excellent contacts page
 
 function ExcellentContactsPage({ analytics, lang, totalRounds }: {
@@ -1087,6 +1206,15 @@ function ExcellentContactsPage({ analytics, lang, totalRounds }: {
   const m = analytics.metrics
   const count = (m as any).excellentContacts ?? 0
   const ru = lang === 'ru'
+  const duels = analytics.duels
+  const shots = m.firstBulletShots ?? []
+
+  // Excellent contact = won + stopped (no moving_shot error) + first bullet hit
+  const hitRounds = new Set(shots.filter(s => s.hit).map(s => s.round))
+  const excellentDuels = duels.filter(d => d.won && !d.errors.includes('moving_shot') && hitRounds.has(d.round))
+  const otherDuels = duels.filter(d => !excellentDuels.includes(d))
+  const excellentWins = excellentDuels.filter(d => d.won).length
+  const otherWins = otherDuels.filter(d => d.won).length
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of analytics.duels) {
@@ -1100,6 +1228,18 @@ function ExcellentContactsPage({ analytics, lang, totalRounds }: {
         subtitle={ru ? 'Побед в дуэлях: стоял на месте + первая пуля попала' : 'Duel wins: stopped at shot + first bullet hit'}
         value={String(count)} metricKey="excellentContacts" lang={lang}
       />
+      {excellentDuels.length > 0 && otherDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={excellentDuels.length} cleanWins={excellentWins}
+            otherCount={otherDuels.length} otherWins={otherWins}
+            lang={lang}
+            cleanLabel={ru ? 'Качественные контакты' : 'Excellent contacts'}
+            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+          />
+        </>
+      )}
       <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
@@ -1203,6 +1343,8 @@ export default function MetricsPage() {
         return <OvershootPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'excellentContacts':
         return <ExcellentContactsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+      case 'crosshairPlacementPct':
+        return <CrosshairPlacementPage analytics={analytics} lang={lang} />
       default:
         return (
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>

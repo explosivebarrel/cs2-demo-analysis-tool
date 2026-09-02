@@ -546,6 +546,70 @@ def _compute_reaction_time(
     return avg_rt, overshoot_total
 
 
+# ── Crosshair placement ───────────────────────────────────────────────────────
+
+def _compute_crosshair_placement(
+    wf_df,
+    hurt_df,
+    steamid: str,
+) -> float:
+    """
+    % of duel-opening shots that hit AND landed on the head.
+    Measures how well the player pre-aims at head level.
+    """
+    if wf_df is None or not len(wf_df):
+        return 0.0
+    if hurt_df is None or not len(hurt_df):
+        return 0.0
+
+    my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
+    if my_wf.empty:
+        return 0.0
+
+    ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
+    if ah.empty:
+        return 0.0
+
+    # map hurt tick -> hitgroup (1 = head in CS2)
+    hurt_map: dict[int, str] = {}
+    for _, row in ah.iterrows():
+        t = int(row["tick"])
+        hg = str(row.get("hitgroup", ""))
+        hurt_map[t] = hg
+
+    _NON_BULLET = {
+        "weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade",
+        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
+        "weapon_c4",
+    }
+    all_shot_rows = sorted(
+        zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))),
+        key=lambda x: x[0],
+    )
+    shot_rows = [(t, w) for t, w in all_shot_rows
+                 if str(w) not in _NON_BULLET and not str(w).startswith("weapon_knife")]
+
+    duel_first_shots: list[int] = []
+    prev = None
+    for st, _ in shot_rows:
+        if prev is None or (st - prev) > DUEL_MERGE_TICKS:
+            duel_first_shots.append(st)
+        prev = st
+
+    head_hits = 0
+    total_hits = 0
+    for st in duel_first_shots:
+        # look for a hurt event within 8 ticks
+        for ht, hg in hurt_map.items():
+            if 0 <= ht - st <= 8:
+                total_hits += 1
+                if hg in ("1", "head", "Head"):
+                    head_hits += 1
+                break
+
+    return round(head_hits / total_hits * 100, 1) if total_hits else 0.0
+
+
 # ── Excellent contacts ────────────────────────────────────────────────────────
 
 def _compute_excellent_contacts(
@@ -691,6 +755,11 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     except Exception:
         excellent_contacts = 0
 
+    try:
+        crosshair_placement = _compute_crosshair_placement(wf_df, hurt_df, steamid)
+    except Exception:
+        crosshair_placement = 0.0
+
     return {
         "counterStrafeErrors": cs_errors,
         "idealStrafePct": ideal_pct,
@@ -702,4 +771,5 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "reactionTimeMs": reaction_time_ms,
         "overshootCount": overshoot_count,
         "excellentContacts": excellent_contacts,
+        "crosshairPlacementPct": crosshair_placement,
     }
