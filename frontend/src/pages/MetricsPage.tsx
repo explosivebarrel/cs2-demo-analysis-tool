@@ -1682,13 +1682,22 @@ function SuccessfulReactionTimePage({ analytics, lang }: {
       {deltasAll.length > 0 && deltas.length > 0 && (
         <>
           <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
-          <WinRateComparison
-            cleanCount={deltas.length} cleanWins={deltas.length}
-            otherCount={deltasAll.length - deltas.length} otherWins={0}
-            lang={lang}
-            cleanLabel={ru ? 'Попал первой пулей' : 'First bullet hit'}
-            otherLabel={ru ? 'Промахнулся первой' : 'First bullet missed'}
-          />
+          {(() => {
+            const shots = m.firstBulletShots ?? []
+            const hitRounds = new Set(shots.filter(s => s.hit).map(s => s.round))
+            const missRounds = new Set(shots.filter(s => !s.hit).map(s => s.round))
+            const hitDuels = analytics.duels.filter(d => hitRounds.has(d.round))
+            const missDuels = analytics.duels.filter(d => missRounds.has(d.round))
+            return hitDuels.length > 0 && missDuels.length > 0 ? (
+              <WinRateComparison
+                cleanCount={hitDuels.length} cleanWins={hitDuels.filter(d => d.won).length}
+                otherCount={missDuels.length} otherWins={missDuels.filter(d => d.won).length}
+                lang={lang}
+                cleanLabel={ru ? 'Попал первой пулей' : 'First bullet hit'}
+                otherLabel={ru ? 'Промахнулся первой' : 'First bullet missed'}
+              />
+            ) : null
+          })()}
         </>
       )}
 
