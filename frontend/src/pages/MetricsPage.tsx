@@ -313,6 +313,7 @@ function OpeningWinPctPage({ analytics, playerNames, lang, totalRounds }: {
   lang: 'ru' | 'en'; totalRounds: number
 }) {
   const openingDuels = analytics.duels.filter(d => d.opening)
+  const nonOpeningDuels = analytics.duels.filter(d => !d.opening)
   const won = openingDuels.filter(d => d.won)
   const lost = openingDuels.filter(d => !d.won)
   const pct = analytics.metrics.openingWinPct
@@ -328,6 +329,18 @@ function OpeningWinPctPage({ analytics, playerNames, lang, totalRounds }: {
         subtitle={ru ? `${won.length} выигранных · ${lost.length} проигранных открывашек` : `${won.length} won · ${lost.length} lost opening duels`}
         value={pct.toFixed(1) + '%'} metricKey="openingWinPct" lang={lang}
       />
+      {openingDuels.length > 0 && nonOpeningDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={openingDuels.length} cleanWins={won.length}
+            otherCount={nonOpeningDuels.length} otherWins={nonOpeningDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Открывашки' : 'Opening duels'}
+            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+          />
+        </>
+      )}
       <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
       {openingDuels.length > 0 ? (
         <>
@@ -426,8 +439,8 @@ const CLASS_LABELS: Record<string, { ru: string; en: string }> = {
   other:   { ru: 'Прочее', en: 'Other' },
 }
 
-function FirstBulletAccPage({ analytics, lang }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
+function FirstBulletAccPage({ analytics, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const shots: FirstBulletShot[] = analytics.metrics.firstBulletShots ?? []
   const pct = analytics.metrics.firstBulletAcc
@@ -457,6 +470,11 @@ function FirstBulletAccPage({ analytics, lang }: {
   const classRows = Object.entries(classCounts)
     .filter(([, v]) => v.total > 0)
     .sort((a, b) => b[1].total - a[1].total)
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const s of shots) {
+    if (!(s.round in roundOutcomes)) roundOutcomes[s.round] = s.hit ? 'kill' : 'death'
+  }
 
   return (
     <div>
@@ -540,6 +558,10 @@ function FirstBulletAccPage({ analytics, lang }: {
           </div>
         ))}
       </div>
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
     </div>
   )
 }
@@ -550,6 +572,7 @@ function TradeKillsPage({ analytics, playerNames, lang, totalRounds }: {
   const rounds = analytics.metrics.tradeKillRounds ?? []
   const pct = analytics.metrics.tradeKillPct
   const episodes = analytics.duels.filter(d => d.isTradeKill)
+  const nonTradeEpisodes = analytics.duels.filter(d => !d.isTradeKill)
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const r of rounds) roundOutcomes[r] = 'kill'
   const ru = lang === 'ru'
@@ -560,6 +583,18 @@ function TradeKillsPage({ analytics, playerNames, lang, totalRounds }: {
         subtitle={ru ? `${rounds.length} трейд-килов в раундах: ${rounds.join(', ') || '—'}` : `${rounds.length} trade kills in rounds: ${rounds.join(', ') || '—'}`}
         value={pct.toFixed(1) + '%'} metricKey="tradeKillPct" lang={lang}
       />
+      {episodes.length > 0 && nonTradeEpisodes.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={episodes.length} cleanWins={episodes.filter(d => d.won).length}
+            otherCount={nonTradeEpisodes.length} otherWins={nonTradeEpisodes.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Трейд-килы' : 'Trade kills'}
+            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+          />
+        </>
+      )}
       <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
       <EpisodeList duels={episodes} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
@@ -576,6 +611,7 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
   const rounds = analytics.metrics.tradedDeathRounds ?? []
   const pct = analytics.metrics.tradedDeathPct
   const episodes = analytics.duels.filter(d => d.isTradedDeath)
+  const nonTradedDeaths = analytics.duels.filter(d => !d.isTradedDeath)
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const r of rounds) roundOutcomes[r] = 'draw'
   const ru = lang === 'ru'
@@ -586,6 +622,18 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
         subtitle={ru ? `${rounds.length} трейд-смертей в раундах: ${rounds.join(', ') || '—'}` : `${rounds.length} traded deaths in rounds: ${rounds.join(', ') || '—'}`}
         value={pct.toFixed(1) + '%'} metricKey="tradedDeathPct" lang={lang}
       />
+      {episodes.length > 0 && nonTradedDeaths.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={episodes.length} cleanWins={episodes.filter(d => d.won).length}
+            otherCount={nonTradedDeaths.length} otherWins={nonTradedDeaths.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={ru ? 'Трейд-смерти' : 'Traded deaths'}
+            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+          />
+        </>
+      )}
       <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
       <EpisodeList duels={episodes} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
@@ -1797,7 +1845,7 @@ export default function MetricsPage() {
       case 'idealStrafePct':
         return <IdealStrafePctPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'firstBulletAcc':
-        return <FirstBulletAccPage analytics={analytics} lang={lang} />
+        return <FirstBulletAccPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'tradeKillPct':
         return <TradeKillsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'tradedDeathPct':
