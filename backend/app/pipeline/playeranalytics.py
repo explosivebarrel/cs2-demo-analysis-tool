@@ -469,6 +469,27 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                     first_hit = any(0 <= ht - first_fire <= 8 for ht in enemy_hurt_ticks)
                     if not first_hit and "missed_first" not in errors:
                         errors.append("missed_first")
+                    # passive angle: player was stationary for >1.5s before first fire
+                    # (stood still in exposed position without peeking)
+                    PASSIVE_TICKS = int(ctx.tickrate * 1.5)
+                    passive_window_start = max(0, first_fire - PASSIVE_TICKS)
+                    try:
+                        atk_pre = ticks_df[
+                            (ticks_df["steamid"].astype(str) == steamid) &
+                            (ticks_df["tick"] >= passive_window_start) &
+                            (ticks_df["tick"] < first_fire)
+                        ][["tick", "X", "Y"]].sort_values("tick")
+                        if len(atk_pre) >= 3:
+                            xs = atk_pre["X"].values
+                            ys = atk_pre["Y"].values
+                            max_disp = max(
+                                ((xs[i] - xs[0]) ** 2 + (ys[i] - ys[0]) ** 2) ** 0.5
+                                for i in range(1, len(xs))
+                            )
+                            if max_disp < 40 and "passive_angle" not in errors:
+                                errors.append("passive_angle")
+                    except Exception:
+                        pass
             except Exception:
                 pass
         else:

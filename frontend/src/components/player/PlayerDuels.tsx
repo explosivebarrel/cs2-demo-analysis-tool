@@ -11,6 +11,7 @@ const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: 
   overshoot:    { ru: 'Перелёт прицела',         en: 'Aim overshoot',      color: 'var(--red)',     icon: '→' },
   undershoot:   { ru: 'Недолёт прицела',         en: 'Aim undershoot',     color: 'var(--accent2)', icon: '←' },
   missed_first: { ru: 'Неточный первый выстрел', en: 'Inaccurate 1st shot', color: 'var(--accent)',  icon: '✗' },
+  passive_angle: { ru: 'Пассивный угол',         en: 'Passive angle',       color: 'var(--text2)', icon: '⏸' },
 }
 
 // pseudo-groups for "no errors" bucket
