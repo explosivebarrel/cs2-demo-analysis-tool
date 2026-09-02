@@ -186,6 +186,7 @@ export interface DuelEpisode {
   isTradeKill: boolean
   isTradedDeath: boolean
   errors: string[]
+  winProb?: number | null
   context: {
     nearAllyDist: number | null
     flashDur: number

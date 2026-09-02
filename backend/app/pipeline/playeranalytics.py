@@ -953,6 +953,32 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             d["isTradeKill"] = d["tick"] in trade_kill_tick_set
             d["isTradedDeath"] = d["tick"] in traded_death_tick_set
 
+        # add per-duel win probability (player's side) at kill tick
+        if winprob and replay_ticks:
+            import bisect
+            ticks_arr = replay_ticks
+            side_by_round: dict[int, str] = {}
+            for r in rb.rounds:
+                side0 = r.get("sideTeam0", "T")
+                team = rb.steamid_team.get(steamid)
+                if team == 0:
+                    side_by_round[r["n"]] = side0
+                else:
+                    side_by_round[r["n"]] = "CT" if side0 == "T" else "T"
+            for d in duels:
+                t = d["tick"]
+                i = bisect.bisect_left(ticks_arr, t)
+                if i >= len(ticks_arr):
+                    i = len(ticks_arr) - 1
+                elif i > 0 and abs(ticks_arr[i - 1] - t) < abs(ticks_arr[i] - t):
+                    i -= 1
+                p_ct = winprob[i] if i < len(winprob) else None
+                if p_ct is not None:
+                    side = side_by_round.get(d["round"], "T")
+                    d["winProb"] = round(p_ct if side == "CT" else 1.0 - p_ct, 3)
+                else:
+                    d["winProb"] = None
+
         # series comes from run.py's _player_payload — we recompute it here
         # to avoid coupling; use same formula as run._imp_round
         try:

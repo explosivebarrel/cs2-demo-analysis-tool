@@ -120,7 +120,14 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
 
   // lost without any trade context = "dangerous losses"
   const lostDuels = duels.filter(d => !d.won)
-  const lostIsolated = lostDuels.filter(d => d.context.aliveAllies === 0 || (d.context.nearAllyDist !== null && d.context.nearAllyDist > 800))
+  // prefer win-prob based; fallback to isolation filter if no prob data
+  const hasDuelProbs = duels.some(d => d.winProb != null)
+  const lostNoChance = hasDuelProbs
+    ? lostDuels.filter(d => d.winProb != null && d.winProb < 0.35)
+    : lostDuels.filter(d => d.context.aliveAllies === 0 || (d.context.nearAllyDist !== null && d.context.nearAllyDist > 800))
+  const wonUnfavorable = hasDuelProbs
+    ? wonDuels.filter(d => d.winProb != null && d.winProb < 0.40)
+    : []
   const wonClean = wonDuels.filter(d => d.errors.length === 0 || d.errors[0] === 'strong_duel')
 
   return (
@@ -316,16 +323,33 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         </div>
 
         {/* ПРОИГРАЛ БЕЗ ШАНСОВ */}
-        {lostIsolated.length > 0 && (
+        {lostNoChance.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 700, marginBottom: 6 }}>
-              {lang === 'ru' ? '❌ Проиграл в изоляции' : '❌ Lost while isolated'}
+              {lang === 'ru' ? '❌ Проиграл без шансов' : '❌ Lost without a chance'}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {lostIsolated.slice(0, 6).map((d, i) => (
+              {lostNoChance.slice(0, 8).map((d, i) => (
                 <button key={i} onClick={() => setDrillDuel(d)}
                   style={{ background: 'var(--bg2)', border: '1px solid var(--red)', color: 'var(--red)', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 11 }}>
-                  R{d.round}
+                  R{d.round}{d.winProb != null ? ` [${Math.round(d.winProb * 100)}%]` : ''}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ВЫТАЩИЛ НЕВЫГОДНЫЕ */}
+        {wonUnfavorable.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 700, marginBottom: 6 }}>
+              {lang === 'ru' ? '🏆 Вытащил невыгодные' : '🏆 Won despite bad odds'}
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {wonUnfavorable.slice(0, 8).map((d, i) => (
+                <button key={i} onClick={() => setDrillDuel(d)}
+                  style={{ background: 'var(--bg2)', border: '1px solid var(--accent2)', color: 'var(--accent2)', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 11 }}>
+                  R{d.round}{d.winProb != null ? ` [${Math.round(d.winProb * 100)}%]` : ''}
                 </button>
               ))}
             </div>
