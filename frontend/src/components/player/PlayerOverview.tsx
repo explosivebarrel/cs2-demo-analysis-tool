@@ -311,6 +311,14 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             higherIsBetter={false}
             onClick={() => goMetric('overshootCount')}
           />
+          <MetricCard
+            label={lang === 'ru' ? 'Качественные контакты' : 'Excellent contacts'}
+            value={String((metrics as any).excellentContacts ?? 0)}
+            sub={lang === 'ru' ? 'килов: стоял + первая пуля попала' : 'kills: stopped + first bullet hit'}
+            benchmarkKey="excellentContacts" benchmarkValue={(metrics as any).excellentContacts ?? 0} lang={lang}
+            color={((metrics as any).excellentContacts ?? 0) >= 3 ? 'var(--green)' : undefined}
+            onClick={() => goMetric('excellentContacts')}
+          />
         </div>
       </div>
 

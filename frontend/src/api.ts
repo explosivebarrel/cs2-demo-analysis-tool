@@ -221,6 +221,7 @@ export interface PlayerMetrics {
   angleControlCount: number
   reactionTimeMs: number
   overshootCount: number
+  excellentContacts: number
 }
 
 export interface PlayerImpact {

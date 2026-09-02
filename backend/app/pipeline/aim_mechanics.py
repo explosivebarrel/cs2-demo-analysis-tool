@@ -546,7 +546,79 @@ def _compute_reaction_time(
     return avg_rt, overshoot_total
 
 
-# ── Public entry point ────────────────────────────────────────────────────────
+# ── Excellent contacts ────────────────────────────────────────────────────────
+
+def _compute_excellent_contacts(
+    wf_df,
+    hurt_df,
+    kills_df,
+    vel_lookup: dict,
+    steamid: str,
+    tickrate: float,
+) -> int:
+    """
+    Count "excellent contacts": winning duels where:
+      - attacker velocity <= SHOOT_THRESHOLD (was stopped)
+      - first bullet of the duel hit an enemy (first shot accuracy)
+    """
+    if wf_df is None or not len(wf_df):
+        return 0
+    if kills_df is None or not len(kills_df):
+        return 0
+
+    my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
+    if my_wf.empty:
+        return 0
+
+    my_kills = kills_df[kills_df["attacker_steamid"].astype(str) == steamid]
+    if my_kills.empty:
+        return 0
+
+    kill_ticks: set[int] = {int(k["tick"]) for _, k in my_kills.iterrows()}
+
+    # enemy hurt ticks involving this attacker
+    enemy_hurt_ticks: set[int] = set()
+    if hurt_df is not None and len(hurt_df):
+        ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
+        for t in ah["tick"]:
+            enemy_hurt_ticks.add(int(t))
+
+    _NON_BULLET = {
+        "weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade",
+        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
+        "weapon_c4",
+    }
+
+    all_shot_rows = sorted(
+        zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))),
+        key=lambda x: x[0],
+    )
+    shot_rows = [(t, w) for t, w in all_shot_rows
+                 if str(w) not in _NON_BULLET and not str(w).startswith("weapon_knife")]
+
+    duel_first_shots: list[tuple[int, str]] = []
+    prev = None
+    for st, wep in shot_rows:
+        if prev is None or (st - prev) > DUEL_MERGE_TICKS:
+            duel_first_shots.append((st, str(wep)))
+        prev = st
+
+    excellent = 0
+    for st, _ in duel_first_shots:
+        # must result in a kill within DUEL_MERGE_TICKS
+        if not any(0 <= kt - st <= DUEL_MERGE_TICKS for kt in kill_ticks):
+            continue
+        # first bullet must hit
+        hit = any(0 <= ht - st <= 8 for ht in enemy_hurt_ticks)
+        if not hit:
+            continue
+        # attacker must be stopped at shot tick
+        vel = _vel_at(vel_lookup, st, steamid)
+        if vel > SHOOT_THRESHOLD:
+            continue
+        excellent += 1
+
+    return excellent
 
 def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     """
@@ -612,6 +684,13 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     except Exception:
         reaction_time_ms, overshoot_count = 0.0, 0
 
+    try:
+        excellent_contacts = _compute_excellent_contacts(
+            wf_df, hurt_df, kills_df, vel_lookup, steamid, tickrate
+        )
+    except Exception:
+        excellent_contacts = 0
+
     return {
         "counterStrafeErrors": cs_errors,
         "idealStrafePct": ideal_pct,
@@ -622,4 +701,5 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "angleControlCount": angle_ctrl,
         "reactionTimeMs": reaction_time_ms,
         "overshootCount": overshoot_count,
+        "excellentContacts": excellent_contacts,
     }

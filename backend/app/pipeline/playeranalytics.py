@@ -788,6 +788,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                     "firstBulletAcc": 0.0, "ttk_ms": 0.0,
                     "reloadErrors": 0, "angleControlCount": 0,
                     "reactionTimeMs": 0.0, "overshootCount": 0,
+                    "excellentContacts": 0,
                 },
                 "impact": {"topRoundsPositive": [], "topRoundsNegative": [],
                            "avgWinProbAtDuel": None},
@@ -850,6 +851,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "firstBulletAcc": 0.0, "ttk_ms": 0.0,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "reactionTimeMs": 0.0, "overshootCount": 0,
+                "excellentContacts": 0,
             }
 
         try:
@@ -865,8 +867,8 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "firstBulletAcc": 0.0, "ttk_ms": 0.0,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "reactionTimeMs": 0.0, "overshootCount": 0,
+                "excellentContacts": 0,
             }
-
         try:
             impact = _build_impact(
                 series, duels,

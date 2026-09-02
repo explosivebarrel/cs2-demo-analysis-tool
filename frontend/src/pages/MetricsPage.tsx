@@ -1079,6 +1079,45 @@ function OvershootPage({ analytics, lang, totalRounds }: {
   )
 }
 
+// ------------------------------------------------------------------ excellent contacts page
+
+function ExcellentContactsPage({ analytics, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const m = analytics.metrics
+  const count = (m as any).excellentContacts ?? 0
+  const ru = lang === 'ru'
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of analytics.duels) {
+    if (d.won && !(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  }
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Качественные контакты' : 'Excellent contacts'}
+        subtitle={ru ? 'Побед в дуэлях: стоял на месте + первая пуля попала' : 'Duel wins: stopped at shot + first bullet hit'}
+        value={String(count)} metricKey="excellentContacts" lang={lang}
+      />
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {ru
+          ? `Качественные контакты — дуэли, в которых ты победил, при этом не двигался в момент первого выстрела (скорость ≤${50} u/s) и первая пуля попала в врага. Это комбинация правильного движения и точного первого выстрела — самый ценный показатель механики в дуэлях.`
+          : `Excellent contacts are duel wins where you were not moving when you first shot (velocity ≤${50} u/s) and your first bullet hit the enemy. This combines correct movement mechanics with accurate first-shot placement — the most valuable indicator of duel mechanics.`}
+      </div>
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ main page
 
 export default function MetricsPage() {
@@ -1162,6 +1201,8 @@ export default function MetricsPage() {
         return <ReactionTimePage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'overshootCount':
         return <OvershootPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+      case 'excellentContacts':
+        return <ExcellentContactsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       default:
         return (
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>
