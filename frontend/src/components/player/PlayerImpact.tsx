@@ -118,6 +118,14 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
     ? Math.round(wonDuels.filter(d => d.errors.includes('flashed')).length / wonDuels.length * 100)
     : 0
 
+  // В КАКИЕ ДУЭЛИ ПОПАДАЕШЬ — win% context when entering duels (all duels)
+  const duelsWithProb = duels.filter(d => d.winProb != null)
+  const avgProbEntering = duelsWithProb.length > 0
+    ? duelsWithProb.reduce((s, d) => s + d.winProb!, 0) / duelsWithProb.length
+    : null
+  // КАК ИХ РЕАЛИЗУЕШЬ — actual win rate vs expected
+  const actualWinRate = duels.length > 0 ? totalWon / duels.length : null
+
   // lost without any trade context = "dangerous losses"
   const lostDuels = duels.filter(d => !d.won)
   // prefer win-prob based; fallback to isolation filter if no prob data
@@ -299,23 +307,49 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
           {lang === 'ru' ? 'Качество дуэлей' : 'Duel quality'}
         </div>
+        {/* В КАКИЕ ДУЭЛИ ПОПАДАЕШЬ / КАК ИХ РЕАЛИЗУЕШЬ */}
+        {avgProbEntering != null && actualWinRate != null && (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+            <div style={{ background: 'var(--bg2)', borderRadius: 6, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>
+                {lang === 'ru' ? 'В какие дуэли попадаешь' : 'Duels you enter'}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text1)' }}>
+                {Math.round(avgProbEntering * 100)}%
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                {lang === 'ru' ? `средний шанс победы (${duelsWithProb.length} дуэлей)` : `avg win chance (${duelsWithProb.length} duels)`}
+              </div>
+            </div>
+            <div style={{ background: 'var(--bg2)', borderRadius: 6, padding: '10px 12px' }}>
+              <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>
+                {lang === 'ru' ? 'Как их реализуешь' : 'How you convert'}
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: actualWinRate >= avgProbEntering ? 'var(--green)' : 'var(--red)' }}>
+                {totalWon}/{duels.length}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
+                {Math.round(actualWinRate * 100)}%{' '}
+                <span style={{ color: actualWinRate >= avgProbEntering ? 'var(--green)' : 'var(--red)' }}>
+                  ({actualWinRate >= avgProbEntering ? '+' : ''}{Math.round((actualWinRate - avgProbEntering) * 100)}% {lang === 'ru' ? 'от ожидаемого' : 'vs expected'})
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginBottom: 14 }}>
           {(() => {
             const r1 = ratingLabel(totalWon / (duels.length || 1) * 100, 50, lang)
             const r2 = ratingLabel(100 - shiftPeekPct, 70, lang)
             const r3 = ratingLabel(100 - isolatedPct, 70, lang)
             const r4 = ratingLabel(100 - movingPct, 70, lang)
-            const avgProb = impact.avgWinProbAtDuel
             const items: { label: string; value: string; r: { text: string; color: string } }[] = [
               { label: lang === 'ru' ? 'Выиграно дуэлей' : 'Duels won', value: `${totalWon}/${duels.length}`, r: r1 },
               { label: lang === 'ru' ? 'Без шифт-пика'   : 'No shift-peek', value: `${100 - shiftPeekPct}%`, r: r2 },
               { label: lang === 'ru' ? 'Не изолирован'   : 'Not isolated',  value: `${100 - isolatedPct}%`,  r: r3 },
               { label: lang === 'ru' ? 'Стоя при стрельбе' : 'Still when shooting', value: `${100 - movingPct}%`, r: r4 },
             ]
-            if (avgProb != null) {
-              const r5 = ratingLabel((1 - avgProb) * 100, 50, lang)
-              items.push({ label: lang === 'ru' ? 'Шанс победы в дуэлях' : 'Win prob at duels', value: `${Math.round(avgProb * 100)}%`, r: r5 })
-            }
             return items.map(({ label, value, r }) => (
               <UtilMetricCard key={label} label={label} value={value} rating={r.text} color={r.color} />
             ))
