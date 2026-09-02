@@ -79,4 +79,7 @@ BENCHMARKS: dict[str, dict[str, float]] = {
     # lower is better
     "passiveAngleCount":  {"weak": 8,    "avg": 4,    "good": 1,    "elite": 0  },
     "successfulReactionTimeMs": {"weak": 550, "avg": 400, "good": 270, "elite": 160},
+    # lower is better — discipline metrics
+    "shiftPeekPct":  {"weak": 60, "avg": 35, "good": 15, "elite": 5 },
+    "isolatedPct":   {"weak": 50, "avg": 30, "good": 15, "elite": 5 },
 }

@@ -2,6 +2,12 @@ import { useBenchmarks } from '../../App'
 import { Benchmarks, PlayerData, PlayerMetrics } from '../../api'
 import { TIER_COLORS } from '../../benchmarkUtils'
 
+const LOWER_IS_BETTER = new Set([
+  'reactionTimeMs', 'successfulReactionTimeMs', 'ttk_ms',
+  'overshootCount', 'counterStrafeErrors', 'reloadErrors', 'passiveAngleCount',
+  'shiftPeekPct', 'isolatedPct',
+])
+
 interface MetricDef {
   key: string
   getValue: (p: PlayerData, m: PlayerMetrics) => number | null
@@ -76,6 +82,66 @@ const METRIC_DEFS: MetricDef[] = [
     getValue: (_, m) => m.firstBulletAcc,
     labelRu: 'Точность первой пули', labelEn: 'First Bullet Acc', unit: '%',
   },
+  {
+    key: 'reactionTimeMs',
+    getValue: (_, m) => m.reactionTimeMs && m.reactionTimeMs > 0 ? m.reactionTimeMs : null,
+    labelRu: 'Время реакции', labelEn: 'Reaction Time', unit: ' ms',
+  },
+  {
+    key: 'successfulReactionTimeMs',
+    getValue: (_, m) => m.successfulReactionTimeMs && m.successfulReactionTimeMs > 0 ? m.successfulReactionTimeMs : null,
+    labelRu: 'Реакция в попаданиях', labelEn: 'Reaction on hits', unit: ' ms',
+  },
+  {
+    key: 'ttk_ms',
+    getValue: (_, m) => m.ttk_ms && m.ttk_ms > 0 ? m.ttk_ms : null,
+    labelRu: 'Время до фрага', labelEn: 'Time to kill', unit: ' ms',
+  },
+  {
+    key: 'overshootCount',
+    getValue: (_, m) => m.overshootCount ?? null,
+    labelRu: 'Промахи прицела', labelEn: 'Overshoot count', unit: '',
+  },
+  {
+    key: 'counterStrafeErrors',
+    getValue: (_, m) => m.counterStrafeErrors ?? null,
+    labelRu: 'Ошибки контрстрейфа', labelEn: 'Counter-strafe errors', unit: '',
+  },
+  {
+    key: 'crosshairPlacementPct',
+    getValue: (_, m) => m.crosshairPlacementPct ?? null,
+    labelRu: 'Прицел на голове', labelEn: 'Crosshair placement', unit: '%',
+  },
+  {
+    key: 'excellentContacts',
+    getValue: (_, m) => m.excellentContacts ?? null,
+    labelRu: 'Качественные контакты', labelEn: 'Excellent contacts', unit: '',
+  },
+  {
+    key: 'angleControlCount',
+    getValue: (_, m) => m.angleControlCount ?? null,
+    labelRu: 'Контроль угла', labelEn: 'Angle control', unit: '',
+  },
+  {
+    key: 'reloadErrors',
+    getValue: (_, m) => m.reloadErrors ?? null,
+    labelRu: 'Перезарядки', labelEn: 'Reload errors', unit: '',
+  },
+  {
+    key: 'passiveAngleCount',
+    getValue: (_, m) => m.passiveAngleCount ?? null,
+    labelRu: 'Пассивный угол', labelEn: 'Passive angle', unit: '',
+  },
+  {
+    key: 'shiftPeekPct',
+    getValue: (_, m) => m.shiftPeekPct ?? null,
+    labelRu: 'Шифт-пики', labelEn: 'Shift peeks', unit: '%',
+  },
+  {
+    key: 'isolatedPct',
+    getValue: (_, m) => m.isolatedPct ?? null,
+    labelRu: 'Игра в изоляции', labelEn: 'Isolated plays', unit: '%',
+  },
 ]
 
 interface ScoredMetric {
@@ -97,10 +163,14 @@ function scoreMetrics(
     const value = def.getValue(player, metrics)
     if (value == null) continue
     if (def.minSamples && !def.minSamples(player)) continue
-    const range = tiers.elite - tiers.avg
+    const lowerIsBetter = LOWER_IS_BETTER.has(def.key)
+    const range = lowerIsBetter ? tiers.avg - tiers.elite : tiers.elite - tiers.avg
     if (range <= 0) continue
-    const score = (value - tiers.avg) / range
-    result.push({ def, value, score, avgDiff: value - tiers.avg })
+    // score > 0 means better than avg, score < 0 means worse
+    const score = lowerIsBetter
+      ? (tiers.avg - value) / range
+      : (value - tiers.avg) / range
+    result.push({ def, value, score, avgDiff: lowerIsBetter ? tiers.avg - value : value - tiers.avg })
   }
   return result
 }
@@ -132,9 +202,8 @@ export default function PlayerStrengths({ player, metrics, lang }: Props) {
     const diffSign = item.avgDiff >= 0 ? '+' : ''
     const diffStr = `${diffSign}${item.avgDiff.toFixed(1)}${item.def.unit}`
     const avgStr = `${ru ? 'средний' : 'avg'}: ${tiers.avg}${item.def.unit}`
-    const displayVal = item.def.unit === '' && item.def.key !== 'kd' && item.def.key !== 'rating'
-      ? item.value.toFixed(0)
-      : item.value.toFixed(2)
+    const isDecimal = ['kd', 'rating'].includes(item.def.key)
+    const displayVal = isDecimal ? item.value.toFixed(2) : item.value.toFixed(0)
     return (
       <div style={{
         background: 'var(--bg3)', borderRadius: 8, padding: '10px 14px',
