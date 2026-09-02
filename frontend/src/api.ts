@@ -223,6 +223,7 @@ export interface PlayerMetrics {
   overshootCount: number
   excellentContacts: number
   crosshairPlacementPct: number
+  successfulReactionTimeMs: number
 }
 
 export interface PlayerImpact {

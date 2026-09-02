@@ -398,28 +398,38 @@ def _compute_reaction_time(
     kills_df,
     steamid: str,
     tickrate: float,
-) -> tuple[float, int]:
+    hurt_df=None,
+) -> tuple[float, int, float]:
     """
-    Returns (avg_reaction_time_ms, overshoot_count).
+    Returns (avg_reaction_time_ms, overshoot_count, successful_reaction_time_ms).
 
     reaction_time_ms: avg ms from when the victim started moving (peek onset)
                       to the attacker's first shot in winning duels.
     overshoot_count: total times attacker yaw crossed past victim's bearing
                      between peek onset and kill tick across all winning duels.
+    successful_reaction_time_ms: same as reaction_time_ms but only for duels
+                     where the first bullet hit (Реакция в попаданиях).
     """
     if ticks_df is None or not len(ticks_df) or kills_df is None or not len(kills_df):
-        return 0.0, 0
+        return 0.0, 0, 0.0
 
     my_kills = kills_df[kills_df["attacker_steamid"].astype(str) == steamid]
     if my_kills.empty:
-        return 0.0, 0
+        return 0.0, 0, 0.0
 
     if wf_df is None or not len(wf_df):
-        return 0.0, 0
+        return 0.0, 0, 0.0
 
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
-        return 0.0, 0
+        return 0.0, 0, 0.0
+
+    # enemy hurt ticks for successful reaction time (hit on first bullet)
+    enemy_hurt_ticks_rt: set[int] = set()
+    if hurt_df is not None and len(hurt_df):
+        ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
+        for t in ah["tick"]:
+            enemy_hurt_ticks_rt.add(int(t))
 
     import bisect
     import numpy as _np
@@ -433,13 +443,14 @@ def _compute_reaction_time(
         atk_y_arr    = atk_ticks["Y"].to_numpy(dtype=float)
         atk_yaw_arr  = atk_ticks["yaw"].to_numpy(dtype=float)
     except Exception:
-        return 0.0, 0
+        return 0.0, 0, 0.0
 
     wf_ticks_sorted = sorted(int(t) for t in my_wf["tick"])
     window_ticks = int(tickrate * RT_WINDOW_SEC)
     TTK_MAX_TICKS = max(32, int(tickrate * 0.5))
 
     reaction_deltas: list[float] = []
+    reaction_deltas_hit: list[float] = []
     overshoot_total = 0
 
     for _, k in my_kills.iterrows():
@@ -499,6 +510,11 @@ def _compute_reaction_time(
 
         reaction_deltas.append(rt_ms)
 
+        # track for successful reaction time: only when first bullet hit
+        first_hit_rt = any(0 <= ht - first_fire_tick <= 8 for ht in enemy_hurt_ticks_rt)
+        if first_hit_rt:
+            reaction_deltas_hit.append(rt_ms)
+
         # overshoot: yaw sign-changes past victim bearing from peek onset to kill
         try:
             oi_lo = bisect.bisect_left(atk_tick_arr, peek_onset_tick)
@@ -543,7 +559,8 @@ def _compute_reaction_time(
             pass
 
     avg_rt = round(sum(reaction_deltas) / len(reaction_deltas), 1) if reaction_deltas else 0.0
-    return avg_rt, overshoot_total
+    avg_rt_hit = round(sum(reaction_deltas_hit) / len(reaction_deltas_hit), 1) if reaction_deltas_hit else 0.0
+    return avg_rt, overshoot_total, avg_rt_hit
 
 
 # ── Crosshair placement ───────────────────────────────────────────────────────
@@ -742,11 +759,11 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         angle_ctrl = 0
 
     try:
-        reaction_time_ms, overshoot_count = _compute_reaction_time(
-            ticks_df, wf_df, kills_df, steamid, tickrate
+        reaction_time_ms, overshoot_count, successful_reaction_time_ms = _compute_reaction_time(
+            ticks_df, wf_df, kills_df, steamid, tickrate, hurt_df
         )
     except Exception:
-        reaction_time_ms, overshoot_count = 0.0, 0
+        reaction_time_ms, overshoot_count, successful_reaction_time_ms = 0.0, 0, 0.0
 
     try:
         excellent_contacts = _compute_excellent_contacts(
@@ -772,4 +789,5 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "overshootCount": overshoot_count,
         "excellentContacts": excellent_contacts,
         "crosshairPlacementPct": crosshair_placement,
+        "successfulReactionTimeMs": successful_reaction_time_ms,
     }

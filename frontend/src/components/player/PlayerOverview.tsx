@@ -304,6 +304,14 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             onClick={() => goMetric('reactionTimeMs')}
           />
           <MetricCard
+            label={lang === 'ru' ? 'Реакция в попаданиях' : 'Reaction on hits'}
+            value={(metrics.successfulReactionTimeMs ?? 0) > 0 ? (metrics.successfulReactionTimeMs ?? 0).toFixed(0) + ' мс' : '—'}
+            sub={lang === 'ru' ? 'мс реакции только когда первая пуля попала' : 'reaction ms only when first bullet hit'}
+            benchmarkKey="reactionTimeMs" benchmarkValue={(metrics.successfulReactionTimeMs ?? 0) > 0 ? metrics.successfulReactionTimeMs : null} lang={lang}
+            higherIsBetter={false}
+            onClick={() => goMetric('reactionTimeMs')}
+          />
+          <MetricCard
             label={lang === 'ru' ? 'Промахи прицела' : 'Overshoot count'}
             value={String(metrics.overshootCount ?? 0)}
             sub={lang === 'ru' ? 'раз перевёл прицел мимо' : 'times aim crossed past enemy'}
