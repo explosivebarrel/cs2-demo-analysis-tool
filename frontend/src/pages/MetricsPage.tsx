@@ -1003,23 +1003,29 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
 
 // ------------------------------------------------------------------ reaction time page
 
-function ReactionTimePage({ analytics, lang, totalRounds }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
+function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>
+  lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
   const rt = (m as any).reactionTimeMs ?? 0
   const ru = lang === 'ru'
+  const wonDuels = analytics.duels.filter(d => d.won)
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
-  for (const d of analytics.duels) {
-    if (d.won && !(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  for (const d of wonDuels) {
+    if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
   }
+
+  // Histogram buckets: <200, 200-300, 300-400, 400-500, 500-700, >700
+  // We approximate by distributing based on avg and won-duel count
+  // Actual per-duel RT values aren't exposed in API; show available data only
 
   return (
     <div>
       <MetricHero
         title={ru ? 'Время реакции' : 'Reaction time'}
-        subtitle={ru ? 'Ср. мс от появления врага в FOV до первого выстрела' : 'Avg ms from enemy entering FOV to first shot'}
+        subtitle={ru ? 'Ср. мс от начала движения врага до первого выстрела' : 'Avg ms from enemy peek onset to first shot'}
         value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
         metricKey="reactionTimeMs" lang={lang}
       />
@@ -1030,9 +1036,17 @@ function ReactionTimePage({ analytics, lang, totalRounds }: {
         marginBottom: 16,
       }}>
         {ru
-          ? `Время реакции — сколько миллисекунд прошло с момента, когда враг появился в твоём поле зрения (конус ${40}°), до первого выстрела в этой дуэли. Измеряется только по выигранным дуэлям. Ниже = быстрее.`
-          : `Reaction time measures how many milliseconds elapsed from when the enemy first appeared in your field of view (${40}° cone) until your first shot in the duel. Measured on winning duels only. Lower is better.`}
+          ? 'Время реакции — сколько мс прошло с момента, когда враг начал движение (пик), до первого выстрела в этой дуэли. Измеряется только по выигранным дуэлям, где враг двигался. Ниже = быстрее.'
+          : 'Reaction time measures how many ms elapsed from when the enemy started moving (peek onset) until your first shot in the duel. Measured on winning duels where the enemy was in motion. Lower is better.'}
       </div>
+
+      {wonDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Победные дуэли' : 'Winning duels'} />
+          <EpisodeList duels={wonDuels} playerNames={playerNames} lang={lang} />
+        </>
+      )}
+
       <div style={{ marginTop: 24 }}>
         <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
@@ -1043,26 +1057,64 @@ function ReactionTimePage({ analytics, lang, totalRounds }: {
 
 // ------------------------------------------------------------------ overshoot page
 
-function OvershootPage({ analytics, lang, totalRounds }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
+function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>
+  lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
   const ov = (m as any).overshootCount ?? 0
   const ru = lang === 'ru'
+  const wonDuels = analytics.duels.filter(d => d.won)
+  const overshootDuels = wonDuels.filter(d => d.errors.includes('overshoot'))
+  const undershootDuels = wonDuels.filter(d => d.errors.includes('undershoot'))
+  const cleanDuels = wonDuels.filter(d => !d.errors.includes('overshoot') && !d.errors.includes('undershoot'))
+
+  const [filter, setFilter] = useState<'overshoot' | 'undershoot' | 'clean'>('overshoot')
+  const shown = filter === 'overshoot' ? overshootDuels : filter === 'undershoot' ? undershootDuels : cleanDuels
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
-  for (const d of analytics.duels) {
-    if (d.won && !(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
+  for (const d of wonDuels) {
+    if (d.errors.includes('overshoot')) roundOutcomes[d.round] = 'death'
+    else if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
   }
 
   return (
     <div>
       <MetricHero
         title={ru ? 'Промахи прицела' : 'Overshoot count'}
-        subtitle={ru ? 'Раз прицел перелетал мимо врага от появления до кила' : 'Times aim crossed past enemy from first visibility to kill'}
+        subtitle={ru
+          ? `${overshootDuels.length} перелётов · ${undershootDuels.length} недолётов · ${cleanDuels.length} чистых (из ${wonDuels.length} побед)`
+          : `${overshootDuels.length} overshoots · ${undershootDuels.length} undershoots · ${cleanDuels.length} clean (of ${wonDuels.length} wins)`}
         value={String(ov)}
         metricKey="overshootCount" lang={lang}
       />
+
+      {/* split bar */}
+      {wonDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Структура побед' : 'Win breakdown'} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
+            {[
+              { key: 'overshoot' as const, label: ru ? 'Перелёт' : 'Overshoot', count: overshootDuels.length, color: 'var(--red)' },
+              { key: 'undershoot' as const, label: ru ? 'Недолёт' : 'Undershoot', count: undershootDuels.length, color: 'var(--accent2)' },
+              { key: 'clean' as const, label: ru ? 'Чистые' : 'Clean', count: cleanDuels.length, color: 'var(--green)' },
+            ].map(({ key, label, count, color }) => {
+              const pct = wonDuels.length > 0 ? Math.round(count / wonDuels.length * 100) : 0
+              return (
+                <div key={key} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>{count}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{pct}% {ru ? 'от побед' : 'of wins'}</div>
+                  <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
       <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
@@ -1070,9 +1122,25 @@ function OvershootPage({ analytics, lang, totalRounds }: {
         marginBottom: 16,
       }}>
         {ru
-          ? `Промахи прицела считают, сколько раз прицел «пролетел» через врага в выигранных дуэлях — смена знака угла относительно врага означает перелёт. Чем меньше, тем точнее управление мышью.`
-          : `Overshoot counts how many times your aim crossed past the enemy in winning duels — each sign-change of the angle to the enemy is one overshoot. Fewer is better and indicates tighter mouse control.`}
+          ? 'Перелёт — прицел пролетел через врага (знак угла изменился). Недолёт — прицел так и не дотянулся до врага (угол не обнулился). Чистые дуэли — ни того, ни другого.'
+          : 'Overshoot — your aim crossed past the enemy (angle sign changed). Undershoot — aim never reached the enemy (angle never zeroed). Clean duels — neither.'}
       </div>
+
+      {wonDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+          <FilterBar
+            options={[
+              { key: 'overshoot' as const, label: ru ? `Перелёт (${overshootDuels.length})` : `Overshoot (${overshootDuels.length})`, color: 'var(--red)' },
+              { key: 'undershoot' as const, label: ru ? `Недолёт (${undershootDuels.length})` : `Undershoot (${undershootDuels.length})`, color: 'var(--accent2)' },
+              { key: 'clean' as const, label: ru ? `Чистые (${cleanDuels.length})` : `Clean (${cleanDuels.length})`, color: 'var(--green)' },
+            ]}
+            active={filter} onChange={setFilter}
+          />
+          <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+        </>
+      )}
+
       <div style={{ marginTop: 24 }}>
         <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
@@ -1338,9 +1406,9 @@ export default function MetricsPage() {
       case 'angleControlCount':
         return <AngleControlPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'reactionTimeMs':
-        return <ReactionTimePage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+        return <ReactionTimePage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'overshootCount':
-        return <OvershootPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+        return <OvershootPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'excellentContacts':
         return <ExcellentContactsPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'crosshairPlacementPct':
