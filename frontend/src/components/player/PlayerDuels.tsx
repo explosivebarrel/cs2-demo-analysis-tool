@@ -3,15 +3,17 @@ import { DuelEpisode } from '../../api'
 import EpisodeDrillDown from './EpisodeDrillDown'
 
 const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: string }> = {
-  shift_peek:  { ru: 'Пик на шифте',         en: 'Shift peek',       color: 'var(--accent2)', icon: '🚶' },
-  moving_shot: { ru: 'Движение при стрельбе', en: 'Moving shot',      color: 'var(--red)',     icon: '🏃' },
-  isolated:    { ru: 'Игра в изоляции',       en: 'Playing isolated', color: 'var(--accent)',  icon: '🔇' },
-  flashed:     { ru: 'Вышел на флеше',        en: 'Entered flashed',  color: 'var(--accent2)', icon: '🌟' },
-  strong_duel: { ru: 'Сильная дуэль',         en: 'Strong duel',      color: 'var(--green)',   icon: '💪' },
-  overshoot:    { ru: 'Перелёт прицела',         en: 'Aim overshoot',      color: 'var(--red)',     icon: '→' },
-  undershoot:   { ru: 'Недолёт прицела',         en: 'Aim undershoot',     color: 'var(--accent2)', icon: '←' },
-  missed_first: { ru: 'Неточный первый выстрел', en: 'Inaccurate 1st shot', color: 'var(--accent)',  icon: '✗' },
-  passive_angle: { ru: 'Пассивный угол',         en: 'Passive angle',       color: 'var(--text2)', icon: '⏸' },
+  shift_peek:    { ru: 'Пик на шифте',             en: 'Shift peek',           color: 'var(--accent2)', icon: '🚶' },
+  moving_shot:   { ru: 'Движение при стрельбе',    en: 'Moving shot',          color: 'var(--red)',     icon: '🏃' },
+  isolated:      { ru: 'Игра в изоляции',          en: 'Playing isolated',     color: 'var(--accent)',  icon: '🔇' },
+  flashed:       { ru: 'Вышел на флеше',           en: 'Entered flashed',      color: 'var(--accent2)', icon: '🌟' },
+  strong_duel:   { ru: 'Сильная дуэль',            en: 'Strong duel',          color: 'var(--green)',   icon: '💪' },
+  overshoot:     { ru: 'Перелёт прицела',          en: 'Aim overshoot',        color: 'var(--red)',     icon: '→' },
+  undershoot:    { ru: 'Недолёт прицела',          en: 'Aim undershoot',       color: 'var(--accent2)', icon: '←' },
+  missed_first:  { ru: 'Неточный первый выстрел',  en: 'Inaccurate 1st shot',  color: 'var(--accent)',  icon: '✗' },
+  passive_angle: { ru: 'Пассивный угол',           en: 'Passive angle',        color: 'var(--text2)',   icon: '⏸' },
+  moving:        { ru: 'Движение (жертва)',         en: 'Moving (victim)',      color: 'var(--text2)',   icon: '🏃' },
+  outnumbered:   { ru: 'В меньшинстве',            en: 'Outnumbered',          color: 'var(--text2)',   icon: '⚠️' },
 }
 
 // pseudo-groups for "no errors" bucket
