@@ -1566,6 +1566,91 @@ function SuccessfulReactionTimePage({ analytics, lang }: {
   )
 }
 
+// ------------------------------------------------------------------ passive angle page
+
+function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>
+  lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const m = analytics.metrics
+  const count = (m as any).passiveAngleCount ?? 0
+  const ru = lang === 'ru'
+  const attDuels = analytics.duels.filter(d => d.attacker === analytics.duels[0]?.attacker || d.won !== undefined)
+  // passive_angle is an attacker error: duels where we were attacker and had passive_angle
+  const passiveDuels = analytics.duels.filter(d => d.won !== undefined && d.errors.includes('passive_angle'))
+  const cleanDuels = analytics.duels.filter(d => d.won !== undefined && !d.errors.includes('passive_angle') && d.won)
+
+  const [filter, setFilter] = useState<'passive' | 'clean'>('passive')
+  const shown = filter === 'passive' ? passiveDuels : cleanDuels
+
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const d of passiveDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Пассивный угол' : 'Passive angle'}
+        subtitle={ru
+          ? `${count} дуэлей — стоял без движения на открытой позиции перед выстрелом`
+          : `${count} duels — stood still in an exposed position before shooting`}
+        value={String(count)} metricKey="passiveAngleCount" lang={lang} higherIsBetter={false}
+      />
+
+      {passiveDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Структура' : 'Breakdown'} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
+            {[
+              { key: 'passive' as const, label: ru ? 'Пассивный угол' : 'Passive angle', count: passiveDuels.length, color: 'var(--accent2)' },
+              { key: 'clean' as const, label: ru ? 'Чистые (победы)' : 'Clean (wins)', count: cleanDuels.length, color: 'var(--green)' },
+            ].map(({ key, label, count: c, color }) => {
+              const total = passiveDuels.length + cleanDuels.length
+              const pct = total > 0 ? Math.round(c / total * 100) : 0
+              return (
+                <div key={key} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{label}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>{c}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{pct}%</div>
+                  <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {ru
+          ? 'Пассивный угол — ты стоял на месте (смещение < 40 единиц) в течение нескольких тиков перед первым выстрелом на открытой позиции. Это даёт врагу легкий тейк — он уже знает, где ты. Используй быстрые пики или смещайся перед входом в контакт.'
+          : 'Passive angle — you were stationary (displacement < 40 units) for several ticks before your first shot from an exposed position. This gives the enemy an easy take — they already know where you are. Use quick peeks or shift position before engaging.'}
+      </div>
+
+      {passiveDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+          <FilterBar
+            options={[
+              { key: 'passive' as const, label: ru ? `Пассивные (${passiveDuels.length})` : `Passive (${passiveDuels.length})`, color: 'var(--accent2)' },
+              { key: 'clean' as const, label: ru ? `Чистые (${cleanDuels.length})` : `Clean (${cleanDuels.length})`, color: 'var(--green)' },
+            ]}
+            active={filter} onChange={setFilter}
+          />
+          <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
+          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+        </>
+      )}
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ main page
 
 export default function MetricsPage() {
@@ -1657,6 +1742,8 @@ export default function MetricsPage() {
         return <CrosshairPlacementPage analytics={analytics} lang={lang} />
       case 'missedFirst':
         return <MissedFirstPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
+      case 'passiveAngle':
+        return <PassiveAnglePage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       default:
         return (
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>

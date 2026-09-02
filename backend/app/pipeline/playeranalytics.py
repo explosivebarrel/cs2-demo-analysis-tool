@@ -641,6 +641,8 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
                 error_counts[e] += 1
     main_problem = max(error_counts, key=lambda k: error_counts[k]) if error_counts else None
 
+    passive_angle_count = sum(1 for d in attacker_duels if "passive_angle" in d["errors"])
+
     return {
         "tradeKillPct": trade_kill_pct,
         "tradedDeathPct": traded_death_pct,
@@ -650,6 +652,7 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         "shiftPeekPct": shift_peek_pct,
         "isolatedPct": isolated_pct,
         "mainProblem": main_problem,
+        "passiveAngleCount": passive_angle_count,
         "tradeKillRounds": trade_kill_rounds,
         "tradedDeathRounds": traded_death_rounds,
         "tradeKillTicks": trade_kill_ticks,

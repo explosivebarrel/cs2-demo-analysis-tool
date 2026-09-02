@@ -226,6 +226,7 @@ export interface PlayerMetrics {
   successfulReactionTimeMs: number
   reactionDeltas: number[]
   reactionDeltasHit: number[]
+  passiveAngleCount: number
 }
 
 export interface PlayerImpact {

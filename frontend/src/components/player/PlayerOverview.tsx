@@ -335,6 +335,26 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             color={(metrics.crosshairPlacementPct ?? 0) >= 50 ? 'var(--green)' : undefined}
             onClick={() => goMetric('crosshairPlacementPct')}
           />
+          <MetricCard
+            label={lang === 'ru' ? 'Неточный 1-й выстрел' : 'Missed 1st shot'}
+            value={(() => {
+              const wonDuels = duels.filter(d => d.won)
+              const missed = wonDuels.filter(d => d.errors.includes('missed_first'))
+              return wonDuels.length > 0 ? Math.round(missed.length / wonDuels.length * 100) + '%' : '—'
+            })()}
+            sub={lang === 'ru' ? '% побед без точного 1-го выстрела' : '% wins w/o accurate 1st shot'}
+            lang={lang}
+            higherIsBetter={false}
+            onClick={() => goMetric('missedFirst')}
+          />
+          <MetricCard
+            label={lang === 'ru' ? 'Пассивный угол' : 'Passive angle'}
+            value={String(metrics.passiveAngleCount ?? 0)}
+            sub={lang === 'ru' ? 'раз стоял без движения перед выстрелом' : 'times stood still before shooting'}
+            lang={lang}
+            higherIsBetter={false}
+            onClick={() => goMetric('passiveAngle')}
+          />
         </div>
       </div>
 
