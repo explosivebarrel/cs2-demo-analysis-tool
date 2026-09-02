@@ -1025,7 +1025,7 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
 }) {
   const m = analytics.metrics
   const count = m.angleControlCount ?? 0
-  const byPhase = (m as any).angleControlByPhase as { early: number; mid: number; late: number } | undefined
+  const byPhase = m.angleControlByPhase
   const ru = lang === 'ru'
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
@@ -1099,10 +1099,10 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
   lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
-  const rt = (m as any).reactionTimeMs ?? 0
+  const rt = m.reactionTimeMs ?? 0
   const ru = lang === 'ru'
   const wonDuels = analytics.duels.filter(d => d.won)
-  const deltas: number[] = (m as any).reactionDeltas ?? []
+  const deltas: number[] = m.reactionDeltas ?? []
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of wonDuels) {
@@ -1189,7 +1189,7 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
   lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
-  const ov = (m as any).overshootCount ?? 0
+  const ov = m.overshootCount ?? 0
   const ru = lang === 'ru'
   const wonDuels = analytics.duels.filter(d => d.won)
   const overshootDuels = wonDuels.filter(d => d.errors.includes('overshoot'))
@@ -1498,7 +1498,7 @@ function ExcellentContactsPage({ analytics, lang, totalRounds }: {
   analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
-  const count = (m as any).excellentContacts ?? 0
+  const count = m.excellentContacts ?? 0
   const ru = lang === 'ru'
   const duels = analytics.duels
   const shots = m.firstBulletShots ?? []
@@ -1558,12 +1558,12 @@ function SuccessfulReactionTimePage({ analytics, lang }: {
   analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
 }) {
   const m = analytics.metrics
-  const rt = (m as any).successfulReactionTimeMs ?? 0
-  const rtAll = (m as any).reactionTimeMs ?? 0
+  const rt = m.successfulReactionTimeMs ?? 0
+  const rtAll = m.reactionTimeMs ?? 0
   const ru = lang === 'ru'
 
-  const deltas: number[] = (m as any).reactionDeltasHit ?? []
-  const deltasAll: number[] = (m as any).reactionDeltas ?? []
+  const deltas: number[] = m.reactionDeltasHit ?? []
+  const deltasAll: number[] = m.reactionDeltas ?? []
 
   // histogram buckets: <100, 100-200, 200-300, 300-400, 400-500, >500
   const BUCKETS = [
@@ -1664,7 +1664,7 @@ function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
   lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
-  const count = (m as any).passiveAngleCount ?? 0
+  const count = m.passiveAngleCount ?? 0
   const ru = lang === 'ru'
   // passive_angle is an attacker error: duels where we were attacker and had passive_angle
   const passiveDuels = analytics.duels.filter(d => d.errors.includes('passive_angle'))
