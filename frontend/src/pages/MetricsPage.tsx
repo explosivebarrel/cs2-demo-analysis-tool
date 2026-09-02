@@ -926,6 +926,10 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const c of list) roundOutcomes[c.round] = c.won ? 'kill' : 'death'
 
+  // WinRateComparison: clutch rounds vs non-clutch duels
+  const clutchRounds = new Set(list.map(c => c.round))
+  const nonClutchDuels = analytics.duels.filter(d => !clutchRounds.has(d.round))
+
   const byX = clutches.byX ?? {}
   const sizes = Object.keys(byX).sort()
 
@@ -936,6 +940,19 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
         subtitle={ru ? `${clutches.won} выиграно · ${clutches.played} попыток` : `${clutches.won} won · ${clutches.played} attempted`}
         value={m.clutchWinPct.toFixed(1) + '%'} metricKey="clutchWinPct" lang={lang}
       />
+
+      {list.length > 0 && nonClutchDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={nonClutchDuels.length} cleanWins={nonClutchDuels.filter(d => d.won).length}
+            otherCount={list.length} otherWins={wonList.length}
+            lang={lang}
+            cleanLabel={ru ? 'Обычные раунды' : 'Normal rounds'}
+            otherLabel={ru ? 'Клатч-раунды' : 'Clutch rounds'}
+          />
+        </>
+      )}
 
       {sizes.length > 0 && (
         <>
@@ -1081,6 +1098,8 @@ function ReloadErrorsPage({ analytics, lang, totalRounds }: {
   for (const d of analytics.duels) {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
   }
+  const wonDuels = analytics.duels.filter(d => d.won)
+  const lostDuels = analytics.duels.filter(d => !d.won)
   const ru = lang === 'ru'
   return (
     <div>
@@ -1089,6 +1108,20 @@ function ReloadErrorsPage({ analytics, lang, totalRounds }: {
         subtitle={ru ? 'Перезарядок с патронами в магазине (>5 патронов)' : 'Reloads with bullets still in magazine (>5 bullets)'}
         value={String(reloadErrors)} metricKey="reloadErrors" lang={lang} higherIsBetter={false}
       />
+
+      {wonDuels.length > 0 && lostDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={wonDuels.length} cleanWins={wonDuels.length}
+            otherCount={lostDuels.length} otherWins={0}
+            lang={lang}
+            cleanLabel={ru ? 'Выигранные дуэли' : 'Won duels'}
+            otherLabel={ru ? 'Проигранные дуэли' : 'Lost duels'}
+          />
+        </>
+      )}
+
       <SectionHeading label={ru ? 'Статистика' : 'Stats'} />
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         {[
@@ -1137,6 +1170,10 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
   }
 
+  const allDuels = analytics.duels
+  const wonDuels = allDuels.filter(d => d.won)
+  const lostDuels = allDuels.filter(d => !d.won)
+
   const phaseRows = byPhase ? [
     { key: 'early', label: ru ? 'Начало раунда (0–15с)' : 'Early (0–15s)', count: byPhase.early, color: 'var(--green)' },
     { key: 'mid',   label: ru ? 'Середина раунда (15–45с)' : 'Mid (15–45s)',   count: byPhase.mid,   color: 'var(--accent2)' },
@@ -1150,6 +1187,19 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
         subtitle={ru ? 'Позиций удержано ≥2 секунды без движения' : 'Positions held ≥2 seconds without movement'}
         value={String(count)} metricKey="angleControlCount" lang={lang}
       />
+
+      {wonDuels.length > 0 && lostDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={wonDuels.length} cleanWins={wonDuels.length}
+            otherCount={lostDuels.length} otherWins={0}
+            lang={lang}
+            cleanLabel={ru ? 'Выигранные дуэли' : 'Won duels'}
+            otherLabel={ru ? 'Проигранные дуэли' : 'Lost duels'}
+          />
+        </>
+      )}
 
       {phaseRows.length > 0 && count > 0 && (
         <>
@@ -1213,6 +1263,10 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
   }
 
+  // WinRateComparison: all duels — won vs lost — to show overall context
+  const allDuels = analytics.duels
+  const lostDuels = allDuels.filter(d => !d.won)
+
   const BUCKETS = [
     { lo: 0,   hi: 100,  label: '<100' },
     { lo: 100, hi: 200,  label: '100-200' },
@@ -1232,6 +1286,19 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
         value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
         metricKey="reactionTimeMs" lang={lang} higherIsBetter={false}
       />
+
+      {wonDuels.length > 0 && lostDuels.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={wonDuels.length} cleanWins={wonDuels.length}
+            otherCount={lostDuels.length} otherWins={0}
+            lang={lang}
+            cleanLabel={ru ? 'Выигранные дуэли' : 'Won duels'}
+            otherLabel={ru ? 'Проигранные дуэли' : 'Lost duels'}
+          />
+        </>
+      )}
 
       {deltas.length > 0 && (
         <>
