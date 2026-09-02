@@ -309,7 +309,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={lang === 'ru' ? 'мс реакции только когда первая пуля попала' : 'reaction ms only when first bullet hit'}
             benchmarkKey="reactionTimeMs" benchmarkValue={(metrics.successfulReactionTimeMs ?? 0) > 0 ? metrics.successfulReactionTimeMs : null} lang={lang}
             higherIsBetter={false}
-            onClick={() => goMetric('reactionTimeMs')}
+            onClick={() => goMetric('successfulReactionTimeMs')}
           />
           <MetricCard
             label={lang === 'ru' ? 'Промахи прицела' : 'Overshoot count'}

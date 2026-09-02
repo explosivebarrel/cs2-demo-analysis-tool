@@ -560,7 +560,7 @@ def _compute_reaction_time(
 
     avg_rt = round(sum(reaction_deltas) / len(reaction_deltas), 1) if reaction_deltas else 0.0
     avg_rt_hit = round(sum(reaction_deltas_hit) / len(reaction_deltas_hit), 1) if reaction_deltas_hit else 0.0
-    return avg_rt, overshoot_total, avg_rt_hit
+    return avg_rt, overshoot_total, avg_rt_hit, reaction_deltas, reaction_deltas_hit
 
 
 # ── Crosshair placement ───────────────────────────────────────────────────────
@@ -759,11 +759,12 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         angle_ctrl = 0
 
     try:
-        reaction_time_ms, overshoot_count, successful_reaction_time_ms = _compute_reaction_time(
+        reaction_time_ms, overshoot_count, successful_reaction_time_ms, rt_deltas, rt_deltas_hit = _compute_reaction_time(
             ticks_df, wf_df, kills_df, steamid, tickrate, hurt_df
         )
     except Exception:
         reaction_time_ms, overshoot_count, successful_reaction_time_ms = 0.0, 0, 0.0
+        rt_deltas, rt_deltas_hit = [], []
 
     try:
         excellent_contacts = _compute_excellent_contacts(
@@ -790,4 +791,6 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "excellentContacts": excellent_contacts,
         "crosshairPlacementPct": crosshair_placement,
         "successfulReactionTimeMs": successful_reaction_time_ms,
+        "reactionDeltas": [round(v, 1) for v in rt_deltas],
+        "reactionDeltasHit": [round(v, 1) for v in rt_deltas_hit],
     }

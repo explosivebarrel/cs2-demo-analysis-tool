@@ -1011,15 +1011,23 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
   const rt = (m as any).reactionTimeMs ?? 0
   const ru = lang === 'ru'
   const wonDuels = analytics.duels.filter(d => d.won)
+  const deltas: number[] = (m as any).reactionDeltas ?? []
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of wonDuels) {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = 'kill'
   }
 
-  // Histogram buckets: <200, 200-300, 300-400, 400-500, 500-700, >700
-  // We approximate by distributing based on avg and won-duel count
-  // Actual per-duel RT values aren't exposed in API; show available data only
+  const BUCKETS = [
+    { lo: 0,   hi: 100,  label: '<100' },
+    { lo: 100, hi: 200,  label: '100-200' },
+    { lo: 200, hi: 300,  label: '200-300' },
+    { lo: 300, hi: 400,  label: '300-400' },
+    { lo: 400, hi: 500,  label: '400-500' },
+    { lo: 500, hi: 9999, label: '>500' },
+  ]
+  const counts = BUCKETS.map(b => deltas.filter(v => v >= b.lo && v < b.hi).length)
+  const maxCount = Math.max(1, ...counts)
 
   return (
     <div>
@@ -1027,8 +1035,36 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
         title={ru ? 'Время реакции' : 'Reaction time'}
         subtitle={ru ? 'Ср. мс от начала движения врага до первого выстрела' : 'Avg ms from enemy peek onset to first shot'}
         value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
-        metricKey="reactionTimeMs" lang={lang}
+        metricKey="reactionTimeMs" lang={lang} higherIsBetter={false}
       />
+
+      {deltas.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Распределение реакции' : 'Reaction time distribution'} />
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, marginBottom: 6, background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+            {BUCKETS.map((b, i) => {
+              const h = Math.round(counts[i] / maxCount * 56)
+              return (
+                <div key={b.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text2)' }}>{counts[i] || ''}</div>
+                  <div style={{
+                    width: '100%', height: h || 2, borderRadius: 3,
+                    background: counts[i] ? 'var(--accent)' : 'var(--bg2)',
+                    transition: 'height .3s',
+                  }} />
+                  <div style={{ fontSize: 9, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{b.label}</div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 20 }}>
+            {ru
+              ? `${deltas.length} дуэлей · среднее ${rt.toFixed(0)} мс · мин ${Math.min(...deltas).toFixed(0)} мс · макс ${Math.max(...deltas).toFixed(0)} мс`
+              : `${deltas.length} duels · avg ${rt.toFixed(0)} ms · min ${Math.min(...deltas).toFixed(0)} ms · max ${Math.max(...deltas).toFixed(0)} ms`}
+          </div>
+        </>
+      )}
+
       <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
@@ -1425,6 +1461,111 @@ function ExcellentContactsPage({ analytics, lang, totalRounds }: {
   )
 }
 
+// ------------------------------------------------------------------ successful reaction time page
+
+function SuccessfulReactionTimePage({ analytics, lang }: {
+  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'
+}) {
+  const m = analytics.metrics
+  const rt = (m as any).successfulReactionTimeMs ?? 0
+  const rtAll = (m as any).reactionTimeMs ?? 0
+  const ru = lang === 'ru'
+
+  const deltas: number[] = (m as any).reactionDeltasHit ?? []
+  const deltasAll: number[] = (m as any).reactionDeltas ?? []
+
+  // histogram buckets: <100, 100-200, 200-300, 300-400, 400-500, >500
+  const BUCKETS = [
+    { lo: 0,   hi: 100,  label: '<100' },
+    { lo: 100, hi: 200,  label: '100-200' },
+    { lo: 200, hi: 300,  label: '200-300' },
+    { lo: 300, hi: 400,  label: '300-400' },
+    { lo: 400, hi: 500,  label: '400-500' },
+    { lo: 500, hi: 9999, label: '>500' },
+  ]
+  const counts = BUCKETS.map(b => deltas.filter(v => v >= b.lo && v < b.hi).length)
+  const maxCount = Math.max(1, ...counts)
+
+  return (
+    <div>
+      <MetricHero
+        title={ru ? 'Реакция в попаданиях' : 'Reaction on hits'}
+        subtitle={ru
+          ? 'Среднее время реакции только в дуэлях, где первая пуля попала'
+          : 'Avg reaction time only in duels where first bullet hit'}
+        value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
+        metricKey="reactionTimeMs" lang={lang} higherIsBetter={false}
+      />
+
+      {rtAll > 0 && rt > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Сравнение с общей реакцией' : 'vs. overall reaction time'} />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+            {[
+              { label: ru ? 'Реакция в попаданиях' : 'On hits', val: rt, color: 'var(--green)' },
+              { label: ru ? 'Общая реакция' : 'All duels', val: rtAll, color: 'var(--text2)' },
+            ].map(({ label, val, color }) => (
+              <div key={label} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+                <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color }}>{val.toFixed(0)} {ru ? 'мс' : 'ms'}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {deltas.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Распределение реакции' : 'Reaction time distribution'} />
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, marginBottom: 6, background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
+            {BUCKETS.map((b, i) => {
+              const h = Math.round(counts[i] / maxCount * 56)
+              return (
+                <div key={b.label} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontSize: 10, color: 'var(--text2)' }}>{counts[i] || ''}</div>
+                  <div style={{
+                    width: '100%', height: h || 2, borderRadius: 3,
+                    background: counts[i] ? 'var(--accent)' : 'var(--bg2)',
+                    transition: 'height .3s',
+                  }} />
+                  <div style={{ fontSize: 9, color: 'var(--text2)', whiteSpace: 'nowrap' }}>{b.label}</div>
+                </div>
+              )
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 20 }}>
+            {ru ? `${deltas.length} дуэлей · среднее ${rt.toFixed(0)} мс · мин ${Math.min(...deltas).toFixed(0)} мс · макс ${Math.max(...deltas).toFixed(0)} мс`
+              : `${deltas.length} duels · avg ${rt.toFixed(0)} ms · min ${Math.min(...deltas).toFixed(0)} ms · max ${Math.max(...deltas).toFixed(0)} ms`}
+          </div>
+        </>
+      )}
+
+      {deltasAll.length > 0 && deltas.length > 0 && (
+        <>
+          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <WinRateComparison
+            cleanCount={deltas.length} cleanWins={deltas.length}
+            otherCount={deltasAll.length - deltas.length} otherWins={0}
+            lang={lang}
+            cleanLabel={ru ? 'Попал первой пулей' : 'First bullet hit'}
+            otherLabel={ru ? 'Промахнулся первой' : 'First bullet missed'}
+          />
+        </>
+      )}
+
+      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
+      }}>
+        {ru
+          ? 'Реакция в попаданиях — время реакции только в тех дуэлях, где первая пуля попала во врага. Это точнее оценивает, как быстро ты реагируешь, когда правильно целишься — без промахов, которые искажают общее среднее. Ниже = быстрее.'
+          : 'Reaction on hits shows your reaction time only in duels where your first bullet hit the enemy. This is a cleaner measure of how fast you react when you are properly aimed — without misses that inflate the overall average. Lower is better.'}
+      </div>
+    </div>
+  )
+}
+
 // ------------------------------------------------------------------ main page
 
 export default function MetricsPage() {
@@ -1506,6 +1647,8 @@ export default function MetricsPage() {
         return <AngleControlPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
       case 'reactionTimeMs':
         return <ReactionTimePage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
+      case 'successfulReactionTimeMs':
+        return <SuccessfulReactionTimePage analytics={analytics} lang={lang} />
       case 'overshootCount':
         return <OvershootPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'excellentContacts':

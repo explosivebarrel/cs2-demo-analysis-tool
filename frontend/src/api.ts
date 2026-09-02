@@ -224,6 +224,8 @@ export interface PlayerMetrics {
   excellentContacts: number
   crosshairPlacementPct: number
   successfulReactionTimeMs: number
+  reactionDeltas: number[]
+  reactionDeltasHit: number[]
 }
 
 export interface PlayerImpact {
