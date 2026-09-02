@@ -311,7 +311,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             label={lang === 'ru' ? 'Реакция в попаданиях' : 'Reaction on hits'}
             value={(metrics.successfulReactionTimeMs ?? 0) > 0 ? (metrics.successfulReactionTimeMs ?? 0).toFixed(0) + ' мс' : '—'}
             sub={lang === 'ru' ? 'мс реакции только когда первая пуля попала' : 'reaction ms only when first bullet hit'}
-            benchmarkKey="reactionTimeMs" benchmarkValue={(metrics.successfulReactionTimeMs ?? 0) > 0 ? metrics.successfulReactionTimeMs : null} lang={lang}
+            benchmarkKey="successfulReactionTimeMs" benchmarkValue={(metrics.successfulReactionTimeMs ?? 0) > 0 ? metrics.successfulReactionTimeMs : null} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('successfulReactionTimeMs')}
           />
@@ -355,7 +355,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             label={lang === 'ru' ? 'Пассивный угол' : 'Passive angle'}
             value={String(metrics.passiveAngleCount ?? 0)}
             sub={lang === 'ru' ? 'раз стоял без движения перед выстрелом' : 'times stood still before shooting'}
-            lang={lang}
+            benchmarkKey="passiveAngleCount" benchmarkValue={metrics.passiveAngleCount ?? 0} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('passiveAngle')}
           />
