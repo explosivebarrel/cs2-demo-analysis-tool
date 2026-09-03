@@ -249,8 +249,18 @@ export interface MapEvent {
   headshot: boolean
 }
 
+export interface MapVerticalSection {
+  altitudeMin: number
+  altitudeMax: number
+  pos_x?: number
+  pos_y?: number
+  scale?: number
+}
+
 export interface MapOverview {
   pos_x: number; pos_y: number; scale: number
+  verticalsections?: Record<string, MapVerticalSection>
+  availableLevels?: string[]
   sections?: { id: string; altitudeMax: number; altitudeMin: number; pos_x?: number; pos_y?: number; scale?: number }[]
 }
 
@@ -287,7 +297,8 @@ export const api = {
   replay: (id: string): Promise<ReplayData> => req(`/demos/${id}/replay`),
   chat: (id: string): Promise<ChatMessage[]> => req(`/demos/${id}/chat`),
   mapOverview: (map: string): Promise<MapOverview> => req(`/maps/${map}/overview`),
-  radarUrl: (map: string) => `/api/maps/${map}/radar`,
+  radarUrl: (map: string, level?: string) =>
+    `/api/maps/${map}/radar${level && level !== 'default' ? `?level=${encodeURIComponent(level)}` : ''}`,
   playerAnalytics: (id: string, steamid: string): Promise<PlayerAnalyticsData> =>
     req(`/demos/${id}/player/${steamid}/analytics`),
 }

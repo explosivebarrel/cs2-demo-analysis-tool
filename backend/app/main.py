@@ -96,7 +96,9 @@ async def _status_watcher():
 
 @app.on_event("startup")
 async def _startup():
+    _sweep_orphaned_statuses()
     asyncio.create_task(_status_watcher())
+    asyncio.create_task(_job_reaper())
     # probe new demos (sync call in thread to avoid blocking event loop)
     def _probe_new():
         for demo in storage.list_demos():
@@ -107,6 +109,45 @@ async def _startup():
 
 _jobs: dict[str, subprocess.Popen] = {}
 _jobs_lock = threading.Lock()
+_analyze_dids: set[str] = set()
+
+
+def _reap_locked() -> None:
+    """Remove finished workers; flag statuses they left behind. Callers hold _jobs_lock."""
+    dead = [did for did, p in _jobs.items() if p.poll() is not None]
+    for did in dead:
+        _jobs.pop(did, None)
+        _analyze_dids.discard(did)
+    for did in dead:
+        st = storage.read_status(did) or {}
+        if st.get("status") in ("parsing", "probing"):
+            storage.write_status(
+                did, status="error", progress=0, phase="interrupted",
+                detail="", error="worker exited unexpectedly")
+
+
+def _reap_dead_jobs() -> None:
+    with _jobs_lock:
+        _reap_locked()
+
+
+async def _job_reaper():
+    while True:
+        await asyncio.sleep(2)
+        try:
+            _reap_dead_jobs()
+        except Exception:
+            pass
+
+
+def _sweep_orphaned_statuses() -> None:
+    """On startup no workers exist; any parsing/probing status is stale."""
+    for demo in storage.list_demos():
+        st = storage.read_status(demo["id"]) or {}
+        if st.get("status") in ("parsing", "probing"):
+            storage.write_status(
+                demo["id"], status="error", progress=0, phase="interrupted",
+                detail="", error="interrupted by server restart")
 
 
 def _find_demo(did: str) -> dict:
@@ -130,17 +171,22 @@ def _start_probe(demo: dict) -> bool:
 
 
 
-def _start_job(demo: dict) -> bool:
+def _start_job(demo: dict) -> str:
+    """Start a full analysis. Returns 'started' | 'already' | 'busy'."""
     did = demo["id"]
     with _jobs_lock:
+        _reap_locked()
         if did in _jobs and _jobs[did].poll() is None:
-            return False
+            return "already"
+        if len(_analyze_dids) >= config.MAX_CONCURRENT_ANALYZES:
+            return "busy"
         proc = subprocess.Popen(
             [sys.executable, "-m", "app.worker", _demo_fs_path(demo), did],
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         _jobs[did] = proc
-    return True
+        _analyze_dids.add(did)
+    return "started"
 
 
 def _demo_fs_path(demo: dict) -> str:
@@ -198,7 +244,11 @@ def probe(did: str):
 @app.post("/api/demos/{did}/analyze")
 def analyze(did: str):
     demo = _find_demo(did)
-    started = _start_job(demo)
+    outcome = _start_job(demo)
+    if outcome == "busy":
+        raise HTTPException(
+            429, f"analysis already running ({config.MAX_CONCURRENT_ANALYZES} concurrent max), try again later")
+    started = outcome == "started"
     return {"started": started, "status": storage.read_status(did) or {"status": "new"}}
 
 
@@ -312,9 +362,9 @@ def map_overview(map_name: str):
 
 
 @app.get("/api/maps/{map_name}/radar")
-def map_radar(map_name: str):
+def map_radar(map_name: str, level: str = "default"):
     try:
-        path = radar_png_path(map_name)
+        path = radar_png_path(map_name, level)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(502, f"radar unavailable: {e}") from e
     media = mimetypes.guess_type(path)[0] or "image/png"
