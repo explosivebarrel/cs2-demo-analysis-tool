@@ -36,6 +36,10 @@ function winConditionLabel(reason: string, winnerTeam: number, sideTeam0: string
   // map winnerTeam → side label
   const winnerSide = winnerTeam === 0 ? sideTeam0 : (sideTeam0 === 'CT' ? 'T' : 'CT')
   const labels: Record<string, { ru: string; en: string }> = {
+    elimination:      { ru: 'Уничтожение',             en: 'Elimination' },
+    bomb:             { ru: 'Бомба взорвалась',        en: 'Bomb exploded' },
+    defuse:           { ru: 'Бомба разминирована',     en: 'Bomb defused' },
+    time:             { ru: 'Время вышло',             en: 'Time ran out' },
     ct_win:           { ru: 'КТ уничтожены',           en: 'CTs eliminated' },
     t_win:            { ru: 'Т уничтожены',             en: 'Ts eliminated' },
     bomb_defused:     { ru: 'Бомба разминирована',      en: 'Bomb defused' },

@@ -144,14 +144,13 @@ def _build_duel_frames(
         return []
 
 
-def _nearest_tick(ticks_by_tick: dict, target: int):
+def _nearest_tick(ticks_by_tick: dict, target: int, sorted_keys: list[int] | None = None):
     """Return the frame closest to target tick, or None if no ticks at all."""
     if not ticks_by_tick:
         return None
     if target in ticks_by_tick:
         return ticks_by_tick[target]
-    keys = list(ticks_by_tick.keys())
-    keys.sort()
+    keys = sorted_keys if sorted_keys is not None else sorted(ticks_by_tick.keys())
     # binary search for nearest
     import bisect
     i = bisect.bisect_left(keys, target)
@@ -405,6 +404,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
 
     # round tick ranges for timestamp computation
     round_map = {r["n"]: r for r in rb.rounds}
+    sorted_tick_keys = sorted(ticks_by_tick.keys()) if ticks_by_tick else []
 
     duels: list[dict] = []
 
@@ -431,7 +431,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             ts = 0.0
 
         # get frame at kill tick
-        frame = _nearest_tick(ticks_by_tick, tick)
+        frame = _nearest_tick(ticks_by_tick, tick, sorted_tick_keys)
         frame_rows: dict = {}
         if frame is not None:
             try:
@@ -1072,4 +1072,3 @@ def build_player_analytics(ctx, rb, fb, players: dict,
         }
 
     return result
-

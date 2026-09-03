@@ -62,7 +62,7 @@ function WeaponItem({ w, rank, maxKills, maxAcc, lang }: WeaponRowProps) {
         <div style={{ fontSize: 12 }}>
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{w.hits}</span>
           <span style={{ color: 'var(--text2)', fontSize: 11 }}>
-            {' '}· {w.kills} {lang === 'ru' ? 'смертей' : 'kills'}
+            {' '}· {w.kills} {lang === 'ru' ? 'убийств' : 'kills'}
           </span>
         </div>
         <HorizBar value={w.kills} max={maxKills} color="var(--accent)" />
@@ -120,7 +120,7 @@ export default function PlayerWeapons({ weapons, lang }: { weapons: WeaponRow[];
         <div>{lang === 'ru' ? 'Оружие' : 'Weapon'}</div>
         <div>{lang === 'ru' ? 'Враги' : 'Enemies'}</div>
         <div>{lang === 'ru' ? 'Точность' : 'Accuracy'}</div>
-        <div>НС %</div>
+        <div>HS %</div>
         <div>{lang === 'ru' ? 'Урон' : 'Damage'}</div>
       </div>
 
