@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import MatchNavShared from '../components/MatchNav'
 import { api, ReplayData, MapOverview, AnalysisData, RoundData } from '../api'
+import { worldToCanvas } from '../lib/coords'
 import { t, getLang } from '../i18n'
 import { useLang } from '../App'
 
@@ -26,13 +27,6 @@ const NADE_EDGE: Record<string, string> = {
 const NADE_RADIUS: Record<string, number> = { sm: 26, fd: 10, hd: 12, fr: 20 }
 
 interface Transform { scale: number; ox: number; oy: number }
-
-function worldToCanvas(wx: number, wy: number, ov: MapOverview, sz = SIZE): [number, number] {
-  const px = (wx - ov.pos_x) / ov.scale
-  const py = (ov.pos_y - wy) / ov.scale
-  const ratio = sz / 1024
-  return [px * ratio, py * ratio]
-}
 
 
 // ── kill diagnosis rules ──────────────────────────────────────────────────────
@@ -671,7 +665,7 @@ function drawFrame(
   }
 
   for (const z of [...activeZones, ...recentDet]) {
-    const [cx, cy] = worldToCanvas(z.x, z.y, ov, SZ)
+    const [cx, cy] = worldToCanvas(z.x, z.y, ov, SZ, SZ)
     const r = NADE_RADIUS[z.ty] ?? 10
     const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r)
     grad.addColorStop(0, NADE_COLORS[z.ty] ?? 'rgba(200,200,200,0.6)')
@@ -698,7 +692,7 @@ function drawFrame(
     const [stTick, pidx, sx, sy] = shot
     if (stTick > curTick || curTick - stTick > tracerWindow) continue
     const syaw = shot[4]
-    const [scx, scy] = worldToCanvas(sx, sy, ov, SZ)
+    const [scx, scy] = worldToCanvas(sx, sy, ov, SZ, SZ)
     const rad = (syaw * Math.PI) / 180
     const fade = 1 - (curTick - stTick) / tracerWindow
     const playerColor = TEAM_COLORS[replay.data[frameIdx * replay.players.length * FIELDS + pidx * FIELDS + F_TEAM] ?? 0] ?? '#fff'
@@ -733,7 +727,7 @@ function drawFrame(
 
     if (hitPt) {
       // hit: line from dot edge to impact + white cross
-      const [ecx, ecy] = worldToCanvas(hitPt.hx, hitPt.hy, ov, SZ)
+      const [ecx, ecy] = worldToCanvas(hitPt.hx, hitPt.hy, ov, SZ, SZ)
       ctx.beginPath()
       ctx.moveTo(chevTipX, chevTipY); ctx.lineTo(ecx, ecy)
       ctx.strokeStyle = playerColor + alphaHex
@@ -822,8 +816,8 @@ function drawFrame(
     for (let pi = startPt; pi < endPt - 1; pi++) {
       const x0 = tr[pi * 3], y0 = tr[pi * 3 + 1]
       const x1 = tr[(pi + 1) * 3], y1 = tr[(pi + 1) * 3 + 1]
-      const [cx0, cy0] = worldToCanvas(x0, y0, ov, SZ)
-      const [cx1, cy1] = worldToCanvas(x1, y1, ov, SZ)
+      const [cx0, cy0] = worldToCanvas(x0, y0, ov, SZ, SZ)
+      const [cx1, cy1] = worldToCanvas(x1, y1, ov, SZ, SZ)
       // fade: older segments more transparent
       const segFrac = (pi - startPt) / Math.max(1, endPt - startPt - 1)
       const alpha = nadeTrailMode === 'trail' ? 0.2 + segFrac * 0.7 : 0.5
@@ -837,7 +831,7 @@ function drawFrame(
     // draw grenade dot at current position
     const headPt = Math.min(endPt - 1, nPts - 1)
     const hx = tr[headPt * 3], hy = tr[headPt * 3 + 1]
-    const [hcx, hcy] = worldToCanvas(hx, hy, ov, SZ)
+    const [hcx, hcy] = worldToCanvas(hx, hy, ov, SZ, SZ)
     ctx.beginPath()
     ctx.arc(hcx, hcy, 4 * dotScale, 0, Math.PI * 2)
     ctx.fillStyle = color
@@ -871,7 +865,7 @@ function drawFrame(
     const hp = replay.data[base + F_HP]
     const team = replay.data[base + F_TEAM]
     const flags = replay.data[base + F_FLAGS]
-    const [cx, cy] = worldToCanvas(x, y, ov, SZ)
+    const [cx, cy] = worldToCanvas(x, y, ov, SZ, SZ)
     const hasBomb = (flags & 1) !== 0
     const color = TEAM_COLORS[team] ?? '#ccc'
     const r = 8 * dotScale

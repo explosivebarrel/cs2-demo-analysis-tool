@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, NavLink } from 'react-router-dom'
 import { api, AnalysisData, HeatmapData, MapOverview } from '../api'
+import { worldToCanvas } from '../lib/coords'
 import { t } from '../i18n'
 import { useLang } from '../App'
 import MatchNav from '../components/MatchNav'
@@ -55,13 +56,6 @@ function decodePoint(layer: string, arr: number[]): { x: number; y: number; v?: 
   }
 }
 
-function worldToCanvas(wx: number, wy: number, ov: MapOverview, size: number) {
-  const px = (wx - ov.pos_x) / ov.scale
-  const py = (ov.pos_y - wy) / ov.scale
-  const ratio = size / 1024
-  return [px * ratio, py * ratio] as [number, number]
-}
-
 function drawHeatmap(
   canvas: HTMLCanvasElement,
   rawPoints: number[][],
@@ -83,7 +77,7 @@ function drawHeatmap(
 
     if (playerIdxSet !== null && !playerIdxSet.has(pt.pIdx)) continue
 
-    const [cx, cy] = worldToCanvas(pt.x, pt.y, ov, size)
+    const [cx, cy] = worldToCanvas(pt.x, pt.y, ov, size, size)
     if (!isFinite(cx) || !isFinite(cy)) continue
     if (cx < -radius || cx > size + radius || cy < -radius || cy > size + radius) continue
 

@@ -20,7 +20,7 @@ did = storage.demo_id(os.path.basename(demo), os.path.getsize(demo))
 print(f"demo_id={did} file={os.path.basename(demo)}")
 
 t0 = time.time()
-info = analyze_demo(demo, did, lambda ph, pct: print(f"  {ph:10s} {pct:3d}%  (+{time.time()-t0:.1f}s)"))
+info = analyze_demo(demo, did, lambda ph, pct, detail="": print(f"  {ph:10s} {pct:3d}%  {detail}  (+{time.time()-t0:.1f}s)"))
 print("RESULT:", info)
 
 # sanity checks

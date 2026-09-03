@@ -497,10 +497,8 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             a_row = frame_rows.get(a_sid)
             v_row = frame_rows.get(v_sid)
             a_vel = round(_f(vel_lookup.get((tick, a_sid), 0.0)), 1)
-            a_flash = 0.0
             a_walking = False
             if a_row is not None:
-                a_flash = round(_f(a_row.get("flash_duration", 0) or 0), 2)
                 try:
                     a_walking = bool(a_row.get("is_walking"))
                 except (TypeError, ValueError):

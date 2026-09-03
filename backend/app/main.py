@@ -7,12 +7,11 @@ import os
 import subprocess
 import sys
 import threading
-import time
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse
 
 from . import config, storage
 from .overviews import overview_for_client, radar_png_path

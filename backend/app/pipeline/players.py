@@ -7,7 +7,6 @@ import numpy as np
 
 from .. import config
 from ..weapons import canon
-from .rounds import _clean_clan
 
 GUN_CLASSES = {"rifle", "sniper", "smg", "heavy", "pistol"}
 METERS_PER_UNIT = 0.01905
@@ -88,7 +87,6 @@ def compute_players(ctx, rb, fb):
         names[str(sid)] = str(rows_first[sid])
 
     players: dict[str, PlayerStats] = {}
-    rounds_by_n = {r["n"]: r for r in rb.rounds}
     for sid, team in rb.steamid_team.items():
         players[sid] = PlayerStats(sid, names.get(sid, sid), team, clans.get(sid, ""))
 
@@ -105,7 +103,6 @@ def compute_players(ctx, rb, fb):
     # pre-resolve round ranges for tick -> round mapping
     fe_ticks = np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
     end_ticks = np.array([r["endTick"] for r in rb.rounds], dtype="int64")
-    round_ns = [r["n"] for r in rb.rounds]
 
     def round_of_tick(t: int):
         i = int(np.searchsorted(fe_ticks, t, side="right")) - 1

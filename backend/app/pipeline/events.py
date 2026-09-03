@@ -1,5 +1,4 @@
 """Compact replay event stream for the web timeline player."""
-import numpy as np
 
 from ..weapons import canon, weapon_id
 
@@ -45,16 +44,11 @@ def _build_kill_context(ctx, rb, fb, kills_df):
     if ticks_df is None or not len(kills_df):
         return {}
 
-    import pandas as pd
 
     # index ticks by tick value for fast lookup
     ticks_by_tick = {t: grp for t, grp in ticks_df.groupby("tick")}
 
-    pidx = fb.player_idx
-    players = fb.players  # ordered list of steamids
-
     ctx_map = {}
-    prev_pos: dict[str, tuple[float, float]] = {}
 
     # build velocity map: for each (tick, steamid) store speed
     # vectorised: sort by (steamid, tick), compute pos delta
@@ -227,7 +221,8 @@ def build_events(ctx, rb, fb):
             for sid, grp in m_sorted.groupby("user_steamid", sort=False):
                 player_yaw = yaw_df[yaw_df["steamid"] == sid].sort_values("tick")
                 if len(player_yaw) == 0:
-                    grp = grp.copy(); grp["yaw"] = 0
+                    grp = grp.copy()
+                    grp["yaw"] = 0
                 else:
                     grp = pd.merge_asof(grp, player_yaw[["tick", "yaw"]],
                                         on="tick", direction="nearest")
@@ -253,8 +248,6 @@ def build_events(ctx, rb, fb):
     g = ctx.grenades
     if g is not None and len(g):
         import numpy as _np
-        # build round boundaries: list of (freezeEndTick, endTick) for clipping
-        round_bounds = [(r["freezeEndTick"], r["endTick"]) for r in rb.rounds]
         fe_arr = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
         end_arr = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
 

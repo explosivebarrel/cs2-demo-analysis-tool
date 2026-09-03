@@ -5,7 +5,6 @@ import os
 import time
 from collections import defaultdict
 
-import numpy as np
 
 from .. import config, storage
 from ..weapons import canon, weapon_id_table
@@ -395,8 +394,6 @@ def _build_analysis(ctx, rb, fb, players):
         "matchEndTick": rb.match_end,
         "firstSideTeam0": "T" if getattr(rb, "team0_first_side_t", True) else "CT",
     }
-
-    kill_feed = []  # (kill feed lives in replay events; analysis keeps aggregates)
 
     return {
         "meta": meta,

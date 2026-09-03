@@ -42,7 +42,6 @@ def build_heatmap(ctx, rb, players, fb, replay):
 
     kills = ctx.ev("player_death")
     if len(kills):
-        kt = kills["tick"].to_numpy()
         open_by_round = {r["n"]: r.get("openingKill") for r in rb.rounds}
         # tick -> round via searchsorted on freezeEnd ticks
         fe = np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")

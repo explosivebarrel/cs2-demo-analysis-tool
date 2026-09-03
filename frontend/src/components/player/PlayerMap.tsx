@@ -1,21 +1,12 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MapEvent, MapOverview } from '../../api'
+import { worldToCanvas } from '../../lib/coords'
 
 interface Props {
   mapEvents: MapEvent[]
   mapName: string
   lang: 'ru' | 'en'
-}
-
-function worldToCanvas(
-  x: number, y: number,
-  ov: MapOverview,
-  w: number, h: number,
-): [number, number] {
-  const cx = (x - ov.pos_x) / ov.scale
-  const cy = (ov.pos_y - y) / ov.scale
-  return [cx / 1024 * w, cy / 1024 * h]
 }
 
 export default function PlayerMap({ mapEvents, mapName, lang }: Props) {

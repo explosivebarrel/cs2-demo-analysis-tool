@@ -12,15 +12,11 @@ Computes per-player:
 
 from __future__ import annotations
 
-import math
-from collections import defaultdict
 from typing import TYPE_CHECKING
 
-import numpy as np
 
 if TYPE_CHECKING:
-    from .context import DemoContext
-    from .rounds import RoundBuilder
+    pass
 
 # ── Tuning constants ─────────────────────────────────────────────────────────
 SHOOT_THRESHOLD = 50.0       # u/s — velocity above this = "moving while shooting"
@@ -156,7 +152,6 @@ def _compute_first_bullet_acc(
             enemy_hurt_ticks.add(int(t))
 
     # round-of-tick lookup
-    round_of: dict[int, int] = {}
     if rb is not None:
         import numpy as _np
         fe_np = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
@@ -532,10 +527,7 @@ def _compute_reaction_time(
         try:
             oi_lo = bisect.bisect_left(atk_tick_arr, peek_onset_tick)
             oi_hi = bisect.bisect_right(atk_tick_arr, kill_tick)
-            # get victim positions for this range
-            vi_lo = bisect.bisect_left(vic_tick_arr, peek_onset_tick)
-            vi_hi = bisect.bisect_right(vic_tick_arr, kill_tick)
-            # extend vic range with full array for closest-tick lookup
+            # victim positions around the duel window
             full_vic = ticks_df[
                 (ticks_df["steamid"].astype(str) == v_sid) &
                 (ticks_df["tick"] >= peek_onset_tick) &

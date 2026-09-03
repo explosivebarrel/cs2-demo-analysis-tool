@@ -1,0 +1,139 @@
+# AGENTS.md — инструкции для ИИ-агентов
+
+Проект: **CS2 Demo Analyzer** — self-hosted веб-утилита уровня Leetify/scope.gg для
+анализа демок Counter-Strike 2: статистика игроков, aim-метрики, дуэли, хитмапы,
+реплей-плеер. Ответы пользователю — по-русски, код/идентификаторы/комментарии — по-английски.
+
+Полное описание проекта: [PROJECT.md](PROJECT.md). Заметки прошлых сессий: [memory/](memory/).
+
+## Архитектура (не менять принцип)
+
+Два Docker-сервиса, точка входа `http://localhost:8080`:
+
+- **backend** — Python 3.12, FastAPI + demoparser2, uvicorn :8000 (внутренний).
+- **frontend** — React 18 + TS (Vite), раздаётся nginx'ом; nginx проксирует `/api` и `/ws` на backend.
+
+**Хранение — файловое, без БД.** Это осознанное решение: артефакты анализа — gzip-JSON
+в `/data/store/analyses/<demo_id>/` (`analysis`, `replay`, `heatmap`, `player_analytics`,
+`chat` — все `.json.gz`), статусы — `status.json`. Не предлагать PostgreSQL/Redis/S3 —
+использование БД было спроектировано и отвергнуто.
+
+`demo_id = sha1(name:size)[:12]` — дедуп по содержимому; демки из `demo-examples/`
+(inbox) read-only, удалять можно только uploads.
+
+`plans/improvement_plan.md` — **исторический план**, НЕ описание реальности. Его стек
+(NestJS, PostgreSQL, Redis, Redux Toolkit, i18next, TanStack Query, Tailwind, Recharts,
+Leaflet) не установлен и не используется. Не импортировать эти библиотеки и не
+ориентироваться на его API-контракты.
+
+## Карта кода
+
+### backend/app/
+| Файл | Назначение |
+|---|---|
+| `main.py` | FastAPI: demos CRUD, probe/analyze/status/analysis/heatmap/replay/chat, player analytics, maps, WS `/ws/demos` |
+| `worker.py` | CLI-воркер (`python -m app.worker <path> <id> [--probe]`), запускается subprocess'ом из API |
+| `config.py` | пути, константы таймингов, `BENCHMARKS` (тиры weak/avg/good/elite) |
+| `storage.py` | реестр демок, status.json (атомарная запись), пути артефактов |
+| `overviews.py` | радары карт с GitHub (MurkyYT/cs2-map-icons), кэш, world→pixel |
+| `weapons.py` | канонизация названий оружия (en/ru/class) |
+| `pipeline/run.py` | оркестратор: собирает все стадии, пишет 5 артефактов |
+| `pipeline/context.py` | однократная загрузка демо (events, тики с даунсемплом 8 тиков, гранаты) |
+| `pipeline/rounds.py` | сегментация раундов, стороны, победители (эвристика!), закупы, opening kills |
+| `pipeline/replayframes.py` | кадры реплея + holds/клатчи/выживание |
+| `pipeline/players.py` | K/D/A, урон, трейды, утилити, KAST |
+| `pipeline/rating.py` | Rating 2.1 (approx), RWS, IMP |
+| `pipeline/playeranalytics.py` | дуэли с тегами ошибок, per-player impact, mapEvents |
+| `pipeline/aim_mechanics.py` | reaction time, TTK, strafe, crosshair placement, reload/overshoot |
+| `pipeline/winprob.py` | кривая вероятности победы по кадрам |
+| `pipeline/heatmaps.py` | 16 слоёв хитмапов (схемы точек — в докстринге файла) |
+| `pipeline/events.py` | лента событий реплея (киллы, гранаты, бомба, shots) |
+
+### frontend/src/
+| Файл | Назначение |
+|---|---|
+| `api.ts` | **единственный источник типов** + fetch-клиент; WS в DemosPage |
+| `App.tsx` | роутинг + 2 контекста: `useLang`, `useBenchmarks` |
+| `i18n.ts` | кастомный i18n (плоские словари T.ru/T.en, localStorage `lang`) |
+| `pages/DemosPage.tsx` | список/загрузка/статусы демок (WS + fallback-поллинг) |
+| `pages/OverviewPage.tsx` | счёт, скорборд, раунды |
+| `pages/PlayerPage.tsx` | 6 вкладок игрока (компоненты в `components/player/`) |
+| `pages/MetricsPage.tsx` | 21 подстраница aim/duel-метрик (switch по `:key`) |
+| `pages/HeatmapsPage.tsx` | canvas-хитмапы, `decodePoint()` послойно |
+| `pages/ReplayPage.tsx` | реплей-плеер: F_X..F_TEAM индексы, winprob, диагнозы |
+| `benchmarkUtils.ts` | тиры метрик из `/api/benchmarks` |
+
+Маршруты: `/`, `/match/:id`, `/match/:id/player/:steamid[/metrics/:key]`,
+`/match/:id/heatmaps`, `/match/:id/replay`, `/match/:id/chat`, `/about`.
+
+## Команды
+
+```bash
+# запуск всего (сборка + старт)
+docker compose up --build -d
+
+# пересборка после правок бэкенда
+docker compose build backend && docker compose up -d backend
+
+# e2e-проверка пайплайна на реальной демке (локальный .venv в корне)
+.venv/Scripts/python scripts/test_pipeline.py            # Windows Git Bash, прогон ~60 c
+
+# юнит-тесты и линтер бэка (запуск из backend/)
+cd backend && ../.venv/Scripts/python -m pytest -q
+cd backend && ../.venv/Scripts/python -m ruff check .
+
+# фронт: dev-сервер
+cd frontend && npm install && npm run dev                # проксирует только /api
+
+# проверка типов фронта (линтера фронтового нет)
+cd frontend && export PATH="/c/Users/BlackX/AppData/Roaming/fnm/aliases/default:$PATH" && npm.cmd run build
+```
+
+**Node в Git Bash не на PATH** (fnm): добавлять в PATH
+`/c/Users/BlackX/AppData/Roaming/fnm/aliases/default` и вызывать `npm.cmd`; в
+неинтерактивном PowerShell npm недоступен вовсе. В контейнерах — node:20-alpine.
+
+**Codesearch**: индекс в `.codesearch.db` (LMDB+tantivy), CLI `codesearch` доступен в PowerShell
+(v1.0.162+1; в Git Bash не на PATH — вызывать `powershell -NoProfile -Command "codesearch ..."`).
+MCP-инструменты `mcp__codesearch__*` работают в этой папке и **сами следят за файлами**
+(live watching) — новые/изменённые файлы индексируются без ручного запуска. Если MCP отдаёт
+«Error opening readonly database» — временный лок LMDB при старте сессии: выполнить любой
+CLI-проход (`codesearch stats`) и повторить MCP-вызов. CLI `codesearch index` при живом
+MCP падает с «LockBusy» — это норм (write-lock у MCP), ничего делать не нужно.
+
+## Критические инварианты (проверять при любых правках)
+
+1. **Формат кадров реплея**: плоский `number[]`, 10 полей на игрока (x,y,z,yaw,hp,armor,alive,weaponId,flags,team),
+   индекс `frameIdx * nPlayers * 10 + playerIdx * 10 + field`. Меняешь на бэке
+   (`replayframes.py`) — синхронно правь `FIELDS`/индексы в `ReplayPage.tsx`.
+2. **`worldToCanvas` скопирована в 3 файла** (ReplayPage, HeatmapsPage, PlayerMap) — править
+   все три синхронно. Ось Y канваса инвертирована: для направлений (взгляд, трейлеры)
+   `dy = -sin(yaw)`, позиция `py = (ov.pos_y - wy) / ov.scale`. См. memory/feedback_canvas_coords.md.
+3. **`weapon_fire` не содержит yaw** — джойнить `ctx.ticks` через `merge_asof` (nearest tick),
+   steamid с обеих сторон привести к `str`. См. memory/feedback_shot_tracers.md.
+4. **Артефакты пишутся с `allow_nan=False`** — один NaN = упавшая запись анализа. Все числа
+   из pandas пропускать через гварды (`_f()`: проверка `v == v`).
+5. **Победитель раунда — эвристика** (бомб-ивенты + живые): в FACEIT/Valve CS2 демок
+   нет события `round_end`. Аналогично MVP = max dmg в раунде у победившей команды.
+6. **`config.BENCHMARKS`**: ключи должны совпадать с полями `PlayerMetrics` в api.ts;
+   lower-is-better метрики (ttk, reaction) хранятся инвертированно — флаг `higherIsBetter`
+   и список `LOWER_IS_BETTER` на фронте (PlayerStrengths.tsx, benchmarkUtils.ts).
+7. **IMP-формула дублируется** в `run.py` и `playeranalytics.py` — менять в обоих местах.
+8. **i18n**: `t()` читает модульную переменную и не реактивен — компонент обязан вызвать
+   `useLang()` (даже не используя значение) для перерисовки. Часть текстов вне словарей:
+   `diagnosisLines` (ReplayPage) — RU-only; ERROR_LABELS/ERROR_META держат ru+en в объекте.
+9. **Dev-режим фронта**: vite проксирует только `/api`, WS не работает — статусы приходят
+   fallback-поллингом раз в 10 с. Это не баг.
+10. **Схемы точек хитмапов** — послойные (см. докстринг `heatmaps.py`); фронтовой
+    `decodePoint()` в HeatmapsPage должен соответствовать.
+
+## Стиль работы
+
+- Код в стиле окружающего; без комментариев-шума; без новых зависимостей без нужды
+  (фронт принципиально без UI-библиотек — всё на canvas/DOM).
+- Пользователь предпочитает прагматичность, clean architecture, память (memory-keeper)
+  и параллельных агентов. Проект публичный, некоммерческий, лицензия MIT.
+- Перед завершением значимой задачи: `pytest` + `ruff check` (бэк), `npm run build`
+  (фронт), `scripts/test_pipeline.py` для пайплайна; сохранить факты в memory-keeper.
+- Координатные функции — только в `lib/coords.ts`; новые тексты UI — только через i18n
+  словарь (оба языка).

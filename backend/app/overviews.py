@@ -1,5 +1,4 @@
 """Map overviews: radar images + coordinate reference, downloaded & cached."""
-import io
 import json
 import os
 import re

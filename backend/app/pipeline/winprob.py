@@ -3,7 +3,6 @@
 Uses alive + HP + per-frame equipment value heuristic. Normalised to [0.05, 0.95].
 Post-plant: *1.5 boost toward T side.
 """
-import numpy as np
 
 
 def compute_winprob(fb, rb, replay: dict) -> list[float]:
