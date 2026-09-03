@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useSearchParams } from 'react-router-dom'
 import MatchNavShared from '../components/MatchNav'
 import { api, ReplayData, MapOverview, AnalysisData, RoundData } from '../api'
-import { worldToCanvas } from '../lib/coords'
+import { worldToCanvas, zOnLevel, lowerLevelNames } from '../lib/coords'
 import { t, getLang } from '../i18n'
 import { useLang } from '../App'
 
@@ -44,21 +44,21 @@ function diagnosisLines(kc: KillContext, isAttacker: boolean): string[] {
   if (!kc) return lines
   if (isAttacker) {
     if (kc.aliveAllies !== undefined && kc.aliveAllies === 0)
-      lines.push('Играл в изоляции — ни одного живого союзника')
+      lines.push(t('replay:diagnosis.isolated'))
     else if (kc.nearAllyDist !== undefined && kc.nearAllyDist !== null && kc.nearAllyDist > 800)
-      lines.push(`Ближайший союзник был в ${Math.round(kc.nearAllyDist)}u`)
+      lines.push(t('replay:diagnosis.nearestAlly', { dist: Math.round(kc.nearAllyDist) }))
     if (kc.flashDur !== undefined && kc.flashDur > 1.5)
-      lines.push(`Враг был заблеспан ${kc.flashDur.toFixed(1)}с`)
+      lines.push(t('replay:diagnosis.enemyFlashed', { dur: kc.flashDur.toFixed(1) }))
     if (kc.victimWalking)
-      lines.push('Враг шёл на шифте — низкая скорость')
+      lines.push(t('replay:diagnosis.enemyWalking'))
   } else {
     // victim perspective
     if (kc.flashDur !== undefined && kc.flashDur > 1.5)
-      lines.push(`Был заблеспан ${kc.flashDur.toFixed(1)}с в момент смерти`)
+      lines.push(t('replay:diagnosis.victimFlashed', { dur: kc.flashDur.toFixed(1) }))
     if (kc.victimVel !== undefined && kc.victimVel > 100)
-      lines.push(`Двигался со скоростью ${Math.round(kc.victimVel)}u/s`)
+      lines.push(t('replay:diagnosis.victimSpeed', { speed: Math.round(kc.victimVel) }))
     if (kc.aliveAllies !== undefined && kc.aliveEnemies !== undefined && kc.aliveEnemies > kc.aliveAllies + 1)
-      lines.push(`Численный перевес у противника ${kc.aliveEnemies}v${kc.aliveAllies}`)
+      lines.push(t('replay:diagnosis.outnumbered', { enemies: kc.aliveEnemies, allies: kc.aliveAllies }))
   }
   return lines
 }
@@ -134,7 +134,7 @@ function EventLog({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
-            <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>УБИЙСТВО{hs ? ' НС' : ''}</span>
+            <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>{t('replay:eventLog.kill')}{hs ? ` ${t('replay:eventLog.hs')}` : ''}</span>
             <span style={{ fontSize: 12, color: attackerColor, fontWeight: 600 }}>{attacker}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)' }}>→</span>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>{victim}</span>
@@ -148,8 +148,8 @@ function EventLog({
     }
 
     const bombLabels: Record<string, string> = {
-      bp: '💣 Бомба заложена', bu: '🤲 Подобрал бомбу', bo: '📦 Бомба брошена',
-      bz: '🔧 Начал минировать', bf: '✅ Бомба обезврежена', bx: '💥 Бомба взорвалась',
+      bp: t('replay:bomb.planted'), bu: t('replay:bomb.picked'), bo: t('replay:bomb.dropped'),
+      bz: t('replay:bomb.defuseStart'), bf: t('replay:bomb.defused'), bx: t('replay:bomb.exploded'),
     }
     if (bombLabels[ty]) {
       const pidx = e.p as number
@@ -163,7 +163,7 @@ function EventLog({
     }
 
     const nadeLabels: Record<string, string> = {
-      sm: '🌫 Смок', hd: '💥 HE', fd: '⚡ Флешка', fr: '🔥 Молик',
+      sm: t('replay:nade.smoke'), hd: t('replay:nade.he'), fd: t('replay:nade.flash'), fr: t('replay:nade.molotov'),
     }
     if (nadeLabels[ty]) {
       const pidx = e.p as number
@@ -180,10 +180,10 @@ function EventLog({
   }
 
   const filterBtns: { key: EventFilter; label: string }[] = [
-    { key: 'all', label: 'Все' },
-    { key: 'kills', label: 'Дуэли' },
-    { key: 'bomb', label: 'Бомба' },
-    { key: 'nades', label: 'Гранаты' },
+    { key: 'all', label: t('replay:filter.all') },
+    { key: 'kills', label: t('replay:filter.kills') },
+    { key: 'bomb', label: t('replay:filter.bomb') },
+    { key: 'nades', label: t('replay:filter.nades') },
   ]
 
   return (
@@ -198,14 +198,14 @@ function EventLog({
         ))}
         {curRound && (
           <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text2)', alignSelf: 'center' }}>
-            Р{curRound.n}
+            {t('replay:roundShort')}{curRound.n}
           </span>
         )}
       </div>
       <div ref={listRef} style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
         {visible.map((ev, i) => renderEvent(ev, i))}
         {visible.length === 0 && (
-          <div style={{ padding: 16, color: 'var(--text2)', fontSize: 12, textAlign: 'center' }}>Событий пока нет</div>
+          <div style={{ padding: 16, color: 'var(--text2)', fontSize: 12, textAlign: 'center' }}>{t('replay:eventLog.empty')}</div>
         )}
       </div>
     </div>
@@ -249,7 +249,7 @@ function ScoreboardPanel({
   const teams: { idx: number; label: string; color: string; players: typeof replay.players }[] = [1, 0].map(idx => {
     const color = teamColorAtFrame(replay, frameIdx, idx)
     // determine label from live team_num: orange=T, blue=CT
-    const label = color === TEAM_COLORS[2] ? 'Т' : 'КТ'
+    const label = color === TEAM_COLORS[2] ? t('replay:side.t') : t('replay:side.ct')
     return { idx, label, color, players: replay.players.filter(p => p.team === idx) }
   })
 
@@ -340,7 +340,7 @@ function RoundSwitcher({
       {/* warmup button */}
       <button
         onClick={jumpWarmup}
-        title="Разминка"
+        title={t('replay:rounds.warmup')}
         style={{
           position: 'relative', flexShrink: 0,
           padding: '5px 8px', fontSize: 10, fontWeight: isWarmup ? 700 : 400,
@@ -368,7 +368,7 @@ function RoundSwitcher({
           <button
             key={r.n}
             onClick={() => startFi >= 0 && onJump(startFi)}
-            title={`R${r.n}${r.isPistol ? ' (pistol)' : ''}`}
+            title={`R${r.n}${r.isPistol ? ` ${t('replay:rounds.pistol')}` : ''}`}
             style={{
               position: 'relative', flex: 1,
               padding: '5px 2px', fontSize: 11, fontWeight: isActive ? 700 : 400,
@@ -583,8 +583,8 @@ function WinProbGraph({
       <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" />
 
       {/* live score labels */}
-      <text x="6" y="11" fill="#4a9eda" fontSize="10" fontFamily="monospace" fontWeight="bold">КТ {ctPct}%</text>
-      <text x={W - 6} y={H - 4} fill="#e4882a" fontSize="10" fontFamily="monospace" fontWeight="bold" textAnchor="end">Т {tPct}%</text>
+      <text x="6" y="11" fill="#4a9eda" fontSize="10" fontFamily="monospace" fontWeight="bold">{t('replay:side.ct')} {ctPct}%</text>
+      <text x={W - 6} y={H - 4} fill="#e4882a" fontSize="10" fontFamily="monospace" fontWeight="bold" textAnchor="end">{t('replay:side.t')} {tPct}%</text>
     </svg>
   )
 }
@@ -604,6 +604,7 @@ function drawFrame(
   radarImg: HTMLImageElement | null,
   tx: Transform,
   nadeTrailMode: NadeTrailMode = 'trail',
+  level = 'default',
 ) {
   const ctx = canvas.getContext('2d')!
   const SZ = canvas.width
@@ -862,14 +863,18 @@ function drawFrame(
     const alive = replay.data[base + F_ALIVE]
     if (!alive) continue
     const x = replay.data[base + F_X], y = replay.data[base + F_Y]
+    const z = replay.data[base + 2]
     const hp = replay.data[base + F_HP]
     const team = replay.data[base + F_TEAM]
     const flags = replay.data[base + F_FLAGS]
+    // players on another map level are dimmed instead of hidden
+    const onLevel = zOnLevel(z, ov, level)
     const [cx, cy] = worldToCanvas(x, y, ov, SZ, SZ)
     const hasBomb = (flags & 1) !== 0
     const color = TEAM_COLORS[team] ?? '#ccc'
     const r = 8 * dotScale
 
+    ctx.globalAlpha = onLevel ? 1 : 0.25
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2)
     ctx.fillStyle = color + 'cc'; ctx.fill()
     ctx.strokeStyle = hasBomb ? '#fff' : color
@@ -950,6 +955,7 @@ function drawFrame(
     ctx.fillStyle = '#333'; ctx.fillRect(bx, by, bw, bh)
     ctx.fillStyle = hp > 50 ? '#4caf7d' : hp > 25 ? '#f5c542' : '#e05252'
     ctx.fillRect(bx, by, bw * hp / 100, bh)
+    ctx.globalAlpha = 1
   }
 
   ctx.restore()
@@ -982,6 +988,7 @@ export default function ReplayPage() {
   const [tx, setTx] = useState<Transform>({ scale: 1, ox: 0, oy: 0 })
   const [showEventLog, setShowEventLog] = useState(true)
   const [nadeTrailMode, setNadeTrailMode] = useState<NadeTrailMode>('trail')
+  const [level, setLevel] = useState('default')
 
   const txRef = useRef<Transform>({ scale: 1, ox: 0, oy: 0 })
   const dragRef = useRef<{ startX: number; startY: number; startOx: number; startOy: number } | null>(null)
@@ -1043,8 +1050,8 @@ export default function ReplayPage() {
 
   useEffect(() => {
     if (!canvasRef.current || !replay || !overview) return
-    drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx, nadeTrailMode)
-  }, [frameIdx, replay, overview, tx, leftWidth, nadeTrailMode])
+    drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx, nadeTrailMode, level)
+  }, [frameIdx, replay, overview, tx, leftWidth, nadeTrailMode, level])
 
   useEffect(() => {
     if (!playing || !replay) return
@@ -1195,9 +1202,26 @@ export default function ReplayPage() {
 
         {/* ── left: map canvas ── */}
         <div style={{ minWidth: 0 }}>
+          {lowerLevelNames(overview).length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase' }}>{t('mapLevel')}</span>
+              <button onClick={() => setLevel('default')} style={{
+                background: level === 'default' ? 'var(--accent)' : 'var(--bg3)',
+                color: level === 'default' ? '#fff' : 'var(--text)',
+                border: 'none', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 12,
+              }}>{t('levelUpper')}</button>
+              {lowerLevelNames(overview).map(sec => (
+                <button key={sec} onClick={() => setLevel(sec)} style={{
+                  background: level === sec ? 'var(--accent)' : 'var(--bg3)',
+                  color: level === sec ? '#fff' : 'var(--text)',
+                  border: 'none', borderRadius: 4, padding: '3px 10px', cursor: 'pointer', fontSize: 12,
+                }}>{t('levelLower')}</button>
+              ))}
+            </div>
+          )}
           <div className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden' }}>
-            <img ref={radarRef} src={api.radarUrl(mapName)} alt="" style={{ display: 'none' }}
-              onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current, nadeTrailMode) }} />
+            <img ref={radarRef} src={api.radarUrl(mapName, level)} alt="" style={{ display: 'none' }}
+              onLoad={() => { if (canvasRef.current && replay && overview) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current, nadeTrailMode, level) }} />
             <canvas
               ref={canvasRef} width={leftWidth} height={leftWidth}
               style={{ display: 'block', cursor, width: '100%', height: 'auto' }}
@@ -1206,13 +1230,13 @@ export default function ReplayPage() {
             />
             {currentRound && (
               <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,.7)', padding: '3px 10px', borderRadius: 4, fontSize: 12 }}>
-                R{currentRound.n} · {currentRound.scoreTeam0}:{currentRound.scoreTeam1}
+                {t('replay:roundShort')}{currentRound.n} · {currentRound.scoreTeam0}:{currentRound.scoreTeam1}
                 {currentRound.bombPlanted && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>💣</span>}
               </div>
             )}
             {winprob.length > 0 && (
               <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,.7)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: '#4a9eda' }}>
-                КТ {Math.round((winprob[frameIdx] ?? 0.5) * 100)}%
+                {t('replay:side.ct')} {Math.round((winprob[frameIdx] ?? 0.5) * 100)}%
               </div>
             )}
             {tx.scale > 1 && (
@@ -1232,7 +1256,7 @@ export default function ReplayPage() {
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>/ {fmtTime(totalFrames - 1)}</span>
               {winprob.length > 0 && currentRound && (
                 <span style={{ fontSize: 12, color: '#4a9eda', marginLeft: 8 }}>
-                  КТ {Math.round((winprob[frameIdx] ?? 0.5) * 100)}% · Т {Math.round((1 - (winprob[frameIdx] ?? 0.5)) * 100)}%
+                  {t('replay:side.ct')} {Math.round((winprob[frameIdx] ?? 0.5) * 100)}% · {t('replay:side.t')} {Math.round((1 - (winprob[frameIdx] ?? 0.5)) * 100)}%
                 </span>
               )}
               <div className="flex items-center gap-8" style={{ marginLeft: 'auto' }}>
@@ -1240,19 +1264,19 @@ export default function ReplayPage() {
                   className={showEventLog ? 'btn-primary' : 'btn-ghost'}
                   style={{ fontSize: 11, padding: '3px 8px' }}
                   onClick={() => setShowEventLog(v => !v)}
-                >Лог</button>
+                >{t('replay:eventLog.title')}</button>
                 <button
                   className={nadeTrailMode === 'trail' ? 'btn-primary' : 'btn-ghost'}
                   style={{ fontSize: 11, padding: '3px 8px' }}
-                  title="Трейл гранат: хвост во время полёта"
+                  title={t('replay:trail.tailTip')}
                   onClick={() => setNadeTrailMode('trail')}
-                >🔴 Хвост</button>
+                >{t('replay:trail.tail')}</button>
                 <button
                   className={nadeTrailMode === 'path' ? 'btn-primary' : 'btn-ghost'}
                   style={{ fontSize: 11, padding: '3px 8px' }}
-                  title="Путь гранат: вся траектория с момента броска"
+                  title={t('replay:trail.pathTip')}
                   onClick={() => setNadeTrailMode('path')}
-                >🔴 Путь</button>
+                >{t('replay:trail.path')}</button>
                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('speed')}</span>
                 {SPEEDS.map((s) => (
                   <button key={s} className={speed === s ? 'btn-primary' : 'btn-ghost'}
@@ -1320,7 +1344,7 @@ export default function ReplayPage() {
           <>
             <div className="card" style={{ minWidth: 0, height: leftWidth, display: 'flex', flexDirection: 'column', padding: '10px 8px' }}>
               <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 12, textTransform: 'uppercase', color: 'var(--text2)', flexShrink: 0 }}>
-                СОБЫТИЯ
+                {t('replay:eventLog.header')}
               </div>
               <EventLog replay={replay} analysis={analysis} frameIdx={frameIdx} onSeek={tick => {
                 const fi = replay.ticks.findIndex(t => t >= tick)

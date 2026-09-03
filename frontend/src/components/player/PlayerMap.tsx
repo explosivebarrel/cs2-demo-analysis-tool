@@ -2,6 +2,7 @@ import { useRef, useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MapEvent, MapOverview } from '../../api'
 import { worldToCanvas } from '../../lib/coords'
+import { t } from '../../i18n'
 
 interface Props {
   mapEvents: MapEvent[]
@@ -9,7 +10,7 @@ interface Props {
   lang: 'ru' | 'en'
 }
 
-export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
+export default function PlayerMap({ mapEvents, mapName }: Props) {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -212,12 +213,12 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
       {/* header stats */}
       <div style={{ display: 'flex', gap: 20, marginBottom: 12, flexWrap: 'wrap' }}>
         {[
-          { label: lang === 'ru' ? 'УБИЙСТВА' : 'KILLS',  value: kills,  color: 'var(--green)' },
-          { label: lang === 'ru' ? 'СМЕРТИ'   : 'DEATHS', value: deaths, color: 'var(--red)' },
-          { label: lang === 'ru' ? 'ЧЁТ'      : 'DIFF',
+          { label: t('player:map.kills'),  value: kills,  color: 'var(--green)' },
+          { label: t('player:map.deaths'), value: deaths, color: 'var(--red)' },
+          { label: t('player:map.diff'),
             value: (diff > 0 ? '+' : '') + diff,
             color: diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text2)' },
-          { label: 'НС %', value: kills > 0 ? Math.round(hs / kills * 100) + '%' : '—', color: 'var(--accent2)' },
+          { label: t('player:map.hsPct'), value: kills > 0 ? Math.round(hs / kills * 100) + '%' : '—', color: 'var(--accent2)' },
         ].map(({ label, value, color }) => (
           <div key={label}>
             <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 2 }}>{label}</div>
@@ -229,19 +230,19 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
       {/* filter buttons + legend */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         <button style={btnStyle(filter === 'all')} onClick={() => setFilter('all')}>
-          {lang === 'ru' ? 'Все' : 'All'} ({mapEvents.length})
+          {t('player:map.filterAll')} ({mapEvents.length})
         </button>
         <button style={btnStyle(filter === 'kill', 'var(--green)')} onClick={() => setFilter('kill')}>
-          {lang === 'ru' ? 'Убийства' : 'Kills'} ({kills})
+          {t('player:map.filterKills')} ({kills})
         </button>
         <button style={btnStyle(filter === 'death', 'var(--red)')} onClick={() => setFilter('death')}>
-          {lang === 'ru' ? 'Смерти' : 'Deaths'} ({deaths})
+          {t('player:map.filterDeaths')} ({deaths})
         </button>
         <div style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text2)', display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-          <span><span style={{ color: 'var(--green)', fontWeight: 700 }}>●</span> {lang === 'ru' ? 'убийство' : 'kill'}</span>
-          <span><span style={{ color: 'var(--green)', fontWeight: 700 }}>◆</span> НС</span>
-          <span><span style={{ color: 'var(--red)', fontWeight: 700 }}>●</span> {lang === 'ru' ? 'смерть' : 'death'}</span>
-          <span style={{ color: 'var(--text2)' }}>— {lang === 'ru' ? 'линия до противника' : 'line to opponent'}</span>
+          <span><span style={{ color: 'var(--green)', fontWeight: 700 }}>●</span> {t('player:map.legendKill')}</span>
+          <span><span style={{ color: 'var(--green)', fontWeight: 700 }}>◆</span> {t('player:map.headshotShort')}</span>
+          <span><span style={{ color: 'var(--red)', fontWeight: 700 }}>●</span> {t('player:map.legendDeath')}</span>
+          <span style={{ color: 'var(--text2)' }}>— {t('player:map.legendLine')}</span>
         </div>
       </div>
 
@@ -268,8 +269,8 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
             pointerEvents: 'none', lineHeight: 1.6,
           }}>
             {scale > 1
-              ? `${scale.toFixed(1)}× · ${lang === 'ru' ? 'колесо — зум, тащи — сдвиг' : 'scroll to zoom, drag to pan'}`
-              : lang === 'ru' ? 'колесо мыши — приближение · тащи — перемещение' : 'scroll to zoom · drag to pan'}
+              ? t('player:map.hintZooming', { scale: scale.toFixed(1) })
+              : t('player:map.hintIdle')}
           </div>
 
           {/* loading overlay */}
@@ -279,7 +280,7 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
               alignItems: 'center', justifyContent: 'center',
               color: 'var(--text2)', fontSize: 13, pointerEvents: 'none',
             }}>
-              {lang === 'ru' ? 'Загрузка карты...' : 'Loading map...'}
+              {t('player:map.loading')}
             </div>
           )}
 
@@ -291,7 +292,7 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
               padding: '2px 7px', fontSize: 10, color: 'rgba(255,255,255,.5)',
               pointerEvents: 'none',
             }}>
-              {lang === 'ru' ? 'Наведи на точку — покажет линию до противника' : 'Hover a dot to see line to opponent'}
+              {t('player:map.hoverHint')}
             </div>
           )}
         </div>
@@ -308,10 +309,10 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
           }}>
             <div style={{ marginBottom: 4 }}>
               <span style={{ color: hoveredDot.type === 'kill' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
-                {hoveredDot.type === 'kill' ? (lang === 'ru' ? '💀 УБИЙСТВО' : '💀 KILL') : (lang === 'ru' ? '🪦 СМЕРТЬ' : '🪦 DEATH')}
+                {hoveredDot.type === 'kill' ? t('player:map.tooltipKill') : t('player:map.tooltipDeath')}
               </span>
               {hoveredDot.headshot && (
-                <span style={{ fontSize: 10, background: 'var(--accent2)', color: '#fff', borderRadius: 3, padding: '1px 5px', marginLeft: 6 }}>НС</span>
+                <span style={{ fontSize: 10, background: 'var(--accent2)', color: '#fff', borderRadius: 3, padding: '1px 5px', marginLeft: 6 }}>{t('player:map.headshotShort')}</span>
               )}
             </div>
             <div style={{ color: 'var(--text2)', fontSize: 11, marginBottom: 4 }}>
@@ -326,7 +327,7 @@ export default function PlayerMap({ mapEvents, mapName, lang }: Props) {
                   cursor: 'pointer', fontSize: 11, width: '100%',
                 }}
               >
-                → {lang === 'ru' ? `Открыть раунд R${hoveredDot.round}` : `Open round R${hoveredDot.round}`}
+                {t('player:map.openRound', { round: hoveredDot.round })}
               </button>
             )}
           </div>

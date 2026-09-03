@@ -10,16 +10,6 @@ from typing import Any
 
 from .aim_mechanics import compute_aim_mechanics
 
-# ------------------------------------------------------------------ constants
-
-ERROR_GROUPS = {
-    "shift_peek": "Пик на шифте",
-    "moving_shot": "Ошибка движения",
-    "isolated": "Игра в изоляции",
-    "flashed": "Вышел на флеше",
-    "strong_duel": "Сильная дуэль",
-}
-
 
 def _sid(v) -> str | None:
     if v is None:

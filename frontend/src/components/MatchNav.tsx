@@ -66,8 +66,8 @@ export default function MatchNav({ id, players, currentSteamid }: Props) {
             }}
           >
             {currentSteamid
-              ? (players?.find(p => p.steamid === currentSteamid)?.name.slice(0, 32) ?? (t('players') ?? 'Игроки'))
-              : (t('players') ?? 'Игроки')}
+              ? (players?.find(p => p.steamid === currentSteamid)?.name.slice(0, 32) ?? t('players'))
+              : t('players')}
             <span style={{ fontSize: 10, opacity: 0.7 }}>{open ? '▲' : '▼'}</span>
           </button>
 

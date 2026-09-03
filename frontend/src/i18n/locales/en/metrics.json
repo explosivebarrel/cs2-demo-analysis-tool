@@ -1,0 +1,271 @@
+{
+  "page": {
+    "notFound": "Metric page \"{{key}}\" not found."
+  },
+  "shared": {
+    "impact": "Impact on outcome",
+    "episodes": "Episodes from this demo",
+    "byRound": "By round",
+    "whatItMeans": "What this means",
+    "winBreakdown": "Win breakdown",
+    "ofWins": "of wins",
+    "noEpisodes": "No episodes",
+    "clickRow": "Click a row to view episode",
+    "ms": "ms",
+    "otherDuels": "Other duels",
+    "filterAll": "All ({{n}})",
+    "filterWon": "Won ({{n}})",
+    "filterLost": "Lost ({{n}})",
+    "filterStopped": "Stopped ({{n}})",
+    "filterMoving": "Moving ({{n}})"
+  },
+  "winRate": {
+    "cleanDefault": "With clean mechanics",
+    "otherDefault": "All other duels",
+    "duels": "{{n}} duels",
+    "toWin": "to win rate"
+  },
+  "duel": {
+    "win": "✓ Win",
+    "loss": "✗ Loss"
+  },
+  "outcome": {
+    "kill": "kill",
+    "death": "died",
+    "draw": "draw",
+    "none": "—"
+  },
+  "error": {
+    "flashed": "flashed",
+    "isolated": "isolated",
+    "missed_first": "missed first",
+    "moving": "moving",
+    "moving_shot": "moving",
+    "outnumbered": "outnumbered",
+    "overshoot": "overshoot",
+    "passive_angle": "passive angle",
+    "shift_peek": "shift peek"
+  },
+  "weaponClass": {
+    "rifle": "Rifles",
+    "pistol": "Pistols",
+    "smg": "SMGs",
+    "sniper": "Snipers",
+    "shotgun": "Shotguns",
+    "lmg": "LMGs",
+    "other": "Other"
+  },
+  "weapon": {
+    "ak47": "AK-47",
+    "m4a1": "M4A1-S",
+    "m4a1_silencer": "M4A1-S",
+    "m4a4": "M4A4",
+    "awp": "AWP",
+    "ssg08": "SSG 08",
+    "sg553": "SG 553",
+    "aug": "AUG",
+    "famas": "FAMAS",
+    "galil": "Galil AR",
+    "galilar": "Galil AR",
+    "p250": "P250",
+    "usp_silencer": "USP-S",
+    "glock": "Glock-18",
+    "hkp2000": "P2000",
+    "tec9": "Tec-9",
+    "cz75a": "CZ75-Auto",
+    "deagle": "Desert Eagle",
+    "revolver": "R8 Revolver",
+    "elite": "Dual Berettas",
+    "fiveseven": "Five-SeveN",
+    "mp5sd": "MP5-SD",
+    "mp7": "MP7",
+    "mp9": "MP9",
+    "mac10": "MAC-10",
+    "ump45": "UMP-45",
+    "p90": "P90",
+    "bizon": "PP-Bizon",
+    "nova": "Nova",
+    "sawedoff": "Sawed-Off",
+    "xm1014": "XM1014",
+    "mag7": "MAG-7",
+    "m249": "M249",
+    "negev": "Negev",
+    "g3sg1": "G3SG1",
+    "scar20": "SCAR-20"
+  },
+  "opening": {
+    "title": "Opening Win%",
+    "subtitle": "{{won}} won · {{lost}} lost opening duels",
+    "cleanLabel": "Opening duels",
+    "empty": "No opening duels"
+  },
+  "idealStrafe": {
+    "title": "Ideal strafes",
+    "subtitle": "{{stopped}} stopped · {{moving}} moving (of {{total}} duels)"
+  },
+  "firstBullet": {
+    "title": "First bullet accuracy",
+    "subtitle": "{{hits}} hits · {{misses}} misses",
+    "byClass": "By weapon class",
+    "hits": "{{hit}}/{{total}} hits",
+    "hit": "✓ Hit",
+    "miss": "✗ Miss",
+    "filterHit": "Hits ({{n}})",
+    "filterMiss": "Misses ({{n}})"
+  },
+  "tradeKills": {
+    "title": "Trade kills",
+    "subtitle": "{{n}} trade kills in rounds: {{rounds}}",
+    "cleanLabel": "Trade kills"
+  },
+  "tradedDeaths": {
+    "title": "Traded deaths",
+    "subtitle": "{{n}} traded deaths in rounds: {{rounds}}",
+    "cleanLabel": "Traded deaths"
+  },
+  "lostDuels": {
+    "title": "Lost duels",
+    "subtitle": "{{n}} deaths",
+    "cleanLabel": "Rounds without death",
+    "otherLabel": "Rounds with death",
+    "causes": "Loss causes",
+    "flashed": "Flashed",
+    "moving": "Moving",
+    "outnumbered": "Outnumbered",
+    "otherErrors": "Other errors",
+    "clean": "Clean",
+    "filterFlashed": "Flashed ({{n}})",
+    "filterMoving": "Moving ({{n}})",
+    "filterOutnumbered": "Outnumbered ({{n}})",
+    "filterClean": "Clean ({{n}})"
+  },
+  "counterStrafe": {
+    "title": "Counter-strafe errors",
+    "subtitle": "Shots fired while moving (no stop before shooting)",
+    "movingDuels": "Duels with moving shots",
+    "empty": "No duels with moving shots"
+  },
+  "discipline": {
+    "shiftTitle": "Shift peeks",
+    "isolatedTitle": "Isolated plays",
+    "shiftSubtitle": "% of duels started while walking",
+    "isolatedSubtitle": "% of duels without nearby allies",
+    "isolatedClean": "Isolated",
+    "filterShift": "Shift peeks ({{n}})",
+    "filterIsolated": "Isolated ({{n}})"
+  },
+  "ttk": {
+    "title": "Time to kill",
+    "subtitle": "Avg ms from first shot to kill",
+    "value": "{{value}} ms",
+    "wonHeading": "Won duels"
+  },
+  "clutch": {
+    "title": "Clutch Win%",
+    "subtitle": "{{won}} won · {{played}} attempted",
+    "normalRounds": "Normal rounds",
+    "rounds": "Clutch rounds",
+    "byEnemies": "By enemy count",
+    "vs": "1v{{n}}",
+    "round": "Round {{n}}",
+    "won": "WON",
+    "lost": "LOST",
+    "empty": "No clutch rounds"
+  },
+  "flash": {
+    "title": "Flash efficiency",
+    "subtitle": "% of own flashes that blinded an enemy",
+    "whileFlashed": "While flashed",
+    "notFlashed": "Not flashed",
+    "duelsHeading": "Duels where you were flashed",
+    "empty": "No duels while flashed"
+  },
+  "reload": {
+    "title": "Reload errors",
+    "subtitle": "Reloads with bullets still in magazine (>5 bullets)",
+    "stats": "Stats",
+    "early": "Early reloads",
+    "duelsPlayed": "Duels played",
+    "per100": "Per 100 shots",
+    "explanation": "Reloading with bullets still in the magazine wastes ammo and takes time at a potentially dangerous moment. Ideally, reload only when the magazine is empty or near-empty."
+  },
+  "angleControl": {
+    "title": "Angle control",
+    "subtitle": "Positions held ≥2 seconds without movement",
+    "phaseEarly": "Early (0–15s)",
+    "phaseMid": "Mid (15–45s)",
+    "phaseLate": "Late (45s+)",
+    "whenHeading": "When in the round this occurs",
+    "explanation": "Angle control counts unique positions held still for ≥2 seconds during live rounds. A higher value means patient angle holding. Phase breakdown shows when in the round you prefer to hold angles."
+  },
+  "reaction": {
+    "title": "Reaction time",
+    "subtitle": "Avg ms from enemy peek onset to first shot",
+    "value": "{{value}} ms",
+    "distribution": "Reaction time distribution",
+    "summary": "{{n}} duels · avg {{avg}} ms · min {{min}} ms · max {{max}} ms",
+    "explanation": "Reaction time measures how many ms elapsed from when the enemy started moving (peek onset) until your first shot in the duel. Measured on winning duels where the enemy was in motion. Lower is better.",
+    "wonHeading": "Winning duels"
+  },
+  "overshoot": {
+    "title": "Overshoot count",
+    "subtitle": "{{overshoots}} overshoots · {{undershoots}} undershoots · {{clean}} clean (of {{wins}} wins)",
+    "cleanAim": "Clean aim",
+    "aimError": "Overshoot / undershoot",
+    "overshoot": "Overshoot",
+    "undershoot": "Undershoot",
+    "clean": "Clean",
+    "filterOvershoot": "Overshoot ({{n}})",
+    "filterUndershoot": "Undershoot ({{n}})",
+    "filterClean": "Clean ({{n}})",
+    "explanation": "Overshoot — your aim crossed past the enemy (angle sign changed). Undershoot — aim never reached the enemy (angle never zeroed). Clean duels — neither."
+  },
+  "crosshair": {
+    "title": "Crosshair placement",
+    "subtitle": "{{head}} head hits out of {{total}} first-bullet hits",
+    "headLabel": "First bullet — head",
+    "bodyLabel": "First bullet — body",
+    "byWeapon": "By weapon",
+    "headHits": "{{head}}/{{total}} head hits",
+    "hitHead": "✓ Head",
+    "hitBody": "— Body",
+    "explanation": "Measures how accurately you pre-aim at head level before duels start. Calculated as % of first-bullet hits on an enemy that landed on the head. A high value means good pre-aim and snappy flicks."
+  },
+  "missedFirst": {
+    "title": "Inaccurate first shot",
+    "subtitle": "{{missed}} first-bullet misses out of {{total}} won duels",
+    "missed": "Missed 1st bullet",
+    "hit": "Hit 1st bullet",
+    "hitLabel": "Hit 1st bullet",
+    "missedLabel": "Missed 1st bullet",
+    "filterMissed": "Missed ({{n}})",
+    "filterHit": "Hit ({{n}})",
+    "explanation": "Inaccurate first shot — the first bullet fired in the duel did no damage. Even when you won, it means you lost the first-bullet advantage. Improve your pre-aim and counter-strafe to reduce this number."
+  },
+  "excellent": {
+    "title": "Excellent contacts",
+    "subtitle": "Duel wins: stopped at shot + first bullet hit",
+    "explanation": "Excellent contacts are duel wins where you were not moving when you first shot (velocity ≤{{velocity}} u/s) and your first bullet hit the enemy. This combines correct movement mechanics with accurate first-shot placement — the most valuable indicator of duel mechanics."
+  },
+  "reactionHits": {
+    "title": "Reaction on hits",
+    "subtitle": "Avg reaction time only in duels where first bullet hit",
+    "value": "{{value}} ms",
+    "comparison": "vs. overall reaction time",
+    "onHits": "On hits",
+    "allDuels": "All duels",
+    "hitLabel": "First bullet hit",
+    "missedLabel": "First bullet missed",
+    "explanation": "Reaction on hits shows your reaction time only in duels where your first bullet hit the enemy. This is a cleaner measure of how fast you react when you are properly aimed — without misses that inflate the overall average. Lower is better."
+  },
+  "passiveAngle": {
+    "title": "Passive angle",
+    "subtitle": "{{n}} duels — stood still in an exposed position before shooting",
+    "active": "Active peek",
+    "breakdown": "Breakdown",
+    "cleanWins": "Clean (wins)",
+    "filterPassive": "Passive ({{n}})",
+    "filterClean": "Clean ({{n}})",
+    "explanation": "Passive angle — you were stationary (displacement < 40 units) for several ticks before your first shot from an exposed position. This gives the enemy an easy take — they already know where you are. Use quick peeks or shift position before engaging."
+  }
+}

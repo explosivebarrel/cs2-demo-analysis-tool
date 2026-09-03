@@ -1,0 +1,65 @@
+{
+  "player": "Player",
+  "player_": "Player",
+  "play": "Play",
+  "pause": "Pause",
+  "speed": "Speed",
+  "players": "Players",
+  "replayRound": "Round",
+  "replayScore": "Score",
+  "speedUp": "Speed up",
+  "hotPause": "Pause / Play",
+  "hotZoom": "Zoom",
+  "hotPan": "Pan",
+  "roundShort": "R",
+  "side": {
+    "t": "T",
+    "ct": "CT"
+  },
+  "rounds": {
+    "warmup": "Warmup",
+    "pistol": "(pistol)"
+  },
+  "filter": {
+    "all": "All",
+    "kills": "Duels",
+    "bomb": "Bomb",
+    "nades": "Nades"
+  },
+  "eventLog": {
+    "title": "Log",
+    "header": "Events",
+    "empty": "No events yet",
+    "kill": "KILL",
+    "hs": "HS"
+  },
+  "diagnosis": {
+    "isolated": "Played in isolation — no teammates alive",
+    "nearestAlly": "Nearest teammate was {{dist}}u away",
+    "enemyFlashed": "Enemy was blinded for {{dur}}s",
+    "enemyWalking": "Enemy was walking — low speed",
+    "victimFlashed": "Was blinded for {{dur}}s at the moment of death",
+    "victimSpeed": "Moving at {{speed}}u/s",
+    "outnumbered": "Enemies had a numbers advantage {{enemies}}v{{allies}}"
+  },
+  "bomb": {
+    "planted": "💣 Bomb planted",
+    "picked": "🤲 Picked up the bomb",
+    "dropped": "📦 Bomb dropped",
+    "defuseStart": "🔧 Started defusing",
+    "defused": "✅ Bomb defused",
+    "exploded": "💥 Bomb exploded"
+  },
+  "nade": {
+    "smoke": "🌫 Smoke",
+    "he": "💥 HE",
+    "flash": "⚡ Flash",
+    "molotov": "🔥 Molotov"
+  },
+  "trail": {
+    "tail": "🔴 Trail",
+    "tailTip": "Grenade trail: fading tail while in flight",
+    "path": "🔴 Path",
+    "pathTip": "Grenade path: full trajectory since the throw"
+  }
+}

@@ -416,7 +416,7 @@ def _compute_reaction_time(
     overshoot_count: total times attacker yaw crossed past victim's bearing
                      between peek onset and kill tick across all winning duels.
     successful_reaction_time_ms: same as reaction_time_ms but only for duels
-                     where the first bullet hit (Реакция в попаданиях).
+                     where the first bullet hit.
     """
     if ticks_df is None or not len(ticks_df) or kills_df is None or not len(kills_df):
         return 0.0, 0, 0.0

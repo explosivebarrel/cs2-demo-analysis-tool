@@ -11,14 +11,12 @@ function teamColor(team: number) {
   return team === 0 ? 'var(--accent2)' : '#4db8ff'
 }
 
-function MessageRow({ msg, players, lang }: {
+function MessageRow({ msg, players }: {
   msg: ChatMessage
   players: AnalysisData['players']
-  lang: 'ru' | 'en'
 }) {
   const player = players.find(p => p.steamid === msg.steamid)
   const color = player ? teamColor(player.team) : 'var(--text2)'
-  const ru = lang === 'ru'
 
   return (
     <div style={{
@@ -68,7 +66,7 @@ function MessageRow({ msg, players, lang }: {
 
 export default function ChatPage() {
   const { id } = useParams<{ id: string }>()
-  const { lang } = useLang()
+  useLang()
 
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [players, setPlayers] = useState<AnalysisData['players']>([])
@@ -130,7 +128,7 @@ export default function ChatPage() {
       <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 16px' }}>
         {/* filters */}
         <div style={{ display: 'flex', gap: 12, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
-          <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('chatFilterRound')}:</span>
+          <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('chat:filter.round')}:</span>
           <select
             value={roundFilter === 'all' ? 'all' : String(roundFilter)}
             onChange={e => setRoundFilter(e.target.value === 'all' ? 'all' : Number(e.target.value))}
@@ -139,13 +137,13 @@ export default function ChatPage() {
               borderRadius: 6, padding: '4px 8px', fontSize: 12,
             }}
           >
-            <option value="all">{t('chatAllRounds')}</option>
+            <option value="all">{t('chat:allRounds')}</option>
             {rounds.map(r => (
-              <option key={r} value={r}>{t('chatRound')} {r}</option>
+              <option key={r} value={r}>{t('chat:round')} {r}</option>
             ))}
           </select>
 
-          <span style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 8 }}>{t('chatFilterPlayer')}:</span>
+          <span style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 8 }}>{t('chat:filter.player')}:</span>
           <select
             value={playerFilter}
             onChange={e => setPlayerFilter(e.target.value)}
@@ -154,7 +152,7 @@ export default function ChatPage() {
               borderRadius: 6, padding: '4px 8px', fontSize: 12,
             }}
           >
-            <option value="all">{t('chatAllPlayers')}</option>
+            <option value="all">{t('chat:allPlayers')}</option>
             {senders.map(sid => {
               const p = players.find(pl => pl.steamid === sid)
               return <option key={sid} value={sid}>{p?.name ?? sid}</option>
@@ -169,7 +167,7 @@ export default function ChatPage() {
         {/* message list */}
         {filtered.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--text2)', padding: '48px 0', fontSize: 14 }}>
-            {t('chatNoMessages')}
+            {t('chat:noMessages')}
           </div>
         ) : (
           <div style={{
@@ -179,7 +177,7 @@ export default function ChatPage() {
             padding: '0 16px',
           }}>
             {filtered.map((msg, i) => (
-              <MessageRow key={i} msg={msg} players={players} lang={lang} />
+              <MessageRow key={i} msg={msg} players={players} />
             ))}
           </div>
         )}

@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { WeaponRow } from '../../api'
+import { t } from '../../i18n'
 
-const TYPE_LABELS: Record<string, { ru: string; en: string; color: string }> = {
-  rifle:   { ru: 'RIFLE',   en: 'RIFLE',   color: 'var(--accent)' },
-  sniper:  { ru: 'SNIPER',  en: 'SNIPER',  color: 'var(--accent2)' },
-  smg:     { ru: 'SMG',     en: 'SMG',     color: '#7ec8e3' },
-  heavy:   { ru: 'HEAVY',   en: 'HEAVY',   color: '#b0a0c8' },
-  pistol:  { ru: 'PISTOL',  en: 'PISTOL',  color: '#f5c542' },
-  grenade: { ru: 'GRENADE', en: 'GRENADE', color: '#8bc34a' },
-  gear:    { ru: 'GEAR',    en: 'GEAR',    color: 'var(--text2)' },
-  other:   { ru: 'OTHER',   en: 'OTHER',   color: 'var(--text2)' },
+const TYPE_LABELS: Record<string, { key: string; color: string }> = {
+  rifle:   { key: 'player:weapons.typeRifle',   color: 'var(--accent)' },
+  sniper:  { key: 'player:weapons.typeSniper',  color: 'var(--accent2)' },
+  smg:     { key: 'player:weapons.typeSmg',     color: '#7ec8e3' },
+  heavy:   { key: 'player:weapons.typeHeavy',   color: '#b0a0c8' },
+  pistol:  { key: 'player:weapons.typePistol',  color: '#f5c542' },
+  grenade: { key: 'player:weapons.typeGrenade', color: '#8bc34a' },
+  gear:    { key: 'player:weapons.typeGear',    color: 'var(--text2)' },
+  other:   { key: 'player:weapons.typeOther',   color: 'var(--text2)' },
 }
 
 function HorizBar({ value, max, color }: { value: number; max: number; color: string }) {
@@ -53,7 +54,7 @@ function WeaponItem({ w, rank, maxKills, maxAcc, lang }: WeaponRowProps) {
           borderRadius: 3, padding: '0 4px',
           display: 'inline-block', marginTop: 2,
         }}>
-          {lang === 'ru' ? typeMeta.ru : typeMeta.en}
+          {t(typeMeta.key)}
         </span>
       </div>
 
@@ -62,7 +63,7 @@ function WeaponItem({ w, rank, maxKills, maxAcc, lang }: WeaponRowProps) {
         <div style={{ fontSize: 12 }}>
           <span style={{ fontWeight: 700, color: 'var(--accent)' }}>{w.hits}</span>
           <span style={{ color: 'var(--text2)', fontSize: 11 }}>
-            {' '}· {w.kills} {lang === 'ru' ? 'убийств' : 'kills'}
+            {' '}· {t('player:weapons.killsCount', { count: w.kills })}
           </span>
         </div>
         <HorizBar value={w.kills} max={maxKills} color="var(--accent)" />
@@ -96,7 +97,7 @@ export default function PlayerWeapons({ weapons, lang }: { weapons: WeaponRow[];
   const INITIAL = 5
 
   if (!weapons.length) {
-    return <div style={{ color: 'var(--text2)', fontSize: 13 }}>{lang === 'ru' ? 'Нет данных' : 'No data'}</div>
+    return <div style={{ color: 'var(--text2)', fontSize: 13 }}>{t('player:weapons.noData')}</div>
   }
 
   const maxKills = Math.max(...weapons.map(w => w.kills), 1)
@@ -117,11 +118,11 @@ export default function PlayerWeapons({ weapons, lang }: { weapons: WeaponRow[];
         borderBottom: '1px solid var(--border)',
       }}>
         <div>#</div>
-        <div>{lang === 'ru' ? 'Оружие' : 'Weapon'}</div>
-        <div>{lang === 'ru' ? 'Враги' : 'Enemies'}</div>
-        <div>{lang === 'ru' ? 'Точность' : 'Accuracy'}</div>
+        <div>{t('player:weapons.colWeapon')}</div>
+        <div>{t('player:weapons.colEnemies')}</div>
+        <div>{t('player:weapons.colAccuracy')}</div>
         <div>HS %</div>
-        <div>{lang === 'ru' ? 'Урон' : 'Damage'}</div>
+        <div>{t('player:weapons.colDamage')}</div>
       </div>
 
       {visible.map((w, i) => (
@@ -145,10 +146,8 @@ export default function PlayerWeapons({ weapons, lang }: { weapons: WeaponRow[];
           }}
         >
           {showAll
-            ? (lang === 'ru' ? 'Свернуть' : 'Show less')
-            : (lang === 'ru'
-              ? `Показать все (+${weapons.length - INITIAL})`
-              : `Show all (+${weapons.length - INITIAL})`)}
+            ? t('player:weapons.showLess')
+            : t('player:weapons.showAll', { count: weapons.length - INITIAL })}
         </button>
       )}
     </div>

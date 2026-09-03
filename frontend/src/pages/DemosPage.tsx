@@ -120,7 +120,7 @@ function FilterDrawer({
       }}>
         <div className="flex items-center justify-between">
           <span style={{ fontWeight: 600 }}>{t('filterBtn')}</span>
-          <button onClick={onClose} aria-label="Close filters" style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+          <button onClick={onClose} aria-label={t('demos:filter.close')} style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

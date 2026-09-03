@@ -1,18 +1,19 @@
 import { useNavigate, useParams } from 'react-router-dom'
 import { DuelEpisode, DuelFrame } from '../../api'
+import { t } from '../../i18n'
 
-const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: string }> = {
-  shift_peek:    { ru: 'Пик на шифте',             en: 'Shift peek',           color: 'var(--accent2)', icon: '🚶' },
-  moving_shot:   { ru: 'Движение при стрельбе',    en: 'Moving shot',          color: 'var(--red)',     icon: '🏃' },
-  isolated:      { ru: 'Игра в изоляции',          en: 'Playing isolated',     color: 'var(--accent)',  icon: '🔇' },
-  flashed:       { ru: 'Вышел на флеше',           en: 'Entered flashed',      color: 'var(--accent2)', icon: '🌟' },
-  strong_duel:   { ru: 'Сильная дуэль',            en: 'Strong duel',          color: 'var(--green)',   icon: '💪' },
-  overshoot:     { ru: 'Перелёт прицела',          en: 'Aim overshoot',        color: 'var(--red)',     icon: '→' },
-  undershoot:    { ru: 'Недолёт прицела',          en: 'Aim undershoot',       color: 'var(--accent2)', icon: '←' },
-  missed_first:  { ru: 'Неточный первый выстрел',  en: 'Inaccurate 1st shot',  color: 'var(--accent)',  icon: '✗' },
-  passive_angle: { ru: 'Пассивный угол',           en: 'Passive angle',        color: 'var(--text2)',   icon: '⏸' },
-  moving:        { ru: 'Движение (жертва)',         en: 'Moving (victim)',      color: 'var(--text2)',   icon: '🏃' },
-  outnumbered:   { ru: 'В меньшинстве',            en: 'Outnumbered',          color: 'var(--text2)',   icon: '⚠️' },
+const ERROR_META: Record<string, { key: string; color: string; icon: string }> = {
+  shift_peek:    { key: 'player:duels.errorShiftPeek',   color: 'var(--accent2)', icon: '🚶' },
+  moving_shot:   { key: 'player:duels.errorMovingShot',  color: 'var(--red)',     icon: '🏃' },
+  isolated:      { key: 'player:duels.errorIsolated',    color: 'var(--accent)',  icon: '🔇' },
+  flashed:       { key: 'player:duels.errorFlashed',     color: 'var(--accent2)', icon: '🌟' },
+  strong_duel:   { key: 'player:duels.errorStrongDuel',  color: 'var(--green)',   icon: '💪' },
+  overshoot:     { key: 'player:duels.errorOvershoot',   color: 'var(--red)',     icon: '→' },
+  undershoot:    { key: 'player:duels.errorUndershoot',  color: 'var(--accent2)', icon: '←' },
+  missed_first:  { key: 'player:duels.errorMissedFirst', color: 'var(--accent)',  icon: '✗' },
+  passive_angle: { key: 'player:duels.errorPassiveAngle', color: 'var(--text2)',  icon: '⏸' },
+  moving:        { key: 'player:duels.errorMoving',      color: 'var(--text2)',   icon: '🏃' },
+  outnumbered:   { key: 'player:duels.errorOutnumbered', color: 'var(--text2)',   icon: '⚠️' },
 }
 
 // Keys to display in input bar, in order
@@ -31,11 +32,11 @@ function fmtTime(ts: number): string {
 interface Props {
   duel: DuelEpisode
   playerNames: Record<string, string>
-  lang: 'ru' | 'en'
+  lang?: 'ru' | 'en'
   onClose: () => void
 }
 
-function VelocityGraph({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en' }) {
+function VelocityGraph({ frames }: { frames: DuelFrame[] }) {
   if (!frames.length) return null
 
   const W = 480, H = 72, PAD_L = 28, PAD_R = 8, PAD_T = 6, PAD_B = 18
@@ -60,7 +61,7 @@ function VelocityGraph({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 4, fontWeight: 600 }}>
-        {lang === 'ru' ? 'Скорость (u/s)' : 'Velocity (u/s)'}
+        {t('player:drilldown.velocityTitle')}
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
         {/* grid */}
@@ -91,7 +92,7 @@ function VelocityGraph({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en
   )
 }
 
-function InputChart({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en' }) {
+function InputChart({ frames }: { frames: DuelFrame[] }) {
   if (!frames.length) return null
 
   // compute active % per key across all frames
@@ -109,7 +110,7 @@ function InputChart({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en' }
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 8, fontWeight: 600 }}>
-        {lang === 'ru' ? 'Нажатия клавиш (% времени в окне)' : 'Key presses (% of window)'}
+        {t('player:drilldown.keyPresses')}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
         {active.map(({ label, color, pct }) => (
@@ -130,7 +131,7 @@ function InputChart({ frames, lang }: { frames: DuelFrame[]; lang: 'ru' | 'en' }
   )
 }
 
-export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: Props) {
+export default function EpisodeDrillDown({ duel, playerNames, onClose }: Props) {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const frames = duel.frames ?? []
@@ -148,20 +149,20 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
   const { context: kc } = duel
   if (duel.won) {
     if (kc.aliveAllies === 0)
-      diagLines.push(lang === 'ru' ? 'Играл в полной изоляции — ни одного живого союзника' : 'Played in full isolation — no alive allies')
+      diagLines.push(t('player:drilldown.diagFullIsolation'))
     else if (kc.nearAllyDist !== null && kc.nearAllyDist > 800)
-      diagLines.push(lang === 'ru' ? `Ближайший союзник был в ${Math.round(kc.nearAllyDist)}u` : `Nearest ally was ${Math.round(kc.nearAllyDist)}u away`)
+      diagLines.push(t('player:drilldown.diagNearestAlly', { dist: Math.round(kc.nearAllyDist) }))
     if (kc.flashDur > 1.5)
-      diagLines.push(lang === 'ru' ? `Враг был заблеспан ${kc.flashDur.toFixed(1)}с` : `Enemy was flashed ${kc.flashDur.toFixed(1)}s`)
+      diagLines.push(t('player:drilldown.diagEnemyFlashed', { dur: kc.flashDur.toFixed(1) }))
     if (kc.attackerVel > 50)
-      diagLines.push(lang === 'ru' ? `Стрелял в движении — ${Math.round(kc.attackerVel)}u/s` : `Shot while moving — ${Math.round(kc.attackerVel)}u/s`)
+      diagLines.push(t('player:drilldown.diagShootingMoving', { vel: Math.round(kc.attackerVel) }))
     if (kc.attackerWalking)
-      diagLines.push(lang === 'ru' ? 'Выходил на шифте' : 'Peeked while shift-walking')
+      diagLines.push(t('player:drilldown.diagShiftPeek'))
   } else {
     if (kc.flashDur > 1.5)
-      diagLines.push(lang === 'ru' ? `Был заблеспан ${kc.flashDur.toFixed(1)}с в момент смерти` : `Was flashed ${kc.flashDur.toFixed(1)}s at death`)
+      diagLines.push(t('player:drilldown.diagVictimFlashed', { dur: kc.flashDur.toFixed(1) }))
     if (kc.attackerVel > 100)
-      diagLines.push(lang === 'ru' ? `Атакующий двигался — ${Math.round(kc.attackerVel)}u/s` : `Attacker was moving — ${Math.round(kc.attackerVel)}u/s`)
+      diagLines.push(t('player:drilldown.diagAttackerMoving', { vel: Math.round(kc.attackerVel) }))
   }
 
   function goToRound() {
@@ -196,10 +197,10 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: headerColor }}>
                   {primaryErr
-                    ? (lang === 'ru' ? primaryErr.ru : primaryErr.en)
+                    ? t(primaryErr.key)
                     : (duel.won
-                      ? (lang === 'ru' ? 'Дуэль выиграна' : 'Duel won')
-                      : (lang === 'ru' ? 'Дуэль проиграна' : 'Duel lost'))}
+                      ? t('player:drilldown.duelWon')
+                      : t('player:drilldown.duelLost'))}
                 </div>
                 {diagLines[0] && (
                   <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{diagLines[0]}</div>
@@ -235,17 +236,17 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
             background: 'var(--bg3)', borderRadius: 8, marginBottom: 14, flexWrap: 'wrap',
           }}>
             <div style={{ fontSize: 12 }}>
-              <span style={{ color: 'var(--text2)' }}>{lang === 'ru' ? 'Раунд' : 'Round'} </span>
+              <span style={{ color: 'var(--text2)' }}>{t('player:drilldown.roundLabel')} </span>
               <span style={{ fontWeight: 700 }}>R{duel.round}</span>
             </div>
             <div style={{ fontSize: 12 }}>
-              <span style={{ color: 'var(--text2)' }}>{lang === 'ru' ? 'Время' : 'Time'} </span>
+              <span style={{ color: 'var(--text2)' }}>{t('player:drilldown.timeLabel')} </span>
               <span style={{ fontWeight: 700 }}>{fmtTime(duel.timestamp)}</span>
             </div>
             <div style={{ fontSize: 12 }}>
-              <span style={{ color: 'var(--text2)' }}>{lang === 'ru' ? 'Итог' : 'Result'} </span>
+              <span style={{ color: 'var(--text2)' }}>{t('player:drilldown.resultLabel')} </span>
               <span style={{ fontWeight: 700, color: duel.won ? 'var(--green)' : 'var(--red)' }}>
-                {duel.won ? (lang === 'ru' ? 'Победа' : 'Win') : (lang === 'ru' ? 'Поражение' : 'Loss')}
+                {duel.won ? t('player:drilldown.resultWin') : t('player:drilldown.resultLoss')}
               </span>
             </div>
           </div>
@@ -253,14 +254,14 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
           {/* context grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8, marginBottom: 14 }}>
             {[
-              { label: lang === 'ru' ? 'Скор. атак.' : 'Atk vel.', value: `${kc.attackerVel} u/s`, warn: kc.attackerVel > 50 },
-              { label: lang === 'ru' ? 'Скор. жертвы' : 'Vic vel.', value: `${kc.victimVel} u/s` },
-              { label: lang === 'ru' ? 'Флеш (жертва)' : 'Flash (victim)', value: `${kc.flashDur.toFixed(2)}s`, warn: kc.flashDur > 1.5 },
-              { label: lang === 'ru' ? 'До союзника' : 'Nearest ally',
+              { label: t('player:drilldown.atkVel'), value: `${kc.attackerVel} u/s`, warn: kc.attackerVel > 50 },
+              { label: t('player:drilldown.vicVel'), value: `${kc.victimVel} u/s` },
+              { label: t('player:drilldown.flashVictim'), value: `${kc.flashDur.toFixed(2)}s`, warn: kc.flashDur > 1.5 },
+              { label: t('player:drilldown.nearestAlly'),
                 value: kc.nearAllyDist != null ? `${Math.round(kc.nearAllyDist)}u` : '—',
                 warn: kc.nearAllyDist !== null && kc.nearAllyDist > 800 },
-              { label: lang === 'ru' ? 'Союзников' : 'Allies alive', value: String(kc.aliveAllies), warn: kc.aliveAllies === 0 },
-              { label: lang === 'ru' ? 'Врагов' : 'Enemies alive', value: String(kc.aliveEnemies) },
+              { label: t('player:drilldown.alliesAlive'), value: String(kc.aliveAllies), warn: kc.aliveAllies === 0 },
+              { label: t('player:drilldown.enemiesAlive'), value: String(kc.aliveEnemies) },
             ].map(({ label, value, warn }) => (
               <div key={label} style={{ background: 'var(--bg3)', borderRadius: 6, padding: '8px 12px' }}>
                 <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 3 }}>{label}</div>
@@ -272,8 +273,8 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
           {/* velocity graph + input chart */}
           {frames.length > 0 && (
             <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px', marginBottom: 14 }}>
-              <VelocityGraph frames={frames} lang={lang} />
-              <InputChart frames={frames} lang={lang} />
+              <VelocityGraph frames={frames} />
+              <InputChart frames={frames} />
             </div>
           )}
 
@@ -281,11 +282,11 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
           {errMeta.length > 0 && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 14 }}>
               {errMeta.map(m => (
-                <span key={m.ru} style={{
+                <span key={m.key} style={{
                   background: 'var(--bg3)', border: `1px solid ${m.color}`,
                   color: m.color, borderRadius: 4, padding: '3px 10px', fontSize: 12,
                 }}>
-                  {m.icon} {lang === 'ru' ? m.ru : m.en}
+                  {m.icon} {t(m.key)}
                 </span>
               ))}
             </div>
@@ -306,7 +307,7 @@ export default function EpisodeDrillDown({ duel, playerNames, lang, onClose }: P
               cursor: 'pointer', fontSize: 13, fontWeight: 600,
             }}
           >
-            {lang === 'ru' ? `→ Смотреть раунд R${duel.round} в реплее` : `→ Watch R${duel.round} in replay`}
+            {t('player:drilldown.watchRound', { round: duel.round })}
           </button>
         </div>
       </div>

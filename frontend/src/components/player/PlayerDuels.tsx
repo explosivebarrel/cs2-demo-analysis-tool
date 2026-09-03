@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import { DuelEpisode } from '../../api'
+import { t } from '../../i18n'
 import EpisodeDrillDown from './EpisodeDrillDown'
 
-const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: string }> = {
-  shift_peek:    { ru: 'Пик на шифте',             en: 'Shift peek',           color: 'var(--accent2)', icon: '🚶' },
-  moving_shot:   { ru: 'Движение при стрельбе',    en: 'Moving shot',          color: 'var(--red)',     icon: '🏃' },
-  isolated:      { ru: 'Игра в изоляции',          en: 'Playing isolated',     color: 'var(--accent)',  icon: '🔇' },
-  flashed:       { ru: 'Вышел на флеше',           en: 'Entered flashed',      color: 'var(--accent2)', icon: '🌟' },
-  strong_duel:   { ru: 'Сильная дуэль',            en: 'Strong duel',          color: 'var(--green)',   icon: '💪' },
-  overshoot:     { ru: 'Перелёт прицела',          en: 'Aim overshoot',        color: 'var(--red)',     icon: '→' },
-  undershoot:    { ru: 'Недолёт прицела',          en: 'Aim undershoot',       color: 'var(--accent2)', icon: '←' },
-  missed_first:  { ru: 'Неточный первый выстрел',  en: 'Inaccurate 1st shot',  color: 'var(--accent)',  icon: '✗' },
-  passive_angle: { ru: 'Пассивный угол',           en: 'Passive angle',        color: 'var(--text2)',   icon: '⏸' },
-  moving:        { ru: 'Движение (жертва)',         en: 'Moving (victim)',      color: 'var(--text2)',   icon: '🏃' },
-  outnumbered:   { ru: 'В меньшинстве',            en: 'Outnumbered',          color: 'var(--text2)',   icon: '⚠️' },
+const ERROR_META: Record<string, { key: string; color: string; icon: string }> = {
+  shift_peek:    { key: 'player:duels.errorShiftPeek',   color: 'var(--accent2)', icon: '🚶' },
+  moving_shot:   { key: 'player:duels.errorMovingShot',  color: 'var(--red)',     icon: '🏃' },
+  isolated:      { key: 'player:duels.errorIsolated',    color: 'var(--accent)',  icon: '🔇' },
+  flashed:       { key: 'player:duels.errorFlashed',     color: 'var(--accent2)', icon: '🌟' },
+  strong_duel:   { key: 'player:duels.errorStrongDuel',  color: 'var(--green)',   icon: '💪' },
+  overshoot:     { key: 'player:duels.errorOvershoot',   color: 'var(--red)',     icon: '→' },
+  undershoot:    { key: 'player:duels.errorUndershoot',  color: 'var(--accent2)', icon: '←' },
+  missed_first:  { key: 'player:duels.errorMissedFirst', color: 'var(--accent)',  icon: '✗' },
+  passive_angle: { key: 'player:duels.errorPassiveAngle', color: 'var(--text2)',  icon: '⏸' },
+  moving:        { key: 'player:duels.errorMoving',      color: 'var(--text2)',   icon: '🏃' },
+  outnumbered:   { key: 'player:duels.errorOutnumbered', color: 'var(--text2)',   icon: '⚠️' },
 }
 
 // pseudo-groups for "no errors" bucket
@@ -28,11 +29,10 @@ function fmtTime(ts: number): string {
 interface EpisodeRowProps {
   d: DuelEpisode
   playerNames: Record<string, string>
-  lang: 'ru' | 'en'
   onOpen: () => void
 }
 
-function EpisodeRow({ d, playerNames, lang, onOpen }: EpisodeRowProps) {
+function EpisodeRow({ d, playerNames, onOpen }: EpisodeRowProps) {
   const attName = playerNames[d.attacker] ?? d.attacker.slice(-6)
   const vicName  = playerNames[d.victim]   ?? d.victim.slice(-6)
   const errMeta  = d.errors.map(e => ERROR_META[e]).filter(Boolean)
@@ -54,7 +54,7 @@ function EpisodeRow({ d, playerNames, lang, onOpen }: EpisodeRowProps) {
       <span style={{ color: 'var(--text2)', fontSize: 11 }}>{d.weapon}</span>
       {d.headshot && <span style={{ fontSize: 10, color: 'var(--accent2)', fontWeight: 700 }}>HS</span>}
       {errMeta.map(m => (
-        <span key={m.ru} title={lang === 'ru' ? m.ru : m.en} style={{ fontSize: 13 }}>{m.icon}</span>
+        <span key={m.key} title={t(m.key)} style={{ fontSize: 13 }}>{m.icon}</span>
       ))}
       <button
         onClick={onOpen}
@@ -63,7 +63,7 @@ function EpisodeRow({ d, playerNames, lang, onOpen }: EpisodeRowProps) {
           color: 'var(--accent)', padding: '2px 8px', cursor: 'pointer', fontSize: 11,
         }}
       >
-        {lang === 'ru' ? 'Смотреть →' : 'View →'}
+        {t('player:duels.view')}
       </button>
     </div>
   )
@@ -74,11 +74,10 @@ interface GroupAccordionProps {
   duels: DuelEpisode[]
   isMain: boolean
   playerNames: Record<string, string>
-  lang: 'ru' | 'en'
   onOpenDrillDown: (d: DuelEpisode) => void
 }
 
-function GroupAccordion({ groupKey, duels, isMain, playerNames, lang, onOpenDrillDown }: GroupAccordionProps) {
+function GroupAccordion({ groupKey, duels, isMain, playerNames, onOpenDrillDown }: GroupAccordionProps) {
   const [open, setOpen] = useState(isMain)
   const [showAll, setShowAll] = useState(false)
   const INITIAL_SHOW = 3
@@ -90,9 +89,9 @@ function GroupAccordion({ groupKey, duels, isMain, playerNames, lang, onOpenDril
     : '✅'
 
   const label = meta
-    ? (lang === 'ru' ? meta.ru : meta.en)
+    ? t(meta.key)
     : (groupKey === GROUP_NO_ERR
-      ? (lang === 'ru' ? 'Чистые дуэли' : 'Clean duels')
+      ? t('player:duels.cleanDuels')
       : groupKey)
 
   const color = meta?.color ?? 'var(--green)'
@@ -117,7 +116,7 @@ function GroupAccordion({ groupKey, duels, isMain, playerNames, lang, onOpenDril
               fontSize: 10, background: color, color: '#fff',
               borderRadius: 4, padding: '1px 6px', marginLeft: 8, verticalAlign: 'middle',
             }}>
-              {lang === 'ru' ? 'ГЛАВНАЯ ОШИБКА' : 'MAIN ISSUE'}
+              {t('player:duels.mainIssue')}
             </span>
           )}
         </span>
@@ -133,7 +132,6 @@ function GroupAccordion({ groupKey, duels, isMain, playerNames, lang, onOpenDril
               key={i}
               d={d}
               playerNames={playerNames}
-              lang={lang}
               onOpen={() => onOpenDrillDown(d)}
             />
           ))}
@@ -146,9 +144,7 @@ function GroupAccordion({ groupKey, duels, isMain, playerNames, lang, onOpenDril
                 borderTop: '1px solid var(--border)',
               }}
             >
-              {lang === 'ru'
-                ? `Показать ещё (${duels.length - INITIAL_SHOW})`
-                : `Show more (${duels.length - INITIAL_SHOW})`}
+              {t('player:duels.showMore', { count: duels.length - INITIAL_SHOW })}
             </button>
           )}
         </div>
@@ -158,17 +154,17 @@ function GroupAccordion({ groupKey, duels, isMain, playerNames, lang, onOpenDril
 }
 
 export default function PlayerDuels({
-  duels, playerNames, lang,
+  duels, playerNames,
 }: {
   duels: DuelEpisode[]
   playerNames: Record<string, string>
-  lang: 'ru' | 'en'
+  lang?: 'ru' | 'en'
 }) {
   const [topFilter, setTopFilter] = useState<'all' | 'errors' | 'strong'>('all')
   const [drillDown, setDrillDown] = useState<DuelEpisode | null>(null)
 
   if (!duels.length) {
-    return <div style={{ color: 'var(--text2)', fontSize: 13 }}>{lang === 'ru' ? 'Нет дуэлей' : 'No duels'}</div>
+    return <div style={{ color: 'var(--text2)', fontSize: 13 }}>{t('player:duels.noDuels')}</div>
   }
 
   // group duels by primary error (first error, or GROUP_NO_ERR)
@@ -216,13 +212,13 @@ export default function PlayerDuels({
       {/* top-level filter */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         <button style={btnStyle(topFilter === 'all')} onClick={() => setTopFilter('all')}>
-          {lang === 'ru' ? 'Все' : 'All'} ({duels.length})
+          {t('player:duels.filterAll')} ({duels.length})
         </button>
         <button style={btnStyle(topFilter === 'errors', 'var(--red)')} onClick={() => setTopFilter('errors')}>
-          {lang === 'ru' ? 'Ошибки' : 'Errors'} ({totalErrors})
+          {t('player:duels.filterErrors')} ({totalErrors})
         </button>
         <button style={btnStyle(topFilter === 'strong', 'var(--green)')} onClick={() => setTopFilter('strong')}>
-          {lang === 'ru' ? 'Сильные' : 'Strong'} ({totalStrong})
+          {t('player:duels.filterStrong')} ({totalStrong})
         </button>
       </div>
 
@@ -234,14 +230,13 @@ export default function PlayerDuels({
           duels={groups[k]}
           isMain={k === mainKey}
           playerNames={playerNames}
-          lang={lang}
           onOpenDrillDown={setDrillDown}
         />
       ))}
 
       {filteredKeys.length === 0 && (
         <div style={{ color: 'var(--text2)', fontSize: 13 }}>
-          {lang === 'ru' ? 'Нет данных для выбранного фильтра' : 'No data for selected filter'}
+          {t('player:duels.noDataForFilter')}
         </div>
       )}
 
@@ -250,7 +245,6 @@ export default function PlayerDuels({
         <EpisodeDrillDown
           duel={drillDown}
           playerNames={playerNames}
-          lang={lang}
           onClose={() => setDrillDown(null)}
         />
       )}

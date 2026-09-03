@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { api, AnalysisData, PlayerData, PlayerAnalyticsData } from '../api'
 import { t } from '../i18n'
 import { useLang, useBenchmarks } from '../App'
-import { getTier, TIER_COLORS, TIER_LABELS, formatTierTooltip } from '../benchmarkUtils'
+import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../benchmarkUtils'
 import MatchNav from '../components/MatchNav'
 import PlayerOverview from '../components/player/PlayerOverview'
 import PlayerStrengths from '../components/player/PlayerStrengths'
@@ -16,14 +16,7 @@ import PlayerRounds from '../components/player/PlayerRounds'
 // ------------------------------------------------------------------ tab types
 type Tab = 'overview' | 'impact' | 'duels' | 'weapons' | 'map' | 'rounds'
 
-const TABS: { key: Tab; ru: string; en: string }[] = [
-  { key: 'overview', ru: 'Обзор',   en: 'Overview' },
-  { key: 'impact',   ru: 'Импакт',  en: 'Impact'   },
-  { key: 'duels',    ru: 'Дуэли',   en: 'Duels'    },
-  { key: 'weapons',  ru: 'Оружие',  en: 'Weapons'  },
-  { key: 'map',      ru: 'Карта',   en: 'Map'       },
-  { key: 'rounds',   ru: 'Раунды',  en: 'Rounds'   },
-]
+const TABS: Tab[] = ['overview', 'impact', 'duels', 'weapons', 'map', 'rounds']
 
 // ------------------------------------------------------------------ small helpers
 function Kv({ label, value, accent }: { label: string; value: React.ReactNode; accent?: boolean }) {
@@ -171,9 +164,9 @@ function HeaderBadge({ metricKey, value, lang }: { metricKey: string; value: num
   const tier = getTier(benchmarks, metricKey, value)
   if (!tier) return null
   const color = TIER_COLORS[tier]
-  const label = TIER_LABELS[tier][lang]
+  const label = tierLabel(tier)
   const tiers = benchmarks[metricKey]
-  const tip = tiers ? formatTierTooltip(tiers, value, lang) : label
+  const tip = tiers ? formatTierTooltip(tiers, value) : label
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}
       onMouseEnter={() => setShowTip(true)} onMouseLeave={() => setShowTip(false)}>
@@ -206,9 +199,7 @@ function MatchBadge({ metricKey, value, allPlayers, lang }: {
   const best = sorted[0]
   const worst = sorted[sorted.length - 1]
   const avg = vals.reduce((a, b) => a + b, 0) / vals.length
-  const tip = lang === 'ru'
-    ? `Лучший: ${best.toFixed(2)} · Средний: ${avg.toFixed(2)} · Худший: ${worst.toFixed(2)}`
-    : `Best: ${best.toFixed(2)} · Avg: ${avg.toFixed(2)} · Worst: ${worst.toFixed(2)}`
+  const tip = t('player:matchTip', { best: best.toFixed(2), avg: avg.toFixed(2), worst: worst.toFixed(2) })
   const color = rank === 1 ? 'var(--accent2)' : rank <= Math.ceil(vals.length / 3) ? 'var(--green)' : rank > Math.floor(vals.length * 2 / 3) ? 'var(--red)' : 'var(--text2)'
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}
@@ -257,7 +248,7 @@ function HeaderCard({ p, allPlayers, lang }: { p: PlayerData; allPlayers: Player
                 background: !matchMode ? 'var(--accent)' : 'var(--bg3)',
                 color: !matchMode ? '#fff' : 'var(--text2)',
               }}
-            >{lang === 'ru' ? 'Абсолют' : 'Global'}</button>
+            >{t('player:mode.global')}</button>
             <button
               onClick={() => setMatchMode(true)}
               style={{
@@ -265,7 +256,7 @@ function HeaderCard({ p, allPlayers, lang }: { p: PlayerData; allPlayers: Player
                 background: matchMode ? 'var(--accent)' : 'var(--bg3)',
                 color: matchMode ? '#fff' : 'var(--text2)',
               }}
-            >{lang === 'ru' ? 'В матче' : 'In match'}</button>
+            >{t('player:mode.match')}</button>
           </div>
           <div className="flex gap-16 wrap" style={{ fontSize: 13 }}>
             {metrics.map(({ l, v, benchKey, matchKey, raw, accent }) => (
@@ -339,7 +330,7 @@ export default function PlayerPage() {
   )
 
   const p = data.players.find(x => x.steamid === steamid)
-  if (!p) return <div className="page"><div className="tag tag-red">Player not found</div></div>
+  if (!p) return <div className="page"><div className="tag tag-red">{t('player:notFound')}</div></div>
 
   // name lookup for duels
   const playerNames: Record<string, string> = {}
@@ -371,9 +362,7 @@ export default function PlayerPage() {
       {/* analytics not ready banner */}
       {analyticsErr && (
         <div className="tag tag-red" style={{ marginBottom: 14, display: 'block' }}>
-          {lang === 'ru'
-            ? 'Глубокая аналитика недоступна — переанализируйте демо'
-            : 'Deep analytics unavailable — re-analyze the demo'}
+          {t('player:analyticsUnavailable')}
         </div>
       )}
 
@@ -381,23 +370,23 @@ export default function PlayerPage() {
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border)', marginBottom: 16, flexWrap: 'wrap' }}>
         {TABS.map(tb => {
           // disable analytics-only tabs if data missing
-          const needsAnalytics = ['impact', 'duels', 'map'].includes(tb.key)
+          const needsAnalytics = ['impact', 'duels', 'map'].includes(tb)
           const disabled = needsAnalytics && !!analyticsErr && !analytics
           return (
             <button
-              key={tb.key}
-              onClick={() => !disabled && setTab(tb.key)}
+              key={tb}
+              onClick={() => !disabled && setTab(tb)}
               style={{
                 background: 'none', border: 'none',
-                borderBottom: tab === tb.key ? '2px solid var(--accent)' : '2px solid transparent',
-                color: tab === tb.key ? 'var(--accent)' : disabled ? 'var(--text2)' : 'var(--text)',
-                fontWeight: tab === tb.key ? 700 : 400,
+                borderBottom: tab === tb ? '2px solid var(--accent)' : '2px solid transparent',
+                color: tab === tb ? 'var(--accent)' : disabled ? 'var(--text2)' : 'var(--text)',
+                fontWeight: tab === tb ? 700 : 400,
                 fontSize: 13, padding: '8px 14px',
                 cursor: disabled ? 'default' : 'pointer',
                 opacity: disabled ? 0.4 : 1,
               }}
             >
-              {lang === 'ru' ? tb.ru : tb.en}
+              {t(`player:tabs.${tb}`)}
             </button>
           )
         })}
@@ -471,19 +460,19 @@ export default function PlayerPage() {
                     <Kv label={t('blindSec')} value={p.flashes.blindSec.toFixed(1)} />
                     <Kv label={t('effectiveFlash')} value={p.flashes.effective} />
                     <Kv label="FF" value={p.flashes.friendly} />
-                    <Kv label="Smokes" value={p.grenades.smokes} />
+                    <Kv label={t('player:stats.smokes')} value={p.grenades.smokes} />
                     <Kv label="HE" value={p.grenades.he} />
-                    <Kv label="Fire" value={p.grenades.fire} />
-                    <Kv label="Decoy" value={p.grenades.decoys} />
+                    <Kv label={t('player:stats.fire')} value={p.grenades.fire} />
+                    <Kv label={t('player:stats.decoy')} value={p.grenades.decoys} />
                   </div>
                 </Section>
 
-                <Section title="Bomb">
+                <Section title={t('player:bomb')}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('plants')} value={p.bomb.plants} />
                     <Kv label={t('defuses')} value={p.bomb.defuses} />
-                    <Kv label="Attempts" value={p.bomb.defuseAttempts} />
-                    <Kv label="Kit" value={p.bomb.kits} />
+                    <Kv label={t('player:stats.attempts')} value={p.bomb.defuseAttempts} />
+                    <Kv label={t('player:stats.kit')} value={p.bomb.kits} />
                   </div>
                 </Section>
 
@@ -497,7 +486,7 @@ export default function PlayerPage() {
                 <Section title={t('movement')}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12 }}>
                     <Kv label={t('distKm')} value={p.movement.distanceKm.toFixed(2)} />
-                    <Kv label="Alive/R (s)" value={p.movement.aliveSecPerRound.toFixed(1)} />
+                    <Kv label={t('player:stats.alivePerRound')} value={p.movement.aliveSecPerRound.toFixed(1)} />
                     <Kv label={t('survival')} value={p.movement.survivalPct.toFixed(1) + '%'} />
                     <Kv label={t('saves')} value={p.movement.saves} />
                   </div>

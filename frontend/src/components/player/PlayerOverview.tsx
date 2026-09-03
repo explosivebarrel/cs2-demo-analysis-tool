@@ -2,19 +2,20 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { PlayerMetrics, DuelEpisode } from '../../api'
 import { useBenchmarks } from '../../App'
-import { getTier, TIER_COLORS, TIER_LABELS, formatTierTooltip } from '../../benchmarkUtils'
+import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../../benchmarkUtils'
+import { t } from '../../i18n'
 import EpisodeDrillDown from './EpisodeDrillDown'
 
-const ERROR_LABELS: Record<string, { ru: string; en: string; color: string; icon: string }> = {
-  shift_peek:   { ru: 'Пик на шифте',         en: 'Shift peek',       color: 'var(--accent2)', icon: '🚶' },
-  moving_shot:  { ru: 'Движение при стрельбе', en: 'Moving shot',      color: 'var(--red)',     icon: '🏃' },
-  isolated:     { ru: 'Игра в изоляции',       en: 'Playing isolated', color: 'var(--accent)',  icon: '🔇' },
-  flashed:      { ru: 'Вышел на флеше',        en: 'Entered flashed',  color: 'var(--accent2)', icon: '🌟' },
-  strong_duel:  { ru: 'Сильная дуэль',         en: 'Strong duel',      color: 'var(--green)',   icon: '💪' },
-  missed_first: { ru: 'Неточный первый выстрел', en: 'Inaccurate 1st shot', color: 'var(--accent)', icon: '✗' },
-  passive_angle:{ ru: 'Пассивный угол',        en: 'Passive angle',    color: 'var(--text2)',   icon: '⏸' },
-  overshoot:    { ru: 'Перелёт прицела',        en: 'Aim overshoot',    color: 'var(--red)',     icon: '→' },
-  undershoot:   { ru: 'Недолёт прицела',        en: 'Aim undershoot',   color: 'var(--accent2)', icon: '←' },
+const ERROR_LABELS: Record<string, { key: string; color: string; icon: string }> = {
+  shift_peek:   { key: 'player:duels.errorShiftPeek',   color: 'var(--accent2)', icon: '🚶' },
+  moving_shot:  { key: 'player:duels.errorMovingShot',  color: 'var(--red)',     icon: '🏃' },
+  isolated:     { key: 'player:duels.errorIsolated',    color: 'var(--accent)',  icon: '🔇' },
+  flashed:      { key: 'player:duels.errorFlashed',     color: 'var(--accent2)', icon: '🌟' },
+  strong_duel:  { key: 'player:duels.errorStrongDuel',  color: 'var(--green)',   icon: '💪' },
+  missed_first: { key: 'player:duels.errorMissedFirst', color: 'var(--accent)',  icon: '✗' },
+  passive_angle:{ key: 'player:duels.errorPassiveAngle', color: 'var(--text2)',  icon: '⏸' },
+  overshoot:    { key: 'player:duels.errorOvershoot',   color: 'var(--red)',     icon: '→' },
+  undershoot:   { key: 'player:duels.errorUndershoot',  color: 'var(--accent2)', icon: '←' },
 }
 
 interface BenchmarkBadgeProps {
@@ -31,9 +32,9 @@ function BenchmarkBadge({ metricKey, value, lang, higherIsBetter = true }: Bench
   const tier = getTier(benchmarks, metricKey, value, higherIsBetter)
   if (!tier) return null
   const color = TIER_COLORS[tier]
-  const label = TIER_LABELS[tier][lang]
+  const label = tierLabel(tier)
   const tiers = benchmarks[metricKey]
-  const tip = tiers ? formatTierTooltip(tiers, value, lang, higherIsBetter) : label
+  const tip = tiers ? formatTierTooltip(tiers, value, higherIsBetter) : label
   return (
     <span
       style={{ position: 'relative', display: 'inline-block' }}
@@ -176,68 +177,68 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
           <span style={{ fontSize: 22 }}>{mpInfo.icon}</span>
           <div>
             <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 2 }}>
-              {lang === 'ru' ? 'Главная проблема' : 'Main issue'}
+              {t('player:overview.mainIssue')}
             </div>
             <div style={{ fontWeight: 800, fontSize: 15, color: mpInfo.color }}>
-              {lang === 'ru' ? mpInfo.ru : mpInfo.en}
+              {t(mpInfo.key)}
             </div>
           </div>
         </div>
       )}
 
-      {/* ── Group: Открывашки & Трейды ── */}
+      {/* ── Group: Openings & Trades ── */}
       <div>
         <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
-          {lang === 'ru' ? 'Открывашки & Трейды' : 'Opening & Trades'}
+          {t('player:overview.groupOpening')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
           <MetricCard
-            label={lang === 'ru' ? 'Открывашки Win%' : 'Opening Win%'}
+            label={t('player:overview.openingWinPct')}
             value={metrics.openingWinPct.toFixed(1) + '%'}
             benchmarkKey="openingWinPct" benchmarkValue={metrics.openingWinPct} lang={lang}
             color={metrics.openingWinPct >= 50 ? 'var(--green)' : 'var(--red)'}
             onClick={() => goMetric('openingWinPct')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Трейд-килы' : 'Trade Kills'}
+            label={t('player:overview.tradeKills')}
             value={metrics.tradeKillPct.toFixed(1) + '%'}
-            sub={lang === 'ru' ? '% убийств — трейд' : '% of kills are trades'}
+            sub={t('player:overview.tradeKillsSub')}
             benchmarkKey="tradeKillPct" benchmarkValue={metrics.tradeKillPct} lang={lang}
             onClick={() => goMetric('tradeKillPct')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Трейд-смерти' : 'Traded Deaths'}
+            label={t('player:overview.tradedDeaths')}
             value={metrics.tradedDeathPct.toFixed(1) + '%'}
-            sub={lang === 'ru' ? '% смертей отомщены' : '% deaths avenged'}
+            sub={t('player:overview.tradedDeathsSub')}
             benchmarkKey="tradedDeathPct" benchmarkValue={metrics.tradedDeathPct} lang={lang}
             onClick={() => goMetric('tradedDeathPct')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Проигранные дуэли' : 'Lost Duels'}
+            label={t('player:overview.lostDuels')}
             value={String(duels.filter(d => !d.won).length)}
-            sub={lang === 'ru' ? 'смертей в дуэлях' : 'deaths in duels'}
+            sub={t('player:overview.lostDuelsSub')}
             onClick={() => goMetric('lostDuels')}
           />
         </div>
       </div>
 
-      {/* ── Group: Клатчи & Утилита ── */}
+      {/* ── Group: Clutches & Utility ── */}
       <div>
         <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
-          {lang === 'ru' ? 'Клатчи & Утилита' : 'Clutches & Utility'}
+          {t('player:overview.groupClutch')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
           <MetricCard
-            label={lang === 'ru' ? 'Клатч Win%' : 'Clutch Win%'}
+            label={t('player:overview.clutchWinPct')}
             value={metrics.clutchWinPct.toFixed(1) + '%'}
             benchmarkKey="clutchWinPct" benchmarkValue={metrics.clutchWinPct} lang={lang}
             color={metrics.clutchWinPct >= 30 ? 'var(--accent2)' : undefined}
             onClick={() => goMetric('clutchWinPct')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Эфф. флешек' : 'Flash Efficiency'}
+            label={t('player:overview.flashEfficiency')}
             value={metrics.flashEfficiency.toFixed(1) + '%'}
-            sub={lang === 'ru' ? '% флешек эффективны' : '% flashes effective'}
+            sub={t('player:overview.flashEfficiencySub')}
             benchmarkKey="flashEfficiency" benchmarkValue={metrics.flashEfficiency} lang={lang}
             color={metrics.flashEfficiency >= 40 ? 'var(--green)' : undefined}
             onClick={() => goMetric('flashEfficiency')}
@@ -245,116 +246,116 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
         </div>
       </div>
 
-      {/* ── Group: Механика дуэли и аим ── */}
+      {/* ── Group: Duel mechanics & aim ── */}
       <div>
         <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>
-          {lang === 'ru' ? 'Механика дуэли и аим' : 'Duel mechanics & aim'}
+          {t('player:overview.groupAim')}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: 8 }}>
           <MetricCard
-            label={lang === 'ru' ? 'Ошибки контрстрейфа' : 'Counter-strafe errors'}
+            label={t('player:overview.counterStrafeErrors')}
             value={String(metrics.counterStrafeErrors ?? 0)}
-            sub={lang === 'ru' ? 'выстрелов в движении' : 'shots while moving'}
+            sub={t('player:overview.counterStrafeErrorsSub')}
             benchmarkKey="counterStrafeErrors" benchmarkValue={metrics.counterStrafeErrors ?? 0} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('counterStrafeErrors')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Идеальные стрейфы' : 'Ideal strafes'}
+            label={t('player:overview.idealStrafes')}
             value={(metrics.idealStrafePct ?? 0).toFixed(1) + '%'}
-            sub={lang === 'ru' ? '% килов на стопе' : '% kills while stopped'}
+            sub={t('player:overview.idealStrafesSub')}
             benchmarkKey="idealStrafePct" benchmarkValue={metrics.idealStrafePct} lang={lang}
             color={(metrics.idealStrafePct ?? 0) >= 60 ? 'var(--green)' : undefined}
             onClick={() => goMetric('idealStrafePct')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Точность первой пули' : 'First bullet acc'}
+            label={t('player:overview.firstBulletAcc')}
             value={(metrics.firstBulletAcc ?? 0).toFixed(1) + '%'}
-            sub={lang === 'ru' ? '% первых выстрелов — попадание' : '% first shots hit'}
+            sub={t('player:overview.firstBulletAccSub')}
             benchmarkKey="firstBulletAcc" benchmarkValue={metrics.firstBulletAcc} lang={lang}
             color={(metrics.firstBulletAcc ?? 0) >= 40 ? 'var(--green)' : undefined}
             onClick={() => goMetric('firstBulletAcc')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Время до фрага' : 'Time to kill'}
-            value={(metrics.ttk_ms ?? 0) > 0 ? (metrics.ttk_ms ?? 0).toFixed(0) + ' мс' : '—'}
-            sub={lang === 'ru' ? 'ср. мс от выстрела до кила' : 'avg ms first shot to kill'}
+            label={t('player:overview.ttk')}
+            value={(metrics.ttk_ms ?? 0) > 0 ? t('player:overview.msValue', { value: (metrics.ttk_ms ?? 0).toFixed(0) }) : '—'}
+            sub={t('player:overview.ttkSub')}
             benchmarkKey="ttk_ms" benchmarkValue={(metrics.ttk_ms ?? 0) > 0 ? metrics.ttk_ms : null} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('ttk_ms')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Контроль угла' : 'Angle control'}
+            label={t('player:overview.angleControl')}
             value={String(metrics.angleControlCount ?? 0)}
-            sub={lang === 'ru' ? 'позиций удержано ≥2с' : 'positions held ≥2s'}
+            sub={t('player:overview.angleControlSub')}
             benchmarkKey="angleControlCount" benchmarkValue={metrics.angleControlCount ?? 0} lang={lang}
             color={(metrics.angleControlCount ?? 0) >= 3 ? 'var(--green)' : undefined}
             onClick={() => goMetric('angleControlCount')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Перезарядки' : 'Reload errors'}
+            label={t('player:overview.reloadErrors')}
             value={String(metrics.reloadErrors ?? 0)}
-            sub={lang === 'ru' ? 'перезарядок с патронами' : 'reloads with bullets left'}
+            sub={t('player:overview.reloadErrorsSub')}
             benchmarkKey="reloadErrors" benchmarkValue={metrics.reloadErrors ?? 0} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('reloadErrors')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Время реакции' : 'Reaction time'}
-            value={(metrics.reactionTimeMs ?? 0) > 0 ? (metrics.reactionTimeMs ?? 0).toFixed(0) + ' мс' : '—'}
-            sub={lang === 'ru' ? 'ср. мс от появления врага до выстрела' : 'avg ms enemy in FOV to first shot'}
+            label={t('player:overview.reactionTime')}
+            value={(metrics.reactionTimeMs ?? 0) > 0 ? t('player:overview.msValue', { value: (metrics.reactionTimeMs ?? 0).toFixed(0) }) : '—'}
+            sub={t('player:overview.reactionTimeSub')}
             benchmarkKey="reactionTimeMs" benchmarkValue={(metrics.reactionTimeMs ?? 0) > 0 ? metrics.reactionTimeMs : null} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('reactionTimeMs')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Реакция в попаданиях' : 'Reaction on hits'}
-            value={(metrics.successfulReactionTimeMs ?? 0) > 0 ? (metrics.successfulReactionTimeMs ?? 0).toFixed(0) + ' мс' : '—'}
-            sub={lang === 'ru' ? 'мс реакции только когда первая пуля попала' : 'reaction ms only when first bullet hit'}
+            label={t('player:overview.reactionOnHits')}
+            value={(metrics.successfulReactionTimeMs ?? 0) > 0 ? t('player:overview.msValue', { value: (metrics.successfulReactionTimeMs ?? 0).toFixed(0) }) : '—'}
+            sub={t('player:overview.reactionOnHitsSub')}
             benchmarkKey="successfulReactionTimeMs" benchmarkValue={(metrics.successfulReactionTimeMs ?? 0) > 0 ? metrics.successfulReactionTimeMs : null} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('successfulReactionTimeMs')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Промахи прицела' : 'Overshoot count'}
+            label={t('player:overview.overshoot')}
             value={String(metrics.overshootCount ?? 0)}
-            sub={lang === 'ru' ? 'раз перевёл прицел мимо' : 'times aim crossed past enemy'}
+            sub={t('player:overview.overshootSub')}
             benchmarkKey="overshootCount" benchmarkValue={metrics.overshootCount ?? 0} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('overshootCount')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Качественные контакты' : 'Excellent contacts'}
+            label={t('player:overview.excellentContacts')}
             value={String(metrics.excellentContacts ?? 0)}
-            sub={lang === 'ru' ? 'килов: стоял + первая пуля попала' : 'kills: stopped + first bullet hit'}
+            sub={t('player:overview.excellentContactsSub')}
             benchmarkKey="excellentContacts" benchmarkValue={metrics.excellentContacts ?? 0} lang={lang}
             color={(metrics.excellentContacts ?? 0) >= 3 ? 'var(--green)' : undefined}
             onClick={() => goMetric('excellentContacts')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Прицел на голове' : 'Crosshair placement'}
+            label={t('player:overview.crosshairPlacement')}
             value={(metrics.crosshairPlacementPct ?? 0).toFixed(1) + '%'}
-            sub={lang === 'ru' ? '% первых попаданий — в голову' : '% first-bullet hits to head'}
+            sub={t('player:overview.crosshairPlacementSub')}
             benchmarkKey="crosshairPlacementPct" benchmarkValue={metrics.crosshairPlacementPct ?? 0} lang={lang}
             color={(metrics.crosshairPlacementPct ?? 0) >= 50 ? 'var(--green)' : undefined}
             onClick={() => goMetric('crosshairPlacementPct')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Неточный 1-й выстрел' : 'Missed 1st shot'}
+            label={t('player:overview.missedFirst')}
             value={(() => {
               const wonDuels = duels.filter(d => d.won)
               const missed = wonDuels.filter(d => d.errors.includes('missed_first'))
               return wonDuels.length > 0 ? Math.round(missed.length / wonDuels.length * 100) + '%' : '—'
             })()}
-            sub={lang === 'ru' ? '% побед без точного 1-го выстрела' : '% wins w/o accurate 1st shot'}
+            sub={t('player:overview.missedFirstSub')}
             lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('missedFirst')}
           />
           <MetricCard
-            label={lang === 'ru' ? 'Пассивный угол' : 'Passive angle'}
+            label={t('player:overview.passiveAngle')}
             value={String(metrics.passiveAngleCount ?? 0)}
-            sub={lang === 'ru' ? 'раз стоял без движения перед выстрелом' : 'times stood still before shooting'}
+            sub={t('player:overview.passiveAngleSub')}
             benchmarkKey="passiveAngleCount" benchmarkValue={metrics.passiveAngleCount ?? 0} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('passiveAngle')}
@@ -362,23 +363,23 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
         </div>
       </div>
 
-      {/* ── Group: Дисциплина в дуэлях ── */}
+      {/* ── Group: Duel discipline ── */}
       <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
         <div style={{ fontWeight: 700, fontSize: 10, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 14 }}>
-          {lang === 'ru' ? 'Дисциплина в дуэлях' : 'Duel discipline'}
+          {t('player:overview.groupDiscipline')}
         </div>
         <ProbBar
-          label={lang === 'ru' ? 'Шифт-пики' : 'Shift peeks'}
+          label={t('player:overview.shiftPeeks')}
           value={metrics.shiftPeekPct}
           color={metrics.shiftPeekPct > 30 ? 'var(--accent2)' : 'var(--green)'}
         />
         <ProbBar
-          label={lang === 'ru' ? 'Игра в изоляции' : 'Isolated plays'}
+          label={t('player:overview.isolatedPlays')}
           value={metrics.isolatedPct}
           color={metrics.isolatedPct > 30 ? 'var(--red)' : 'var(--green)'}
         />
         <ProbBar
-          label={lang === 'ru' ? 'Движение при стрельбе' : 'Shot while moving'}
+          label={t('player:overview.shotWhileMoving')}
           value={movingShotPct}
           color={movingShotPct > 30 ? 'var(--red)' : 'var(--green)'}
         />
@@ -401,7 +402,7 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
                   cursor: 'pointer', fontSize: 11,
                 }}
               >
-                {m.icon} {lang === 'ru' ? m.ru : m.en}
+                {m.icon} {t(m.key)}
               </button>
             )
           })}

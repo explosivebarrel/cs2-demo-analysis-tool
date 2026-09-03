@@ -1,6 +1,7 @@
 import { useBenchmarks } from '../../App'
 import { Benchmarks, PlayerData, PlayerMetrics } from '../../api'
 import { TIER_COLORS } from '../../benchmarkUtils'
+import { t } from '../../i18n'
 
 const LOWER_IS_BETTER = new Set([
   'reactionTimeMs', 'successfulReactionTimeMs', 'ttk_ms',
@@ -11,8 +12,7 @@ const LOWER_IS_BETTER = new Set([
 interface MetricDef {
   key: string
   getValue: (p: PlayerData, m: PlayerMetrics) => number | null
-  labelRu: string
-  labelEn: string
+  labelKey: string
   unit: string
   minSamples?: (p: PlayerData) => boolean
 }
@@ -21,126 +21,126 @@ const METRIC_DEFS: MetricDef[] = [
   {
     key: 'adr',
     getValue: (p) => p.adr,
-    labelRu: 'ADR', labelEn: 'ADR', unit: '',
+    labelKey: 'player:strengths.metric.adr', unit: '',
   },
   {
     key: 'kd',
     getValue: (p) => p.kd,
-    labelRu: 'K/D', labelEn: 'K/D', unit: '',
+    labelKey: 'player:strengths.metric.kd', unit: '',
   },
   {
     key: 'kast',
     getValue: (p) => p.kast,
-    labelRu: 'KAST%', labelEn: 'KAST%', unit: '%',
+    labelKey: 'player:strengths.metric.kast', unit: '%',
     minSamples: (p) => p.series.length >= 5,
   },
   {
     key: 'hsPct',
     getValue: (p) => p.hsPct,
-    labelRu: 'HS%', labelEn: 'HS%', unit: '%',
+    labelKey: 'player:strengths.metric.hsPct', unit: '%',
     minSamples: (p) => p.kills >= 5,
   },
   {
     key: 'rating',
     getValue: (p) => p.rating,
-    labelRu: 'Рейтинг', labelEn: 'Rating', unit: '',
+    labelKey: 'player:strengths.metric.rating', unit: '',
   },
   {
     key: 'openingWinPct',
     getValue: (_, m) => m.openingWinPct,
-    labelRu: 'Открывашки Win%', labelEn: 'Opening Win%', unit: '%',
+    labelKey: 'player:strengths.metric.openingWinPct', unit: '%',
   },
   {
     key: 'tradeKillPct',
     getValue: (_, m) => m.tradeKillPct,
-    labelRu: 'Трейд-килы', labelEn: 'Trade Kills', unit: '%',
+    labelKey: 'player:strengths.metric.tradeKillPct', unit: '%',
   },
   {
     key: 'tradedDeathPct',
     getValue: (_, m) => m.tradedDeathPct,
-    labelRu: 'Трейд-смерти', labelEn: 'Traded Deaths', unit: '%',
+    labelKey: 'player:strengths.metric.tradedDeathPct', unit: '%',
   },
   {
     key: 'flashEfficiency',
     getValue: (_, m) => m.flashEfficiency,
-    labelRu: 'Эфф. флешек', labelEn: 'Flash Eff.', unit: '%',
+    labelKey: 'player:strengths.metric.flashEfficiency', unit: '%',
     minSamples: (p) => p.flashes.thrown >= 3,
   },
   {
     key: 'clutchWinPct',
     getValue: (_, m) => m.clutchWinPct,
-    labelRu: 'Клатч Win%', labelEn: 'Clutch Win%', unit: '%',
+    labelKey: 'player:strengths.metric.clutchWinPct', unit: '%',
     minSamples: (p) => p.clutches.played >= 2,
   },
   {
     key: 'idealStrafePct',
     getValue: (_, m) => m.idealStrafePct,
-    labelRu: 'Идеальные стрейфы', labelEn: 'Ideal Strafes', unit: '%',
+    labelKey: 'player:strengths.metric.idealStrafePct', unit: '%',
   },
   {
     key: 'firstBulletAcc',
     getValue: (_, m) => m.firstBulletAcc,
-    labelRu: 'Точность первой пули', labelEn: 'First Bullet Acc', unit: '%',
+    labelKey: 'player:strengths.metric.firstBulletAcc', unit: '%',
   },
   {
     key: 'reactionTimeMs',
     getValue: (_, m) => m.reactionTimeMs && m.reactionTimeMs > 0 ? m.reactionTimeMs : null,
-    labelRu: 'Время реакции', labelEn: 'Reaction Time', unit: ' ms',
+    labelKey: 'player:strengths.metric.reactionTimeMs', unit: ' ms',
   },
   {
     key: 'successfulReactionTimeMs',
     getValue: (_, m) => m.successfulReactionTimeMs && m.successfulReactionTimeMs > 0 ? m.successfulReactionTimeMs : null,
-    labelRu: 'Реакция в попаданиях', labelEn: 'Reaction on hits', unit: ' ms',
+    labelKey: 'player:strengths.metric.successfulReactionTimeMs', unit: ' ms',
   },
   {
     key: 'ttk_ms',
     getValue: (_, m) => m.ttk_ms && m.ttk_ms > 0 ? m.ttk_ms : null,
-    labelRu: 'Время до фрага', labelEn: 'Time to kill', unit: ' ms',
+    labelKey: 'player:strengths.metric.ttk_ms', unit: ' ms',
   },
   {
     key: 'overshootCount',
     getValue: (_, m) => m.overshootCount ?? null,
-    labelRu: 'Промахи прицела', labelEn: 'Overshoot count', unit: '',
+    labelKey: 'player:strengths.metric.overshootCount', unit: '',
   },
   {
     key: 'counterStrafeErrors',
     getValue: (_, m) => m.counterStrafeErrors ?? null,
-    labelRu: 'Ошибки контрстрейфа', labelEn: 'Counter-strafe errors', unit: '',
+    labelKey: 'player:strengths.metric.counterStrafeErrors', unit: '',
   },
   {
     key: 'crosshairPlacementPct',
     getValue: (_, m) => m.crosshairPlacementPct ?? null,
-    labelRu: 'Прицел на голове', labelEn: 'Crosshair placement', unit: '%',
+    labelKey: 'player:strengths.metric.crosshairPlacementPct', unit: '%',
   },
   {
     key: 'excellentContacts',
     getValue: (_, m) => m.excellentContacts ?? null,
-    labelRu: 'Качественные контакты', labelEn: 'Excellent contacts', unit: '',
+    labelKey: 'player:strengths.metric.excellentContacts', unit: '',
   },
   {
     key: 'angleControlCount',
     getValue: (_, m) => m.angleControlCount ?? null,
-    labelRu: 'Контроль угла', labelEn: 'Angle control', unit: '',
+    labelKey: 'player:strengths.metric.angleControlCount', unit: '',
   },
   {
     key: 'reloadErrors',
     getValue: (_, m) => m.reloadErrors ?? null,
-    labelRu: 'Перезарядки', labelEn: 'Reload errors', unit: '',
+    labelKey: 'player:strengths.metric.reloadErrors', unit: '',
   },
   {
     key: 'passiveAngleCount',
     getValue: (_, m) => m.passiveAngleCount ?? null,
-    labelRu: 'Пассивный угол', labelEn: 'Passive angle', unit: '',
+    labelKey: 'player:strengths.metric.passiveAngleCount', unit: '',
   },
   {
     key: 'shiftPeekPct',
     getValue: (_, m) => m.shiftPeekPct ?? null,
-    labelRu: 'Шифт-пики', labelEn: 'Shift peeks', unit: '%',
+    labelKey: 'player:strengths.metric.shiftPeekPct', unit: '%',
   },
   {
     key: 'isolatedPct',
     getValue: (_, m) => m.isolatedPct ?? null,
-    labelRu: 'Игра в изоляции', labelEn: 'Isolated plays', unit: '%',
+    labelKey: 'player:strengths.metric.isolatedPct', unit: '%',
   },
 ]
 
@@ -181,7 +181,7 @@ interface Props {
   lang: 'ru' | 'en'
 }
 
-export default function PlayerStrengths({ player, metrics, lang }: Props) {
+export default function PlayerStrengths({ player, metrics }: Props) {
   const benchmarks = useBenchmarks()
   if (!Object.keys(benchmarks).length) return null
 
@@ -194,14 +194,12 @@ export default function PlayerStrengths({ player, metrics, lang }: Props) {
 
   if (!strengths.length && !weaknesses.length) return null
 
-  const ru = lang === 'ru'
-
   function Card({ item, isStrength }: { item: ScoredMetric; isStrength: boolean }) {
     const tiers = benchmarks[item.def.key]!
     const color = isStrength ? TIER_COLORS.elite : TIER_COLORS.weak
     const diffSign = item.avgDiff >= 0 ? '+' : ''
     const diffStr = `${diffSign}${item.avgDiff.toFixed(1)}${item.def.unit}`
-    const avgStr = `${ru ? 'средний' : 'avg'}: ${tiers.avg}${item.def.unit}`
+    const avgStr = t('player:strengths.avgValue', { value: `${tiers.avg}${item.def.unit}` })
     const isDecimal = ['kd', 'rating'].includes(item.def.key)
     const displayVal = isDecimal ? item.value.toFixed(2) : item.value.toFixed(0)
     return (
@@ -211,7 +209,7 @@ export default function PlayerStrengths({ player, metrics, lang }: Props) {
         display: 'flex', flexDirection: 'column', gap: 3,
       }}>
         <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em' }}>
-          {ru ? item.def.labelRu : item.def.labelEn}
+          {t(item.def.labelKey)}
         </div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
           <span style={{ fontSize: 20, fontWeight: 800, color }}>
@@ -229,7 +227,7 @@ export default function PlayerStrengths({ player, metrics, lang }: Props) {
       {strengths.length > 0 && (
         <div>
           <div style={{ fontSize: 10, color: TIER_COLORS.elite, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8, fontWeight: 700 }}>
-            {ru ? '▲ Сильные стороны' : '▲ Strengths'}
+            {t('player:strengths.title')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {strengths.map(s => <Card key={s.def.key} item={s} isStrength />)}
@@ -239,7 +237,7 @@ export default function PlayerStrengths({ player, metrics, lang }: Props) {
       {weaknesses.length > 0 && (
         <div>
           <div style={{ fontSize: 10, color: TIER_COLORS.weak, textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8, fontWeight: 700 }}>
-            {ru ? '▼ Зоны роста' : '▼ Areas to improve'}
+            {t('player:strengths.weaknessesTitle')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {weaknesses.map(s => <Card key={s.def.key} item={s} isStrength={false} />)}

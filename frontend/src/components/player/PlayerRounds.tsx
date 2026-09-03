@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { SeriesPoint, RoundData } from '../../api'
+import { t } from '../../i18n'
 
 function ImpBadge({ imp }: { imp: number }) {
   const color = imp > 0 ? 'var(--green)' : imp < 0 ? 'var(--red)' : 'var(--text2)'
@@ -32,25 +33,26 @@ function EcoBar({ spendCt, spendT, sideTeam0 }: { spendCt: number; spendT: numbe
   )
 }
 
-function winConditionLabel(reason: string, winnerTeam: number, sideTeam0: string, lang: 'ru' | 'en'): string {
+const WIN_CONDITION_KEYS: Record<string, string> = {
+  elimination:     'player:rounds.winElimination',
+  bomb:            'player:rounds.winBombExploded',
+  defuse:          'player:rounds.winBombDefused',
+  time:            'player:rounds.winTime',
+  ct_win:          'player:rounds.winCtEliminated',
+  t_win:           'player:rounds.winTEliminated',
+  bomb_defused:    'player:rounds.winBombDefused',
+  bomb_exploded:   'player:rounds.winBombExploded',
+  target_bombed:   'player:rounds.winBombExploded',
+  target_saved:    'player:rounds.winTime',
+  hostage_rescued: 'player:rounds.winHostage',
+}
+
+function winConditionLabel(reason: string, winnerTeam: number, sideTeam0: string): string {
   // map winnerTeam → side label
   const winnerSide = winnerTeam === 0 ? sideTeam0 : (sideTeam0 === 'CT' ? 'T' : 'CT')
-  const labels: Record<string, { ru: string; en: string }> = {
-    elimination:      { ru: 'Уничтожение',             en: 'Elimination' },
-    bomb:             { ru: 'Бомба взорвалась',        en: 'Bomb exploded' },
-    defuse:           { ru: 'Бомба разминирована',     en: 'Bomb defused' },
-    time:             { ru: 'Время вышло',             en: 'Time ran out' },
-    ct_win:           { ru: 'КТ уничтожены',           en: 'CTs eliminated' },
-    t_win:            { ru: 'Т уничтожены',             en: 'Ts eliminated' },
-    bomb_defused:     { ru: 'Бомба разминирована',      en: 'Bomb defused' },
-    bomb_exploded:    { ru: 'Бомба взорвалась',         en: 'Bomb exploded' },
-    target_bombed:    { ru: 'Бомба взорвалась',         en: 'Bomb exploded' },
-    target_saved:     { ru: 'Время вышло',              en: 'Time ran out' },
-    hostage_rescued:  { ru: 'Заложник спасён',          en: 'Hostage rescued' },
-  }
-  const lbl = labels[reason]
-  if (!lbl) return winnerSide
-  return lang === 'ru' ? lbl.ru : lbl.en
+  const key = WIN_CONDITION_KEYS[reason]
+  if (!key) return winnerSide
+  return t(key)
 }
 
 interface Props {
@@ -59,14 +61,14 @@ interface Props {
   lang: 'ru' | 'en'
 }
 
-export default function PlayerRounds({ series, rounds, lang }: Props) {
+export default function PlayerRounds({ series, rounds }: Props) {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const [showAll, setShowAll] = useState(false)
   const INITIAL = 8
 
   if (!series.length) {
-    return <div style={{ color: 'var(--text2)', fontSize: 13 }}>{lang === 'ru' ? 'Нет данных' : 'No data'}</div>
+    return <div style={{ color: 'var(--text2)', fontSize: 13 }}>{t('player:rounds.noData')}</div>
   }
 
   // build round map for quick lookup
@@ -85,16 +87,16 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
         <table style={{ width: '100%', borderCollapse: 'collapse', whiteSpace: 'nowrap', fontSize: 12 }}>
           <thead>
             <tr style={{ background: 'var(--bg3)', fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase' }}>
-              <th style={{ padding: '8px 10px', textAlign: 'left' }}>{lang === 'ru' ? 'Раунд' : 'Round'}</th>
-              <th style={{ padding: '8px 10px', textAlign: 'left' }}>{lang === 'ru' ? 'Итог' : 'Result'}</th>
-              <th style={{ padding: '8px 10px', textAlign: 'left' }}>{lang === 'ru' ? 'Условие' : 'Condition'}</th>
-              <th style={{ padding: '8px 10px' }}>{lang === 'ru' ? 'Счёт' : 'Score'}</th>
-              <th style={{ padding: '8px 10px' }}>{lang === 'ru' ? 'Время' : 'Time'}</th>
-              <th style={{ padding: '8px 10px', minWidth: 130 }}>{lang === 'ru' ? 'Экономика' : 'Economy'}</th>
+              <th style={{ padding: '8px 10px', textAlign: 'left' }}>{t('player:rounds.colRound')}</th>
+              <th style={{ padding: '8px 10px', textAlign: 'left' }}>{t('player:rounds.colResult')}</th>
+              <th style={{ padding: '8px 10px', textAlign: 'left' }}>{t('player:rounds.colCondition')}</th>
+              <th style={{ padding: '8px 10px' }}>{t('player:rounds.colScore')}</th>
+              <th style={{ padding: '8px 10px' }}>{t('player:rounds.colTime')}</th>
+              <th style={{ padding: '8px 10px', minWidth: 130 }}>{t('player:rounds.colEconomy')}</th>
               <th style={{ padding: '8px 10px' }}>K</th>
               <th style={{ padding: '8px 10px' }}>D</th>
-              <th style={{ padding: '8px 10px' }}>{lang === 'ru' ? 'Урон' : 'DMG'}</th>
-              <th style={{ padding: '8px 10px' }} title={lang === 'ru' ? 'Гранаты брошены' : 'Grenades thrown'}>🔴</th>
+              <th style={{ padding: '8px 10px' }}>{t('player:rounds.colDmg')}</th>
+              <th style={{ padding: '8px 10px' }} title={t('player:rounds.colNadesTitle')}>🔴</th>
               <th style={{ padding: '8px 10px' }}>IMP</th>
               <th style={{ padding: '8px 6px' }}></th>
             </tr>
@@ -106,11 +108,8 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
               const resultColor = s.won ? 'var(--green)' : 'var(--red)'
 
               const side = r?.sideTeam0 === 'CT'
-                ? (s.won ? 'КТ' : 'Т')
-                : (s.won ? 'Т' : 'КТ')
-              const sideEn = r?.sideTeam0 === 'CT'
-                ? (s.won ? 'CT' : 'T')
-                : (s.won ? 'T' : 'CT')
+                ? (s.won ? t('player:rounds.sideCt') : t('player:rounds.sideT'))
+                : (s.won ? t('player:rounds.sideT') : t('player:rounds.sideCt'))
 
               return (
                 <tr key={s.n} style={{ background: rowBg, borderBottom: '1px solid var(--border)' }}>
@@ -130,13 +129,13 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
                     </span>
                     {' '}
                     <span style={{ color: 'var(--text2)', fontSize: 11 }}>
-                      {lang === 'ru' ? side : sideEn}
+                      {side}
                     </span>
                   </td>
 
                   {/* win condition */}
                   <td style={{ padding: '8px 10px', color: 'var(--text2)', fontSize: 11 }}>
-                    {r ? winConditionLabel(r.reason, r.winnerTeam, r.sideTeam0, lang) : '—'}
+                    {r ? winConditionLabel(r.reason, r.winnerTeam, r.sideTeam0) : '—'}
                   </td>
 
                   {/* score */}
@@ -187,7 +186,7 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
                   <td style={{ padding: '8px 6px' }}>
                     <button
                       onClick={() => goToReplay(s.n)}
-                      title={lang === 'ru' ? 'Смотреть в реплее' : 'Watch in replay'}
+                      title={t('player:rounds.watchInReplay')}
                       style={{
                         background: 'none', border: '1px solid var(--border)',
                         borderRadius: 4, color: 'var(--text2)', padding: '2px 6px',
@@ -213,10 +212,8 @@ export default function PlayerRounds({ series, rounds, lang }: Props) {
           }}
         >
           {showAll
-            ? (lang === 'ru' ? 'Свернуть' : 'Show less')
-            : (lang === 'ru'
-              ? `Показать все раунды (+${series.length - INITIAL})`
-              : `Show all rounds (+${series.length - INITIAL})`)}
+            ? t('player:rounds.showLess')
+            : t('player:rounds.showAll', { count: series.length - INITIAL })}
         </button>
       )}
     </div>

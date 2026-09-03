@@ -31,7 +31,7 @@ Leaflet) не установлен и не используется. Не имп
 ### backend/app/
 | Файл | Назначение |
 |---|---|
-| `main.py` | FastAPI: demos CRUD, probe/analyze/status/analysis/heatmap/replay/chat, player analytics, maps, WS `/ws/demos` |
+| `main.py` | FastAPI: demos CRUD, probe/analyze/status/analysis/heatmap/replay/chat, player analytics, maps, WS `/ws/demos`; job-manager (лимит параллельных анализов, reaper мёртвых воркеров, startup-зачистка осиротевших parsing-статусов) |
 | `worker.py` | CLI-воркер (`python -m app.worker <path> <id> [--probe]`), запускается subprocess'ом из API |
 | `config.py` | пути, константы таймингов, `BENCHMARKS` (тиры weak/avg/good/elite) |
 | `storage.py` | реестр демок, status.json (атомарная запись), пути артефактов |
@@ -54,7 +54,7 @@ Leaflet) не установлен и не используется. Не имп
 |---|---|
 | `api.ts` | **единственный источник типов** + fetch-клиент; WS в DemosPage |
 | `App.tsx` | роутинг + 2 контекста: `useLang`, `useBenchmarks` |
-| `i18n.ts` | кастомный i18n (плоские словари T.ru/T.en, localStorage `lang`) |
+| `i18n.ts` | i18next-инициализация + фасад `t()/getLang()/setLang()`; словари в `i18n/locales/{ru,en}/*.json` по namespace (common/demos/match/player/metrics/replay/heatmaps/chat/about), правила — `i18n/README.md` |
 | `pages/DemosPage.tsx` | список/загрузка/статусы демок (WS + fallback-поллинг) |
 | `pages/OverviewPage.tsx` | счёт, скорборд, раунды |
 | `pages/PlayerPage.tsx` | 6 вкладок игрока (компоненты в `components/player/`) |
@@ -119,13 +119,25 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
    lower-is-better метрики (ttk, reaction) хранятся инвертированно — флаг `higherIsBetter`
    и список `LOWER_IS_BETTER` на фронте (PlayerStrengths.tsx, benchmarkUtils.ts).
 7. **IMP-формула дублируется** в `run.py` и `playeranalytics.py` — менять в обоих местах.
-8. **i18n**: `t()` читает модульную переменную и не реактивен — компонент обязан вызвать
-   `useLang()` (даже не используя значение) для перерисовки. Часть текстов вне словарей:
-   `diagnosisLines` (ReplayPage) — RU-only; ERROR_LABELS/ERROR_META держат ru+en в объекте.
+8. **i18n — i18next**: ключи в `i18n/locales/{ru,en}/<ns>.json`; наборы ключей ru/en
+   обязаны совпадать (проверять при изменениях). `t()` не реактивен — компоненту
+   нужен `useLang()`; новые ключи — с namespace (`t('metrics:reaction.title')`),
+   плоские легаси-ключи резолвятся через fallbackNS. Как добавить язык — `i18n/README.md`.
+   Захардкоженные строки в JSX запрещены — всё через словарь.
 9. **Dev-режим фронта**: vite проксирует только `/api`, WS не работает — статусы приходят
    fallback-поллингом раз в 10 с. Это не баг.
 10. **Схемы точек хитмапов** — послойные (см. докстринг `heatmaps.py`); фронтовой
     `decodePoint()` в HeatmapsPage должен соответствовать.
+11. **Анализ конкурентно ограничен**: `CS2_MAX_CONCURRENT_ANALYZES` (default 1);
+    лимит превышен → `POST /analyze` отвечает 429. При старте API все «parsing»/
+    «probing»-статусы помечаются error «interrupted by server restart» (воркеров
+    уже нет).
+12. **Multi-level карты** (nuke/vertigo): `verticalsections` в overview содержит
+    и секцию `'default'` (верх — она тоже в словаре!), и `'lower'`. Селекторы
+    уровней — через `lowerLevelNames()` из `lib/coords.ts` (исключает 'default');
+    фильтр точек по z — `zOnLevel()`; радар нижнего уровня — `radarUrl(map, 'lower')` →
+    `GET /api/maps/{map}/radar?level=lower` (fallback на default-радар, если
+    отдельной картинки нет).
 
 ## Стиль работы
 

@@ -1,19 +1,20 @@
 import { useState } from 'react'
 import { PlayerImpact as PlayerImpactData, SeriesPoint, DuelEpisode, PlayerData, DecisionEntry } from '../../api'
+import { t } from '../../i18n'
 import EpisodeDrillDown from './EpisodeDrillDown'
 
-const ERROR_META: Record<string, { ru: string; en: string; color: string; icon: string }> = {
-  shift_peek:    { ru: 'Пик на шифте',             en: 'Shift peek',           color: 'var(--accent2)', icon: '🚶' },
-  moving_shot:   { ru: 'Движение при стрельбе',    en: 'Moving shot',          color: 'var(--red)',     icon: '🏃' },
-  isolated:      { ru: 'Игра в изоляции',          en: 'Playing isolated',     color: 'var(--accent)',  icon: '🔇' },
-  flashed:       { ru: 'Вышел на флеше',           en: 'Entered flashed',      color: 'var(--accent2)', icon: '🌟' },
-  strong_duel:   { ru: 'Сильная дуэль',            en: 'Strong duel',          color: 'var(--green)',   icon: '💪' },
-  overshoot:     { ru: 'Перелёт прицела',          en: 'Aim overshoot',        color: 'var(--red)',     icon: '→' },
-  undershoot:    { ru: 'Недолёт прицела',          en: 'Aim undershoot',       color: 'var(--accent2)', icon: '←' },
-  missed_first:  { ru: 'Неточный первый выстрел',  en: 'Inaccurate 1st shot',  color: 'var(--accent)',  icon: '✗' },
-  passive_angle: { ru: 'Пассивный угол',           en: 'Passive angle',        color: 'var(--text2)',   icon: '⏸' },
-  moving:        { ru: 'Движение (жертва)',         en: 'Moving (victim)',      color: 'var(--text2)',   icon: '🏃' },
-  outnumbered:   { ru: 'В меньшинстве',            en: 'Outnumbered',          color: 'var(--text2)',   icon: '⚠️' },
+const ERROR_META: Record<string, { key: string; color: string; icon: string }> = {
+  shift_peek:    { key: 'player:duels.errorShiftPeek',   color: 'var(--accent2)', icon: '🚶' },
+  moving_shot:   { key: 'player:duels.errorMovingShot',  color: 'var(--red)',     icon: '🏃' },
+  isolated:      { key: 'player:duels.errorIsolated',    color: 'var(--accent)',  icon: '🔇' },
+  flashed:       { key: 'player:duels.errorFlashed',     color: 'var(--accent2)', icon: '🌟' },
+  strong_duel:   { key: 'player:duels.errorStrongDuel',  color: 'var(--green)',   icon: '💪' },
+  overshoot:     { key: 'player:duels.errorOvershoot',   color: 'var(--red)',     icon: '→' },
+  undershoot:    { key: 'player:duels.errorUndershoot',  color: 'var(--accent2)', icon: '←' },
+  missed_first:  { key: 'player:duels.errorMissedFirst', color: 'var(--accent)',  icon: '✗' },
+  passive_angle: { key: 'player:duels.errorPassiveAngle', color: 'var(--text2)',  icon: '⏸' },
+  moving:        { key: 'player:duels.errorMoving',      color: 'var(--text2)',   icon: '🏃' },
+  outnumbered:   { key: 'player:duels.errorOutnumbered', color: 'var(--text2)',   icon: '⚠️' },
 }
 
 function ImpRound({ n, imp, positive }: { n: number; imp: number; positive: boolean }) {
@@ -72,14 +73,14 @@ interface Props {
   currentSteamid?: string
 }
 
-function ratingLabel(value: number, goodAbove: number, lang: 'ru' | 'en'): { text: string; color: string } {
-  if (value >= goodAbove * 1.3) return { text: lang === 'ru' ? 'ОТЛИЧНО' : 'GREAT',  color: 'var(--green)' }
-  if (value >= goodAbove)       return { text: lang === 'ru' ? 'ХОРОШО'  : 'GOOD',   color: '#7ec8e3' }
-  if (value >= goodAbove * 0.6) return { text: lang === 'ru' ? 'СРЕДНЕЕ' : 'AVG',    color: 'var(--text2)' }
-  return                               { text: lang === 'ru' ? 'СЛАБО'   : 'WEAK',   color: 'var(--red)' }
+function ratingLabel(value: number, goodAbove: number): { text: string; color: string } {
+  if (value >= goodAbove * 1.3) return { text: t('player:impact.ratingGreat'), color: 'var(--green)' }
+  if (value >= goodAbove)       return { text: t('player:impact.ratingGood'),  color: '#7ec8e3' }
+  if (value >= goodAbove * 0.6) return { text: t('player:impact.ratingAvg'),   color: 'var(--text2)' }
+  return                               { text: t('player:impact.ratingWeak'),  color: 'var(--red)' }
 }
 
-export default function PlayerImpact({ impact, series, duels, decisionsCost, playerNames, lang, allPlayers, playerData, currentSteamid }: Props) {
+export default function PlayerImpact({ impact, series, duels, decisionsCost, playerNames, allPlayers, playerData, currentSteamid }: Props) {
   const [drillDuel, setDrillDuel] = useState<DuelEpisode | null>(null)
 
   const totalImp = series.length
@@ -93,7 +94,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
   const posSum   = impPerRound.filter(v => v > 0).reduce((a, b) => a + b, 0)
   const negSum   = impPerRound.filter(v => v < 0).reduce((a, b) => a + b, 0)
 
-  // ── ЦЕНА РЕШЕНИЙ: error pattern breakdown ──────────────────────────
+  // ── DECISION COST: error pattern breakdown ──────────────────────────
   const wonDuels = duels.filter(d => d.won)
   const errorGroups: Record<string, DuelEpisode[]> = {}
   for (const d of wonDuels) {
@@ -107,7 +108,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
   const sortedErrors = Object.entries(errorGroups).sort((a, b) => b[1].length - a[1].length)
   const mainHabit = sortedErrors[0]
 
-  // ── КАЧЕСТВО ДУЭЛЕЙ: utility metrics from duels ────────────────────
+  // ── DUEL QUALITY: utility metrics from duels ────────────────────
   const totalWon  = duels.filter(d => d.won).length
   const totalLost = duels.filter(d => !d.won).length
 
@@ -124,12 +125,12 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
     ? Math.round(wonDuels.filter(d => d.errors.includes('flashed')).length / wonDuels.length * 100)
     : 0
 
-  // В КАКИЕ ДУЭЛИ ПОПАДАЕШЬ — win% context when entering duels (all duels)
+  // DUELS YOU ENTER — win% context when entering duels (all duels)
   const duelsWithProb = duels.filter(d => d.winProb != null)
   const avgProbEntering = duelsWithProb.length > 0
     ? duelsWithProb.reduce((s, d) => s + d.winProb!, 0) / duelsWithProb.length
     : null
-  // КАК ИХ РЕАЛИЗУЕШЬ — actual win rate vs expected
+  // HOW YOU CONVERT THEM — actual win rate vs expected
   const actualWinRate = duels.length > 0 ? totalWon / duels.length : null
 
   // lost without any trade context = "dangerous losses"
@@ -147,15 +148,15 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-      {/* ── ВКЛАД В ПОБЕДУ ── */}
+      {/* ── IMPACT ON WINS ── */}
       <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 18px' }}>
         <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
-          {lang === 'ru' ? 'Вклад в победу' : 'Impact contribution'}
+          {t('player:impact.contributionTitle')}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap', marginBottom: 14 }}>
           <div>
             <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', marginBottom: 2 }}>
-              {lang === 'ru' ? 'Средний IMP' : 'Avg IMP'}
+              {t('player:impact.avgImp')}
             </div>
             <div style={{
               fontSize: 36, fontWeight: 900, lineHeight: 1,
@@ -167,20 +168,20 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             <div>
               <span style={{ color: 'var(--green)', fontWeight: 700 }}>{posCount}</span>
-              <span style={{ color: 'var(--text2)' }}> {lang === 'ru' ? 'положит. раундов' : 'positive rounds'}</span>
+              <span style={{ color: 'var(--text2)' }}> {t('player:impact.posRounds')}</span>
             </div>
             <div>
               <span style={{ color: 'var(--red)', fontWeight: 700 }}>{negCount}</span>
-              <span style={{ color: 'var(--text2)' }}> {lang === 'ru' ? 'отрицат. раундов' : 'negative rounds'}</span>
+              <span style={{ color: 'var(--text2)' }}> {t('player:impact.negRounds')}</span>
             </div>
           </div>
         </div>
         <ImpBar
-          label={lang === 'ru' ? 'Сумма положительного IMP' : 'Positive IMP total'}
+          label={t('player:impact.posImpTotal')}
           value={posSum} max={maxAbs * series.length} color="var(--green)"
         />
         <ImpBar
-          label={lang === 'ru' ? 'Сумма отрицательного IMP' : 'Negative IMP total'}
+          label={t('player:impact.negImpTotal')}
           value={negSum} max={maxAbs * series.length} color="var(--red)"
         />
       </div>
@@ -189,7 +190,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
       {series.length > 0 && (
         <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
           <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', marginBottom: 10 }}>
-            {lang === 'ru' ? 'IMP по раундам' : 'IMP by round'}
+            {t('player:impact.impByRound')}
           </div>
           <svg width="100%" height={60} style={{ overflow: 'visible' }}>
             {series.map((s, i) => {
@@ -213,7 +214,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 }}>
         <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
           <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--green)', marginBottom: 8 }}>
-            {lang === 'ru' ? '🔥 Лучшие раунды' : '🔥 Best rounds'}
+            {t('player:impact.bestRounds')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {impact.topRoundsPositive.length
@@ -223,7 +224,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         </div>
         <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
           <div style={{ fontWeight: 700, fontSize: 12, color: 'var(--red)', marginBottom: 8 }}>
-            {lang === 'ru' ? '❌ Худшие раунды' : '❌ Worst rounds'}
+            {t('player:impact.worstRounds')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {impact.topRoundsNegative.length
@@ -233,11 +234,11 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         </div>
       </div>
 
-      {/* ── ЦЕНА РЕШЕНИЙ ── */}
+      {/* ── DECISION COST ── */}
       {(decisionsCost.length > 0 || sortedErrors.length > 0) && (
         <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
           <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
-            {lang === 'ru' ? 'Цена решений' : 'Decision cost'}
+            {t('player:impact.decisionCost')}
           </div>
 
           {/* WinProb delta cards */}
@@ -245,9 +246,10 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
             <div style={{ marginBottom: 14 }}>
               {mainHabit && (
                 <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 8 }}>
-                  {lang === 'ru'
-                    ? `Главная привычка: «${ERROR_META[mainHabit[0]]?.ru ?? mainHabit[0]}» — ${Math.round(mainHabit[1].length / totalErrors * 100)}% дорогих ошибок`
-                    : `Main habit: "${ERROR_META[mainHabit[0]]?.en ?? mainHabit[0]}" — ${Math.round(mainHabit[1].length / totalErrors * 100)}% of costly errors`}
+                  {t('player:impact.mainHabit', {
+                    label: ERROR_META[mainHabit[0]] ? t(ERROR_META[mainHabit[0]].key) : mainHabit[0],
+                    pct: Math.round(mainHabit[1].length / totalErrors * 100),
+                  })}
                 </div>
               )}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -261,7 +263,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
                       background: 'var(--bg2)', borderRadius: 6, padding: '7px 10px',
                     }}>
                       <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 52 }}>
-                        {lang === 'ru' ? 'Раунд' : 'Round'} {entry.round}
+                        {t('player:impact.roundLabel')} {entry.round}
                       </span>
                       <span style={{ fontWeight: 700, color: 'var(--green)', fontSize: 13, minWidth: 36 }}>
                         {beforePct}%
@@ -294,7 +296,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
                   <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
                     onClick={() => setDrillDuel(grpDuels[0])}>
                     <span style={{ fontSize: 14 }}>{m.icon}</span>
-                    <span style={{ flex: 1, fontSize: 12, color: m.color }}>{lang === 'ru' ? m.ru : m.en}</span>
+                    <span style={{ flex: 1, fontSize: 12, color: m.color }}>{t(m.key)}</span>
                     <span style={{ fontSize: 11, color: 'var(--text2)' }}>{grpDuels.length}×</span>
                     <div style={{ width: 80, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
                       <div style={{ width: `${pct}%`, height: '100%', background: m.color, borderRadius: 2 }} />
@@ -308,28 +310,28 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         </div>
       )}
 
-      {/* ── КАЧЕСТВО ДУЭЛЕЙ ── */}
+      {/* ── DUEL QUALITY ── */}
       <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
         <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
-          {lang === 'ru' ? 'Качество дуэлей' : 'Duel quality'}
+          {t('player:impact.duelQualityTitle')}
         </div>
-        {/* В КАКИЕ ДУЭЛИ ПОПАДАЕШЬ / КАК ИХ РЕАЛИЗУЕШЬ */}
+        {/* DUELS ENTERED / CONVERTED */}
         {avgProbEntering != null && actualWinRate != null && (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
             <div style={{ background: 'var(--bg2)', borderRadius: 6, padding: '10px 12px' }}>
               <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>
-                {lang === 'ru' ? 'В какие дуэли попадаешь' : 'Duels you enter'}
+                {t('player:impact.duelsEnter')}
               </div>
               <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--text1)' }}>
                 {Math.round(avgProbEntering * 100)}%
               </div>
               <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
-                {lang === 'ru' ? `средний шанс победы (${duelsWithProb.length} дуэлей)` : `avg win chance (${duelsWithProb.length} duels)`}
+                {t('player:impact.avgWinChance', { count: duelsWithProb.length })}
               </div>
             </div>
             <div style={{ background: 'var(--bg2)', borderRadius: 6, padding: '10px 12px' }}>
               <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.05em', marginBottom: 4 }}>
-                {lang === 'ru' ? 'Как их реализуешь' : 'How you convert'}
+                {t('player:impact.duelsConvert')}
               </div>
               <div style={{ fontSize: 18, fontWeight: 700, color: actualWinRate >= avgProbEntering ? 'var(--green)' : 'var(--red)' }}>
                 {totalWon}/{duels.length}
@@ -337,7 +339,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
               <div style={{ fontSize: 11, color: 'var(--text2)', marginTop: 2 }}>
                 {Math.round(actualWinRate * 100)}%{' '}
                 <span style={{ color: actualWinRate >= avgProbEntering ? 'var(--green)' : 'var(--red)' }}>
-                  ({actualWinRate >= avgProbEntering ? '+' : ''}{Math.round((actualWinRate - avgProbEntering) * 100)}% {lang === 'ru' ? 'от ожидаемого' : 'vs expected'})
+                  ({actualWinRate >= avgProbEntering ? '+' : ''}{Math.round((actualWinRate - avgProbEntering) * 100)}% {t('player:impact.vsExpected')})
                 </span>
               </div>
             </div>
@@ -346,15 +348,15 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginBottom: 14 }}>
           {(() => {
-            const r1 = ratingLabel(totalWon / (duels.length || 1) * 100, 50, lang)
-            const r2 = ratingLabel(100 - shiftPeekPct, 70, lang)
-            const r3 = ratingLabel(100 - isolatedPct, 70, lang)
-            const r4 = ratingLabel(100 - movingPct, 70, lang)
+            const r1 = ratingLabel(totalWon / (duels.length || 1) * 100, 50)
+            const r2 = ratingLabel(100 - shiftPeekPct, 70)
+            const r3 = ratingLabel(100 - isolatedPct, 70)
+            const r4 = ratingLabel(100 - movingPct, 70)
             const items: { label: string; value: string; r: { text: string; color: string } }[] = [
-              { label: lang === 'ru' ? 'Выиграно дуэлей' : 'Duels won', value: `${totalWon}/${duels.length}`, r: r1 },
-              { label: lang === 'ru' ? 'Без шифт-пика'   : 'No shift-peek', value: `${100 - shiftPeekPct}%`, r: r2 },
-              { label: lang === 'ru' ? 'Не изолирован'   : 'Not isolated',  value: `${100 - isolatedPct}%`,  r: r3 },
-              { label: lang === 'ru' ? 'Стоя при стрельбе' : 'Still when shooting', value: `${100 - movingPct}%`, r: r4 },
+              { label: t('player:impact.duelsWon'),      value: `${totalWon}/${duels.length}`, r: r1 },
+              { label: t('player:impact.noShiftPeek'),   value: `${100 - shiftPeekPct}%`,      r: r2 },
+              { label: t('player:impact.notIsolated'),   value: `${100 - isolatedPct}%`,       r: r3 },
+              { label: t('player:impact.stillShooting'), value: `${100 - movingPct}%`,         r: r4 },
             ]
             return items.map(({ label, value, r }) => (
               <UtilMetricCard key={label} label={label} value={value} rating={r.text} color={r.color} />
@@ -362,11 +364,11 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
           })()}
         </div>
 
-        {/* ПРОИГРАЛ БЕЗ ШАНСОВ */}
+        {/* LOST WITH NO CHANCE */}
         {lostNoChance.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: 'var(--red)', fontWeight: 700, marginBottom: 6 }}>
-              {lang === 'ru' ? '❌ Проиграл без шансов' : '❌ Lost without a chance'}
+              {t('player:impact.lostNoChance')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {lostNoChance.slice(0, 8).map((d, i) => (
@@ -379,11 +381,11 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
           </div>
         )}
 
-        {/* ВЫТАЩИЛ НЕВЫГОДНЫЕ */}
+        {/* WON UNFAVORABLE DUELS */}
         {wonUnfavorable.length > 0 && (
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 700, marginBottom: 6 }}>
-              {lang === 'ru' ? '🏆 Вытащил невыгодные' : '🏆 Won despite bad odds'}
+              {t('player:impact.wonUnfavorable')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {wonUnfavorable.slice(0, 8).map((d, i) => (
@@ -396,11 +398,11 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
           </div>
         )}
 
-        {/* ВЫТАЩИЛ ЧИСТЫЕ */}
+        {/* WON CLEAN DUELS */}
         {wonClean.length > 0 && (
           <div>
             <div style={{ fontSize: 11, color: 'var(--green)', fontWeight: 700, marginBottom: 6 }}>
-              {lang === 'ru' ? '✅ Чистые победы' : '✅ Clean wins'}
+              {t('player:impact.wonClean')}
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {wonClean.slice(0, 6).map((d, i) => (
@@ -414,14 +416,14 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         )}
       </div>
 
-      {/* ── ЛОББИ-ТАБЛИЦА ── */}
+      {/* ── LOBBY TABLE ── */}
       {allPlayers && allPlayers.length > 0 && (() => {
         const sorted = [...allPlayers].sort((a, b) => b.imp - a.imp)
         const maxImpAbs = Math.max(...sorted.map(p => Math.abs(p.imp)), 0.01)
         return (
           <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
             <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
-              {lang === 'ru' ? 'Игроки лобби по IMP' : 'Lobby players by IMP'}
+              {t('player:impact.lobbyByImp')}
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {sorted.map((pl, i) => {
@@ -448,7 +450,7 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         )
       })()}
 
-      {/* ── УТИЛИТА ── */}
+      {/* ── UTILITY ── */}
       {playerData && (() => {
         const pd = playerData
         const kills  = pd.kills  || 1
@@ -462,24 +464,24 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         const flashHitPct    = Math.round(pd.flashes.enemiesFlashed / thrown * 100)
 
         function grade(value: number, goodAbove: number): { text: string; color: string } {
-          if (value >= goodAbove * 1.3) return { text: lang === 'ru' ? 'ОТЛИЧНО' : 'GREAT',  color: 'var(--green)' }
-          if (value >= goodAbove)       return { text: lang === 'ru' ? 'ХОРОШО'  : 'GOOD',   color: '#7ec8e3' }
-          if (value >= goodAbove * 0.6) return { text: lang === 'ru' ? 'СРЕДНЕЕ' : 'AVG',    color: 'var(--text2)' }
-          return                               { text: lang === 'ru' ? 'СЛАБО'   : 'WEAK',   color: 'var(--red)' }
+          if (value >= goodAbove * 1.3) return { text: t('player:impact.ratingGreat'), color: 'var(--green)' }
+          if (value >= goodAbove)       return { text: t('player:impact.ratingGood'),  color: '#7ec8e3' }
+          if (value >= goodAbove * 0.6) return { text: t('player:impact.ratingAvg'),   color: 'var(--text2)' }
+          return                               { text: t('player:impact.ratingWeak'),  color: 'var(--red)' }
         }
 
         const cards = [
-          { label: lang === 'ru' ? 'Трейд-киллы'   : 'Trade kills',    value: `${tradeKillPct}%`,   g: grade(tradeKillPct, 20) },
-          { label: lang === 'ru' ? 'Смерти с трейд' : 'Traded deaths',  value: `${tradedDeathPct}%`, g: grade(tradedDeathPct, 20) },
-          { label: lang === 'ru' ? 'Win% открывашки' : 'Opening win%',  value: `${openingWinPct}%`,  g: grade(openingWinPct, 50) },
-          { label: lang === 'ru' ? 'Урон утилитой'  : 'Util damage',    value: `${pd.utilDmg}`,      g: grade(pd.utilDmg, 80) },
-          { label: lang === 'ru' ? 'Flash попадания' : 'Flash hit%',     value: `${flashHitPct}%`,    g: grade(flashHitPct, 40) },
+          { label: t('player:impact.tradeKills'),    value: `${tradeKillPct}%`,   g: grade(tradeKillPct, 20) },
+          { label: t('player:impact.tradedDeaths'),  value: `${tradedDeathPct}%`, g: grade(tradedDeathPct, 20) },
+          { label: t('player:impact.openingWinPct'), value: `${openingWinPct}%`,  g: grade(openingWinPct, 50) },
+          { label: t('player:impact.utilDamage'),    value: `${pd.utilDmg}`,      g: grade(pd.utilDmg, 80) },
+          { label: t('player:impact.flashHit'),      value: `${flashHitPct}%`,    g: grade(flashHitPct, 40) },
         ]
 
         return (
           <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '14px 16px' }}>
             <div style={{ fontWeight: 700, fontSize: 11, textTransform: 'uppercase', color: 'var(--text2)', letterSpacing: '.06em', marginBottom: 12 }}>
-              {lang === 'ru' ? 'Утилита и открывашки' : 'Utility & opening'}
+              {t('player:impact.utilityTitle')}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: 8 }}>
               {cards.map(({ label, value, g }) => (
@@ -495,7 +497,6 @@ export default function PlayerImpact({ impact, series, duels, decisionsCost, pla
         <EpisodeDrillDown
           duel={drillDuel}
           playerNames={playerNames}
-          lang={lang}
           onClose={() => setDrillDuel(null)}
         />
       )}

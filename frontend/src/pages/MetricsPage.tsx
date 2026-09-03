@@ -2,55 +2,16 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { api, PlayerAnalyticsData, DuelEpisode, AnalysisData, FirstBulletShot } from '../api'
 import { useLang, useBenchmarks } from '../App'
-import { getTier, TIER_COLORS, TIER_LABELS, formatTierTooltip } from '../benchmarkUtils'
+import { t } from '../i18n'
+import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../benchmarkUtils'
 import EpisodeDrillDown from '../components/player/EpisodeDrillDown'
 import MatchNav from '../components/MatchNav'
 
 type RoundOutcome = 'kill' | 'death' | 'draw' | 'none'
 
-const WEAPON_NAMES: Record<string, { en: string; ru: string }> = {
-  weapon_ak47:          { en: 'AK-47',         ru: 'АК-47' },
-  weapon_m4a1:          { en: 'M4A1-S',        ru: 'M4A1-S' },
-  weapon_m4a1_silencer: { en: 'M4A1-S',        ru: 'M4A1-S' },
-  weapon_m4a4:          { en: 'M4A4',          ru: 'M4A4' },
-  weapon_awp:           { en: 'AWP',           ru: 'AWP' },
-  weapon_ssg08:         { en: 'SSG 08',        ru: 'Скаут' },
-  weapon_sg553:         { en: 'SG 553',        ru: 'SG 553' },
-  weapon_aug:           { en: 'AUG',           ru: 'AUG' },
-  weapon_famas:         { en: 'FAMAS',         ru: 'FAMAS' },
-  weapon_galil:         { en: 'Galil AR',      ru: 'Galil AR' },
-  weapon_galilar:       { en: 'Galil AR',      ru: 'Galil AR' },
-  weapon_p250:          { en: 'P250',          ru: 'P250' },
-  weapon_usp_silencer:  { en: 'USP-S',         ru: 'USP-S' },
-  weapon_glock:         { en: 'Glock-18',      ru: 'Глок' },
-  weapon_hkp2000:       { en: 'P2000',         ru: 'P2000' },
-  weapon_tec9:          { en: 'Tec-9',         ru: 'Tec-9' },
-  weapon_cz75a:         { en: 'CZ75-Auto',     ru: 'CZ75' },
-  weapon_deagle:        { en: 'Desert Eagle',  ru: 'Дигл' },
-  weapon_revolver:      { en: 'R8 Revolver',   ru: 'R8' },
-  weapon_elite:         { en: 'Dual Berettas', ru: 'Беретты' },
-  weapon_fiveseven:     { en: 'Five-SeveN',    ru: 'Five-SeveN' },
-  weapon_mp5sd:         { en: 'MP5-SD',        ru: 'MP5-SD' },
-  weapon_mp7:           { en: 'MP7',           ru: 'MP7' },
-  weapon_mp9:           { en: 'MP9',           ru: 'MP9' },
-  weapon_mac10:         { en: 'MAC-10',        ru: 'MAC-10' },
-  weapon_ump45:         { en: 'UMP-45',        ru: 'UMP-45' },
-  weapon_p90:           { en: 'P90',           ru: 'P90' },
-  weapon_bizon:         { en: 'PP-Bizon',      ru: 'Бизон' },
-  weapon_nova:          { en: 'Nova',          ru: 'Nova' },
-  weapon_sawedoff:      { en: 'Sawed-Off',     ru: 'Обрез' },
-  weapon_xm1014:        { en: 'XM1014',        ru: 'XM1014' },
-  weapon_mag7:          { en: 'MAG-7',         ru: 'MAG-7' },
-  weapon_m249:          { en: 'M249',          ru: 'M249' },
-  weapon_negev:         { en: 'Negev',         ru: 'Negev' },
-  weapon_g3sg1:         { en: 'G3SG1',        ru: 'G3SG1' },
-  weapon_scar20:        { en: 'SCAR-20',       ru: 'SCAR-20' },
-}
-
-function prettyWeapon(raw: string, lang: 'ru' | 'en'): string {
-  const entry = WEAPON_NAMES[raw] ?? WEAPON_NAMES['weapon_' + raw]
-  if (entry) return lang === 'ru' ? entry.ru : entry.en
-  return raw.replace(/^weapon_/, '').replace(/_/g, ' ')
+function prettyWeapon(raw: string): string {
+  const id = raw.replace(/^weapon_/, '')
+  return t('metrics:weapon.' + id, { defaultValue: id.replace(/_/g, ' ') })
 }
 
 // ------------------------------------------------------------------ MetricHero
@@ -63,9 +24,9 @@ function MetricHero({ title, subtitle, value, metricKey, lang, higherIsBetter = 
   const rawNum = parseFloat(value)
   const tier = isNaN(rawNum) ? null : getTier(benchmarks, metricKey, rawNum, higherIsBetter)
   const tiers = benchmarks[metricKey]
-  const tip = tiers && !isNaN(rawNum) ? formatTierTooltip(tiers, rawNum, lang, higherIsBetter) : null
+  const tip = tiers && !isNaN(rawNum) ? formatTierTooltip(tiers, rawNum, higherIsBetter) : null
   const color = tier ? TIER_COLORS[tier] : 'var(--text)'
-  const label = tier ? TIER_LABELS[tier][lang] : null
+  const label = tier ? tierLabel(tier) : null
   return (
     <div style={{ marginBottom: 28 }}>
       <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.08em', marginBottom: 6 }}>
@@ -134,15 +95,6 @@ function FilterBar<T extends string>({ options, active, onChange }: {
 
 // ------------------------------------------------------------------ DuelRow
 
-const ERROR_LABELS: Record<string, { ru: string; en: string }> = {
-  shift_peek:  { ru: 'шифт-пик',      en: 'shift peek' },
-  moving_shot: { ru: 'на ходу',       en: 'moving' },
-  isolated:    { ru: 'изоляция',      en: 'isolated' },
-  flashed:     { ru: 'флеш',          en: 'flashed' },
-  outnumbered: { ru: 'в меньшинстве', en: 'outnumbered' },
-  moving:      { ru: 'в движении',    en: 'moving' },
-}
-
 function DuelRow({ duel, playerNames, idx, selected, onClick, lang }: {
   duel: DuelEpisode; playerNames: Record<string, string>
   idx: number; selected: boolean; onClick: () => void; lang: 'ru' | 'en'
@@ -159,16 +111,16 @@ function DuelRow({ duel, playerNames, idx, selected, onClick, lang }: {
     }}>
       <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{duel.round}</span>
       <span style={{ fontSize: 12, fontWeight: 700, color: duel.won ? 'var(--green)' : 'var(--red)', minWidth: 50 }}>
-        {duel.won ? '✓ Win' : '✗ Loss'}
+        {duel.won ? t('metrics:duel.win') : t('metrics:duel.loss')}
       </span>
       <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {attName} → {vicName}
       </span>
-      <span style={{ fontSize: 11, color: 'var(--text2)' }}>{prettyWeapon(duel.weapon, lang)}</span>
+      <span style={{ fontSize: 11, color: 'var(--text2)' }}>{prettyWeapon(duel.weapon)}</span>
       {duel.headshot && <span style={{ fontSize: 10, color: 'var(--accent2)', fontWeight: 700 }}>HS</span>}
       {duel.errors.filter(e => e !== 'strong_duel').map(e => (
         <span key={e} style={{ fontSize: 10, color: 'var(--red)', background: 'rgba(220,80,80,.15)', borderRadius: 3, padding: '1px 5px' }}>
-          {ERROR_LABELS[e]?.[lang] ?? e}
+          {t('metrics:error.' + e, { defaultValue: e })}
         </span>
       ))}
     </div>
@@ -200,7 +152,7 @@ function EpisodeList({ duels, playerNames, lang }: {
   const [drill, setDrill] = useState(false)
   if (!duels.length) return (
     <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
-      {lang === 'ru' ? 'Нет эпизодов' : 'No episodes'}
+      {t('metrics:shared.noEpisodes')}
     </div>
   )
   return (
@@ -218,7 +170,7 @@ function EpisodeList({ duels, playerNames, lang }: {
         {drill
           ? <EpisodeDrillDown duel={duels[sel]} playerNames={playerNames} lang={lang} onClose={() => setDrill(false)} />
           : <div style={{ color: 'var(--text2)', fontSize: 12, paddingTop: 8 }}>
-              {lang === 'ru' ? 'Нажми на строку для просмотра эпизода' : 'Click a row to view episode'}
+              {t('metrics:shared.clickRow')}
             </div>
         }
       </div>
@@ -236,12 +188,6 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
   const DOT_COLORS: Record<RoundOutcome, string> = {
     kill: 'var(--green)', death: 'var(--red)', draw: 'var(--accent2)', none: 'var(--bg3)',
   }
-  const DOT_LABELS: Record<RoundOutcome, { ru: string; en: string }> = {
-    kill:  { ru: 'убил',   en: 'kill' },
-    death: { ru: 'умер',   en: 'died' },
-    draw:  { ru: 'размен', en: 'draw' },
-    none:  { ru: '—',      en: '—' },
-  }
   return (
     <div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -249,7 +195,7 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
           const outcome = roundOutcomes[n] ?? 'none'
           const color = DOT_COLORS[outcome]
           return (
-            <div key={n} title={`R${n}: ${DOT_LABELS[outcome][lang]}`} style={{
+            <div key={n} title={`R${n}: ${t('metrics:outcome.' + outcome)}`} style={{
               width: 26, height: 26, borderRadius: 4,
               background: outcome === 'none' ? 'var(--bg3)' : `${color}33`,
               border: `1px solid ${color}`,
@@ -261,9 +207,9 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
         })}
       </div>
       <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--text2)' }}>
-        <span><span style={{ color: 'var(--green)' }}>■</span> {lang === 'ru' ? 'убил' : 'kill'}</span>
-        <span><span style={{ color: 'var(--red)' }}>■</span> {lang === 'ru' ? 'умер' : 'died'}</span>
-        <span><span style={{ color: 'var(--accent2)' }}>■</span> {lang === 'ru' ? 'размен' : 'draw'}</span>
+        <span><span style={{ color: 'var(--green)' }}>■</span> {t('metrics:outcome.kill')}</span>
+        <span><span style={{ color: 'var(--red)' }}>■</span> {t('metrics:outcome.death')}</span>
+        <span><span style={{ color: 'var(--accent2)' }}>■</span> {t('metrics:outcome.draw')}</span>
       </div>
     </div>
   )
@@ -278,7 +224,6 @@ function WinRateComparison({ cleanCount, cleanWins, otherCount, otherWins, lang,
   cleanLabel?: string
   otherLabel?: string
 }) {
-  const ru = lang === 'ru'
   const cleanPct = cleanCount > 0 ? (cleanWins / cleanCount * 100) : 0
   const otherPct = otherCount > 0 ? (otherWins / otherCount * 100) : 0
   const delta = cleanPct - otherPct
@@ -286,20 +231,20 @@ function WinRateComparison({ cleanCount, cleanWins, otherCount, otherWins, lang,
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8, marginBottom: 20 }}>
       {[
-        { label: cleanLabel ?? (ru ? 'Когда механика чистая' : 'With clean mechanics'), pct: cleanPct, n: cleanCount, good: true },
-        { label: otherLabel ?? (ru ? 'Во всех остальных' : 'All other duels'), pct: otherPct, n: otherCount, good: false },
+        { label: cleanLabel ?? t('metrics:winRate.cleanDefault'), pct: cleanPct, n: cleanCount, good: true },
+        { label: otherLabel ?? t('metrics:winRate.otherDefault'), pct: otherPct, n: otherCount, good: false },
       ].map(({ label, pct, n, good }) => (
         <div key={label} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
           <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.06em', marginBottom: 8 }}>{label}</div>
           <div style={{ fontSize: 28, fontWeight: 800, color: good ? 'var(--green)' : 'var(--text)', lineHeight: 1, marginBottom: 4 }}>
             {pct.toFixed(1)}%
           </div>
-          <div style={{ fontSize: 11, color: 'var(--text2)' }}>{ru ? `${n} дуэлей` : `${n} duels`}</div>
+          <div style={{ fontSize: 11, color: 'var(--text2)' }}>{t('metrics:winRate.duels', { n })}</div>
         </div>
       ))}
       {cleanCount > 0 && otherCount > 0 && (
         <div style={{ gridColumn: '1 / -1', fontSize: 12, color: deltaColor, fontWeight: 700, textAlign: 'center', paddingTop: 2 }}>
-          {delta >= 0 ? '+' : ''}{delta.toFixed(1)}% {ru ? 'к победе' : 'to win rate'}
+          {delta >= 0 ? '+' : ''}{delta.toFixed(1)}% {t('metrics:winRate.toWin')}
         </div>
       )}
     </div>
@@ -321,44 +266,43 @@ function OpeningWinPctPage({ analytics, playerNames, lang, totalRounds }: {
   const shown = filter === 'won' ? won : filter === 'lost' ? lost : openingDuels
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of openingDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
-  const ru = lang === 'ru'
   return (
     <div>
       <MetricHero
-        title={ru ? 'Открывашки Win%' : 'Opening Win%'}
-        subtitle={ru ? `${won.length} выигранных · ${lost.length} проигранных открывашек` : `${won.length} won · ${lost.length} lost opening duels`}
+        title={t('metrics:opening.title')}
+        subtitle={t('metrics:opening.subtitle', { won: won.length, lost: lost.length })}
         value={pct.toFixed(1) + '%'} metricKey="openingWinPct" lang={lang}
       />
       {openingDuels.length > 0 && nonOpeningDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={openingDuels.length} cleanWins={won.length}
             otherCount={nonOpeningDuels.length} otherWins={nonOpeningDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Открывашки' : 'Opening duels'}
-            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+            cleanLabel={t('metrics:opening.cleanLabel')}
+            otherLabel={t('metrics:shared.otherDuels')}
           />
         </>
       )}
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       {openingDuels.length > 0 ? (
         <>
           <FilterBar
             options={[
-              { key: 'all'  as const, label: ru ? `Все (${openingDuels.length})` : `All (${openingDuels.length})` },
-              { key: 'won'  as const, label: ru ? `Выигранные (${won.length})` : `Won (${won.length})`, color: 'var(--green)' },
-              { key: 'lost' as const, label: ru ? `Проигранные (${lost.length})` : `Lost (${lost.length})`, color: 'var(--red)' },
+              { key: 'all'  as const, label: t('metrics:shared.filterAll', { n: openingDuels.length }) },
+              { key: 'won'  as const, label: t('metrics:shared.filterWon', { n: won.length }), color: 'var(--green)' },
+              { key: 'lost' as const, label: t('metrics:shared.filterLost', { n: lost.length }), color: 'var(--red)' },
             ]}
             active={filter} onChange={setFilter}
           />
           <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
         </>
       ) : (
-        <div style={{ color: 'var(--text2)', fontSize: 13 }}>{ru ? 'Нет открывашек' : 'No opening duels'}</div>
+        <div style={{ color: 'var(--text2)', fontSize: 13 }}>{t('metrics:opening.empty')}</div>
       )}
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -379,31 +323,30 @@ function IdealStrafePctPage({ analytics, playerNames, lang, totalRounds }: {
   const shown = filter === 'stopped' ? cleanAll : movingAll
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of allDuels) roundOutcomes[d.round] = d.errors.includes('moving_shot') ? 'death' : (d.won ? 'kill' : 'death')
-  const ru = lang === 'ru'
   return (
     <div>
       <MetricHero
-        title={ru ? 'Идеальные стрейфы' : 'Ideal strafes'}
-        subtitle={ru ? `${cleanAll.length} на стопе · ${movingAll.length} в движении (из ${allDuels.length} дуэлей)` : `${cleanAll.length} stopped · ${movingAll.length} moving (of ${allDuels.length} duels)`}
+        title={t('metrics:idealStrafe.title')}
+        subtitle={t('metrics:idealStrafe.subtitle', { stopped: cleanAll.length, moving: movingAll.length, total: allDuels.length })}
         value={pct.toFixed(1) + '%'} metricKey="idealStrafePct" lang={lang}
       />
-      <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+      <SectionHeading label={t('metrics:shared.impact')} />
       <WinRateComparison
         cleanCount={cleanAll.length} cleanWins={cleanWins}
         otherCount={movingAll.length} otherWins={movingWins}
         lang={lang}
       />
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <FilterBar
         options={[
-          { key: 'stopped' as const, label: ru ? `На стопе (${cleanAll.length})` : `Stopped (${cleanAll.length})`, color: 'var(--green)' },
-          { key: 'moving'  as const, label: ru ? `В движении (${movingAll.length})` : `Moving (${movingAll.length})`, color: 'var(--red)' },
+          { key: 'stopped' as const, label: t('metrics:shared.filterStopped', { n: cleanAll.length }), color: 'var(--green)' },
+          { key: 'moving'  as const, label: t('metrics:shared.filterMoving', { n: movingAll.length }), color: 'var(--red)' },
         ]}
         active={filter} onChange={setFilter}
       />
       <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -429,16 +372,6 @@ function getWeaponClass(raw: string) {
   return WEAPON_CLASS[raw] ?? WEAPON_CLASS['weapon_' + raw] ?? 'other'
 }
 
-const CLASS_LABELS: Record<string, { ru: string; en: string }> = {
-  rifle:   { ru: 'Винтовки', en: 'Rifles' },
-  pistol:  { ru: 'Пистолеты', en: 'Pistols' },
-  smg:     { ru: 'Пистолеты-пулемёты', en: 'SMGs' },
-  sniper:  { ru: 'Снайперские', en: 'Snipers' },
-  shotgun: { ru: 'Дробовики', en: 'Shotguns' },
-  lmg:     { ru: 'Пулемёты', en: 'LMGs' },
-  other:   { ru: 'Прочее', en: 'Other' },
-}
-
 function FirstBulletAccPage({ analytics, lang, totalRounds }: {
   analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
 }) {
@@ -448,7 +381,6 @@ function FirstBulletAccPage({ analytics, lang, totalRounds }: {
   const misses = shots.filter(s => !s.hit)
   const [filter, setFilter] = useState<'all' | 'hit' | 'miss'>('all')
   const shown = filter === 'hit' ? hits : filter === 'miss' ? misses : shots
-  const ru = lang === 'ru'
 
   // win-rate comparison: hit vs miss — check corresponding duels
   const duels = analytics.duels
@@ -479,15 +411,15 @@ function FirstBulletAccPage({ analytics, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Точность первой пули' : 'First bullet accuracy'}
-        subtitle={ru ? `${hits.length} попаданий · ${misses.length} промахов` : `${hits.length} hits · ${misses.length} misses`}
+        title={t('metrics:firstBullet.title')}
+        subtitle={t('metrics:firstBullet.subtitle', { hits: hits.length, misses: misses.length })}
         value={pct.toFixed(1) + '%'} metricKey="firstBulletAcc" lang={lang}
       />
 
       {/* Win rate comparison */}
       {hitDuels.length > 0 && missDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={hitDuels.length} cleanWins={hitWins}
             otherCount={missDuels.length} otherWins={missWins}
@@ -499,7 +431,7 @@ function FirstBulletAccPage({ analytics, lang, totalRounds }: {
       {/* Weapon class breakdown */}
       {classRows.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'По классу оружия' : 'By weapon class'} />
+          <SectionHeading label={t('metrics:firstBullet.byClass')} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
             {classRows.map(([cls, { total, hit }]) => {
               const acc = total > 0 ? Math.round(hit / total * 100) : 0
@@ -510,13 +442,13 @@ function FirstBulletAccPage({ analytics, lang, totalRounds }: {
                   minWidth: 110, flex: '1 1 110px',
                 }}>
                   <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>
-                    {CLASS_LABELS[cls]?.[lang] ?? cls}
+                    {t('metrics:weaponClass.' + cls, { defaultValue: cls })}
                   </div>
                   <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>
                     {acc}%
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text2)' }}>
-                    {hit}/{total} {ru ? 'попаданий' : 'hits'}
+                    {t('metrics:firstBullet.hits', { hit, total })}
                   </div>
                   <div style={{ marginTop: 6, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ width: `${acc}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
@@ -528,12 +460,12 @@ function FirstBulletAccPage({ analytics, lang, totalRounds }: {
         </>
       )}
 
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <FilterBar
         options={[
-          { key: 'all'  as const, label: ru ? `Все (${shots.length})` : `All (${shots.length})` },
-          { key: 'hit'  as const, label: ru ? `Попадания (${hits.length})` : `Hits (${hits.length})`, color: 'var(--green)' },
-          { key: 'miss' as const, label: ru ? `Промахи (${misses.length})` : `Misses (${misses.length})`, color: 'var(--red)' },
+          { key: 'all'  as const, label: t('metrics:shared.filterAll', { n: shots.length }) },
+          { key: 'hit'  as const, label: t('metrics:firstBullet.filterHit', { n: hits.length }), color: 'var(--green)' },
+          { key: 'miss' as const, label: t('metrics:firstBullet.filterMiss', { n: misses.length }), color: 'var(--red)' },
         ]}
         active={filter} onChange={setFilter}
       />
@@ -547,19 +479,19 @@ function FirstBulletAccPage({ analytics, lang, totalRounds }: {
           }}>
             <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{s.round}</span>
             <span style={{ fontSize: 12, fontWeight: 700, color: s.hit ? 'var(--green)' : 'var(--red)', minWidth: 60 }}>
-              {s.hit ? (ru ? '✓ Попал' : '✓ Hit') : (ru ? '✗ Промах' : '✗ Miss')}
+              {s.hit ? t('metrics:firstBullet.hit') : t('metrics:firstBullet.miss')}
             </span>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-              {prettyWeapon(s.weapon, lang)}
+              {prettyWeapon(s.weapon)}
             </span>
             <span style={{ fontSize: 10, color: 'var(--text2)', background: 'var(--bg3)', borderRadius: 3, padding: '1px 5px' }}>
-              {CLASS_LABELS[getWeaponClass(s.weapon)]?.[lang] ?? getWeaponClass(s.weapon)}
+              {t('metrics:weaponClass.' + getWeaponClass(s.weapon), { defaultValue: getWeaponClass(s.weapon) })}
             </span>
           </div>
         ))}
       </div>
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -575,30 +507,29 @@ function TradeKillsPage({ analytics, playerNames, lang, totalRounds }: {
   const nonTradeEpisodes = analytics.duels.filter(d => !d.isTradeKill)
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const r of rounds) roundOutcomes[r] = 'kill'
-  const ru = lang === 'ru'
   return (
     <div>
       <MetricHero
-        title={ru ? 'Трейд-килы' : 'Trade kills'}
-        subtitle={ru ? `${rounds.length} трейд-килов в раундах: ${rounds.join(', ') || '—'}` : `${rounds.length} trade kills in rounds: ${rounds.join(', ') || '—'}`}
+        title={t('metrics:tradeKills.title')}
+        subtitle={t('metrics:tradeKills.subtitle', { n: rounds.length, rounds: rounds.join(', ') || '—' })}
         value={pct.toFixed(1) + '%'} metricKey="tradeKillPct" lang={lang}
       />
       {episodes.length > 0 && nonTradeEpisodes.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={episodes.length} cleanWins={episodes.filter(d => d.won).length}
             otherCount={nonTradeEpisodes.length} otherWins={nonTradeEpisodes.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Трейд-килы' : 'Trade kills'}
-            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+            cleanLabel={t('metrics:tradeKills.cleanLabel')}
+            otherLabel={t('metrics:shared.otherDuels')}
           />
         </>
       )}
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <EpisodeList duels={episodes} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -614,30 +545,29 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
   const nonTradedDeaths = analytics.duels.filter(d => !d.isTradedDeath)
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const r of rounds) roundOutcomes[r] = 'draw'
-  const ru = lang === 'ru'
   return (
     <div>
       <MetricHero
-        title={ru ? 'Трейд-смерти' : 'Traded deaths'}
-        subtitle={ru ? `${rounds.length} трейд-смертей в раундах: ${rounds.join(', ') || '—'}` : `${rounds.length} traded deaths in rounds: ${rounds.join(', ') || '—'}`}
+        title={t('metrics:tradedDeaths.title')}
+        subtitle={t('metrics:tradedDeaths.subtitle', { n: rounds.length, rounds: rounds.join(', ') || '—' })}
         value={pct.toFixed(1) + '%'} metricKey="tradedDeathPct" lang={lang}
       />
       {episodes.length > 0 && nonTradedDeaths.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={episodes.length} cleanWins={episodes.filter(d => d.won).length}
             otherCount={nonTradedDeaths.length} otherWins={nonTradedDeaths.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Трейд-смерти' : 'Traded deaths'}
-            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+            cleanLabel={t('metrics:tradedDeaths.cleanLabel')}
+            otherLabel={t('metrics:shared.otherDuels')}
           />
         </>
       )}
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <EpisodeList duels={episodes} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -656,7 +586,6 @@ function LostDuelsPage({ analytics, playerNames, lang, totalRounds }: {
   const [filter, setFilter] = useState<'all' | 'flashed' | 'moving' | 'outnumbered' | 'clean'>('all')
   const shown = filter === 'flashed' ? flashed : filter === 'moving' ? moving
     : filter === 'outnumbered' ? outnumbered : filter === 'clean' ? clean : lost
-  const ru = lang === 'ru'
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of lost) roundOutcomes[d.round] = 'death'
@@ -668,37 +597,37 @@ function LostDuelsPage({ analytics, playerNames, lang, totalRounds }: {
   const lostRoundDuels = allDuels.filter(d => lostRounds.has(d.round))
 
   const breakdownItems = [
-    { label: ru ? 'Под флешкой' : 'Flashed', count: flashed.length, color: 'var(--accent2)' },
-    { label: ru ? 'В движении' : 'Moving', count: moving.length, color: 'var(--accent)' },
-    { label: ru ? 'В меньшинстве' : 'Outnumbered', count: outnumbered.length, color: 'var(--red)' },
-    { label: ru ? 'Прочие ошибки' : 'Other errors', count: other.length, color: 'var(--text2)' },
-    { label: ru ? 'Чистые' : 'Clean', count: clean.length, color: '#7ec8e3' },
+    { label: t('metrics:lostDuels.flashed'), count: flashed.length, color: 'var(--accent2)' },
+    { label: t('metrics:lostDuels.moving'), count: moving.length, color: 'var(--accent)' },
+    { label: t('metrics:lostDuels.outnumbered'), count: outnumbered.length, color: 'var(--red)' },
+    { label: t('metrics:lostDuels.otherErrors'), count: other.length, color: 'var(--text2)' },
+    { label: t('metrics:lostDuels.clean'), count: clean.length, color: '#7ec8e3' },
   ].filter(b => b.count > 0)
 
   return (
     <div>
       <MetricHero
-        title={ru ? 'Проигранные дуэли' : 'Lost duels'}
-        subtitle={ru ? `${lost.length} смертей` : `${lost.length} deaths`}
+        title={t('metrics:lostDuels.title')}
+        subtitle={t('metrics:lostDuels.subtitle', { n: lost.length })}
         value={String(lost.length)} metricKey="lostDuels" lang={lang}
       />
 
       {lostRoundDuels.length > 0 && cleanRoundDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={cleanRoundDuels.length} cleanWins={cleanRoundDuels.filter(d => d.won).length}
             otherCount={lostRoundDuels.length} otherWins={lostRoundDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Раунды без смерти' : 'Rounds without death'}
-            otherLabel={ru ? 'Раунды со смертью' : 'Rounds with death'}
+            cleanLabel={t('metrics:lostDuels.cleanLabel')}
+            otherLabel={t('metrics:lostDuels.otherLabel')}
           />
         </>
       )}
 
       {breakdownItems.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Причины проигрышей' : 'Loss causes'} />
+          <SectionHeading label={t('metrics:lostDuels.causes')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20, background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
             {breakdownItems.map(({ label, count, color }) => {
               const pct = lost.length > 0 ? Math.round(count / lost.length * 100) : 0
@@ -718,20 +647,20 @@ function LostDuelsPage({ analytics, playerNames, lang, totalRounds }: {
         </>
       )}
 
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <FilterBar
         options={[
-          { key: 'all'        as const, label: ru ? `Все (${lost.length})` : `All (${lost.length})` },
-          { key: 'flashed'    as const, label: ru ? `Флеш (${flashed.length})` : `Flashed (${flashed.length})`, color: 'var(--accent2)' },
-          { key: 'moving'     as const, label: ru ? `В движении (${moving.length})` : `Moving (${moving.length})`, color: 'var(--accent)' },
-          { key: 'outnumbered'as const, label: ru ? `В меньшинстве (${outnumbered.length})` : `Outnumbered (${outnumbered.length})`, color: 'var(--red)' },
-          { key: 'clean'      as const, label: ru ? `Чистые (${clean.length})` : `Clean (${clean.length})` },
+          { key: 'all'        as const, label: t('metrics:shared.filterAll', { n: lost.length }) },
+          { key: 'flashed'    as const, label: t('metrics:lostDuels.filterFlashed', { n: flashed.length }), color: 'var(--accent2)' },
+          { key: 'moving'     as const, label: t('metrics:lostDuels.filterMoving', { n: moving.length }), color: 'var(--accent)' },
+          { key: 'outnumbered'as const, label: t('metrics:lostDuels.filterOutnumbered', { n: outnumbered.length }), color: 'var(--red)' },
+          { key: 'clean'      as const, label: t('metrics:lostDuels.filterClean', { n: clean.length }) },
         ]}
         active={filter} onChange={setFilter}
       />
       <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -751,41 +680,40 @@ function CounterStrafeErrorsPage({ analytics, playerNames, lang, totalRounds }: 
   const shown = filter === 'won' ? movingDuels.filter(d => d.won) : filter === 'lost' ? movingDuels.filter(d => !d.won) : movingDuels
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of movingDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
-  const ru = lang === 'ru'
   const errCount = m.counterStrafeErrors ?? 0
   return (
     <div>
       <MetricHero
-        title={ru ? 'Ошибки контрстрейфа' : 'Counter-strafe errors'}
-        subtitle={ru ? 'Выстрелов сделано в движении (нет остановки перед выстрелом)' : 'Shots fired while moving (no stop before shooting)'}
+        title={t('metrics:counterStrafe.title')}
+        subtitle={t('metrics:counterStrafe.subtitle')}
         value={String(errCount)} metricKey="counterStrafeErrors" lang={lang} higherIsBetter={false}
       />
-      <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+      <SectionHeading label={t('metrics:shared.impact')} />
       <WinRateComparison
         cleanCount={cleanDuels.length} cleanWins={cleanWins}
         otherCount={movingDuels.length} otherWins={movingWins}
         lang={lang}
       />
-      <SectionHeading label={ru ? 'Дуэли с выстрелами в движении' : 'Duels with moving shots'} />
+      <SectionHeading label={t('metrics:counterStrafe.movingDuels')} />
       {movingDuels.length > 0 ? (
         <>
           <FilterBar
             options={[
-              { key: 'all'  as const, label: ru ? `Все (${movingDuels.length})` : `All (${movingDuels.length})` },
-              { key: 'won'  as const, label: ru ? `Выигранные (${movingWins})` : `Won (${movingWins})`, color: 'var(--green)' },
-              { key: 'lost' as const, label: ru ? `Проигранные (${movingDuels.length - movingWins})` : `Lost (${movingDuels.length - movingWins})`, color: 'var(--red)' },
+              { key: 'all'  as const, label: t('metrics:shared.filterAll', { n: movingDuels.length }) },
+              { key: 'won'  as const, label: t('metrics:shared.filterWon', { n: movingWins }), color: 'var(--green)' },
+              { key: 'lost' as const, label: t('metrics:shared.filterLost', { n: movingDuels.length - movingWins }), color: 'var(--red)' },
             ]}
             active={filter} onChange={setFilter}
           />
           <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
           <div style={{ marginTop: 24 }}>
-            <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+            <SectionHeading label={t('metrics:shared.byRound')} />
             <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
           </div>
         </>
       ) : (
         <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
-          {ru ? 'Нет дуэлей с выстрелами в движении' : 'No duels with moving shots'}
+          {t('metrics:counterStrafe.empty')}
         </div>
       )}
     </div>
@@ -803,15 +731,14 @@ function DisciplinePage({ analytics, playerNames, lang, activeKey, totalRounds }
   const defaultFilter = activeKey === 'shiftPeekPct' ? 'shift_peek' : 'isolated'
   const [filter, setFilter] = useState<'shift_peek' | 'isolated'>(defaultFilter)
   const shown = filter === 'shift_peek' ? shiftDuels : isoDuels
-  const ru = lang === 'ru'
 
   const isShift = activeKey === 'shiftPeekPct'
   const activeDuels = isShift ? shiftDuels : isoDuels
   const heroValue = isShift ? m.shiftPeekPct.toFixed(1) + '%' : m.isolatedPct.toFixed(1) + '%'
-  const heroTitle = isShift ? (ru ? 'Шифт-пики' : 'Shift peeks') : (ru ? 'Игра в изоляции' : 'Isolated plays')
+  const heroTitle = isShift ? t('metrics:discipline.shiftTitle') : t('metrics:discipline.isolatedTitle')
   const heroSub = isShift
-    ? (ru ? '% дуэлей начато из шифта' : '% of duels started while walking')
-    : (ru ? '% дуэлей без поддержки союзников' : '% of duels without nearby allies')
+    ? t('metrics:discipline.shiftSubtitle')
+    : t('metrics:discipline.isolatedSubtitle')
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of activeDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
@@ -824,32 +751,32 @@ function DisciplinePage({ analytics, playerNames, lang, activeKey, totalRounds }
       />
       {activeDuels.length > 0 && cleanDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={activeDuels.length} cleanWins={activeDuels.filter(d => d.won).length}
             otherCount={cleanDuels.length} otherWins={cleanDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={isShift ? (ru ? 'Шифт-пики' : 'Shift peeks') : (ru ? 'В изоляции' : 'Isolated')}
-            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+            cleanLabel={isShift ? t('metrics:discipline.shiftTitle') : t('metrics:discipline.isolatedClean')}
+            otherLabel={t('metrics:shared.otherDuels')}
           />
         </>
       )}
       <div style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 16px', marginBottom: 20 }}>
-        <StatBar label={ru ? 'Шифт-пики' : 'Shift peeks'} value={m.shiftPeekPct} max={100} color={m.shiftPeekPct > 30 ? 'var(--accent2)' : 'var(--green)'} />
-        <StatBar label={ru ? 'Игра в изоляции' : 'Isolated plays'} value={m.isolatedPct} max={100} color={m.isolatedPct > 30 ? 'var(--red)' : 'var(--green)'} />
+        <StatBar label={t('metrics:discipline.shiftTitle')} value={m.shiftPeekPct} max={100} color={m.shiftPeekPct > 30 ? 'var(--accent2)' : 'var(--green)'} />
+        <StatBar label={t('metrics:discipline.isolatedTitle')} value={m.isolatedPct} max={100} color={m.isolatedPct > 30 ? 'var(--red)' : 'var(--green)'} />
       </div>
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <FilterBar
         options={[
-          { key: 'shift_peek' as const, label: ru ? `Шифт-пики (${shiftDuels.length})` : `Shift peeks (${shiftDuels.length})`, color: 'var(--accent2)' },
-          { key: 'isolated'   as const, label: ru ? `Изоляция (${isoDuels.length})` : `Isolated (${isoDuels.length})`, color: 'var(--red)' },
+          { key: 'shift_peek' as const, label: t('metrics:discipline.filterShift', { n: shiftDuels.length }), color: 'var(--accent2)' },
+          { key: 'isolated'   as const, label: t('metrics:discipline.filterIsolated', { n: isoDuels.length }), color: 'var(--red)' },
         ]}
         active={filter} onChange={setFilter}
       />
       <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
       {activeDuels.length > 0 && (
         <div style={{ marginTop: 24 }}>
-          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <SectionHeading label={t('metrics:shared.byRound')} />
           <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
         </div>
       )}
@@ -869,27 +796,26 @@ function TtkPage({ analytics, playerNames, lang, totalRounds }: {
   const shown = filter === 'stopped' ? stopped : filter === 'moving' ? moving : won
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of won) roundOutcomes[d.round] = 'kill'
-  const ru = lang === 'ru'
-  const val = (m.ttk_ms ?? 0) > 0 ? m.ttk_ms.toFixed(0) + (ru ? ' мс' : ' ms') : '—'
+  const val = (m.ttk_ms ?? 0) > 0 ? t('metrics:ttk.value', { value: m.ttk_ms.toFixed(0) }) : '—'
   return (
     <div>
       <MetricHero
-        title={ru ? 'Время до фрага' : 'Time to kill'}
-        subtitle={ru ? 'Среднее время от первого выстрела до кила' : 'Avg ms from first shot to kill'}
+        title={t('metrics:ttk.title')}
+        subtitle={t('metrics:ttk.subtitle')}
         value={val} metricKey="ttk_ms" lang={lang} higherIsBetter={false}
       />
-      <SectionHeading label={ru ? 'Победные дуэли' : 'Won duels'} />
+      <SectionHeading label={t('metrics:ttk.wonHeading')} />
       <FilterBar
         options={[
-          { key: 'all'     as const, label: ru ? `Все (${won.length})` : `All (${won.length})` },
-          { key: 'stopped' as const, label: ru ? `На стопе (${stopped.length})` : `Stopped (${stopped.length})`, color: 'var(--green)' },
-          { key: 'moving'  as const, label: ru ? `В движении (${moving.length})` : `Moving (${moving.length})`, color: 'var(--red)' },
+          { key: 'all'     as const, label: t('metrics:shared.filterAll', { n: won.length }) },
+          { key: 'stopped' as const, label: t('metrics:shared.filterStopped', { n: stopped.length }), color: 'var(--green)' },
+          { key: 'moving'  as const, label: t('metrics:shared.filterMoving', { n: moving.length }), color: 'var(--red)' },
         ]}
         active={filter} onChange={setFilter}
       />
       <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -903,7 +829,6 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
   const m = analytics.metrics
   const clutches = playerData.clutches
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all')
-  const ru = lang === 'ru'
 
   const list = clutches.list ?? []
   const wonList = list.filter(c => c.won)
@@ -923,27 +848,27 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
   return (
     <div>
       <MetricHero
-        title={ru ? 'Клатч Win%' : 'Clutch Win%'}
-        subtitle={ru ? `${clutches.won} выиграно · ${clutches.played} попыток` : `${clutches.won} won · ${clutches.played} attempted`}
+        title={t('metrics:clutch.title')}
+        subtitle={t('metrics:clutch.subtitle', { won: clutches.won, played: clutches.played })}
         value={m.clutchWinPct.toFixed(1) + '%'} metricKey="clutchWinPct" lang={lang}
       />
 
       {list.length > 0 && nonClutchDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={nonClutchDuels.length} cleanWins={nonClutchDuels.filter(d => d.won).length}
             otherCount={list.length} otherWins={wonList.length}
             lang={lang}
-            cleanLabel={ru ? 'Обычные раунды' : 'Normal rounds'}
-            otherLabel={ru ? 'Клатч-раунды' : 'Clutch rounds'}
+            cleanLabel={t('metrics:clutch.normalRounds')}
+            otherLabel={t('metrics:clutch.rounds')}
           />
         </>
       )}
 
       {sizes.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'По числу противников' : 'By enemy count'} />
+          <SectionHeading label={t('metrics:clutch.byEnemies')} />
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
             {sizes.map(k => {
               const s = byX[k]
@@ -954,7 +879,7 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
                   minWidth: 80, textAlign: 'center'
                 }}>
                   <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 4 }}>
-                    {ru ? `1 vs ${k}` : `1v${k}`}
+                    {t('metrics:clutch.vs', { n: k })}
                   </div>
                   <div style={{ fontSize: 20, fontWeight: 700, color: s.won > 0 ? 'var(--green)' : 'var(--text)' }}>
                     {pct}%
@@ -971,12 +896,12 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
 
       {list.length > 0 ? (
         <>
-          <SectionHeading label={ru ? 'Клатч-раунды' : 'Clutch rounds'} />
+          <SectionHeading label={t('metrics:clutch.rounds')} />
           <FilterBar
             options={[
-              { key: 'all'  as const, label: ru ? `Все (${list.length})` : `All (${list.length})` },
-              { key: 'won'  as const, label: ru ? `Выигранные (${wonList.length})` : `Won (${wonList.length})`, color: 'var(--green)' },
-              { key: 'lost' as const, label: ru ? `Проигранные (${lostList.length})` : `Lost (${lostList.length})`, color: 'var(--red)' },
+              { key: 'all'  as const, label: t('metrics:shared.filterAll', { n: list.length }) },
+              { key: 'won'  as const, label: t('metrics:shared.filterWon', { n: wonList.length }), color: 'var(--green)' },
+              { key: 'lost' as const, label: t('metrics:shared.filterLost', { n: lostList.length }), color: 'var(--red)' },
             ]}
             active={filter} onChange={setFilter}
           />
@@ -988,10 +913,10 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
                 borderLeft: `3px solid ${c.won ? 'var(--green)' : 'var(--red)'}`
               }}>
                 <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 60 }}>
-                  {ru ? `Раунд ${c.round}` : `Round ${c.round}`}
+                  {t('metrics:clutch.round', { n: c.round })}
                 </span>
                 <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  {ru ? `1 vs ${c.enemies}` : `1v${c.enemies}`}
+                  {t('metrics:clutch.vs', { n: c.enemies })}
                 </span>
                 <span style={{ fontSize: 12, color: 'var(--text2)' }}>
                   {c.kills > 0 ? `${c.kills} kill${c.kills > 1 ? 's' : ''}` : ''}
@@ -1000,17 +925,17 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
                   marginLeft: 'auto', fontSize: 11, fontWeight: 700,
                   color: c.won ? 'var(--green)' : 'var(--red)'
                 }}>
-                  {c.won ? (ru ? 'ВЫИГРАЛ' : 'WON') : (ru ? 'ПРОИГРАЛ' : 'LOST')}
+                  {c.won ? t('metrics:clutch.won') : t('metrics:clutch.lost')}
                 </span>
               </div>
             ))}
           </div>
-          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <SectionHeading label={t('metrics:shared.byRound')} />
           <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
         </>
       ) : (
         <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
-          {ru ? 'Клатч-раундов нет' : 'No clutch rounds'}
+          {t('metrics:clutch.empty')}
         </div>
       )}
     </div>
@@ -1026,7 +951,6 @@ function FlashEfficiencyPage({ analytics, playerNames, lang, totalRounds }: {
   const flashedLost = flashedDuels.filter(d => !d.won)
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all')
   const shown = filter === 'won' ? flashedWon : filter === 'lost' ? flashedLost : flashedDuels
-  const ru = lang === 'ru'
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of flashedDuels) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
@@ -1034,39 +958,39 @@ function FlashEfficiencyPage({ analytics, playerNames, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Эффективность флешек' : 'Flash efficiency'}
-        subtitle={ru ? '% своих флешек, ослепивших противника' : '% of own flashes that blinded an enemy'}
+        title={t('metrics:flash.title')}
+        subtitle={t('metrics:flash.subtitle')}
         value={m.flashEfficiency.toFixed(1) + '%'} metricKey="flashEfficiency" lang={lang}
       />
       {flashedDuels.length > 0 ? (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={flashedDuels.length} cleanWins={flashedWon.length}
             otherCount={analytics.duels.filter(d => !d.errors.includes('flashed')).length}
             otherWins={analytics.duels.filter(d => !d.errors.includes('flashed') && d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Под флешкой' : 'While flashed'}
-            otherLabel={ru ? 'Без флешки' : 'Not flashed'}
+            cleanLabel={t('metrics:flash.whileFlashed')}
+            otherLabel={t('metrics:flash.notFlashed')}
           />
-          <SectionHeading label={ru ? 'Дуэли, где тебя ослепили' : 'Duels where you were flashed'} />
+          <SectionHeading label={t('metrics:flash.duelsHeading')} />
           <FilterBar
             options={[
-              { key: 'all'  as const, label: ru ? `Все (${flashedDuels.length})` : `All (${flashedDuels.length})` },
-              { key: 'won'  as const, label: ru ? `Выигранные (${flashedWon.length})` : `Won (${flashedWon.length})`, color: 'var(--green)' },
-              { key: 'lost' as const, label: ru ? `Проигранные (${flashedLost.length})` : `Lost (${flashedLost.length})`, color: 'var(--red)' },
+              { key: 'all'  as const, label: t('metrics:shared.filterAll', { n: flashedDuels.length }) },
+              { key: 'won'  as const, label: t('metrics:shared.filterWon', { n: flashedWon.length }), color: 'var(--green)' },
+              { key: 'lost' as const, label: t('metrics:shared.filterLost', { n: flashedLost.length }), color: 'var(--red)' },
             ]}
             active={filter} onChange={setFilter}
           />
           <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
           <div style={{ marginTop: 24 }}>
-            <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+            <SectionHeading label={t('metrics:shared.byRound')} />
             <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
           </div>
         </>
       ) : (
         <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
-          {ru ? 'Дуэлей под флешкой нет' : 'No duels while flashed'}
+          {t('metrics:flash.empty')}
         </div>
       )}
     </div>
@@ -1085,21 +1009,20 @@ function ReloadErrorsPage({ analytics, lang, totalRounds }: {
   for (const d of analytics.duels) {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
   }
-  const ru = lang === 'ru'
   return (
     <div>
       <MetricHero
-        title={ru ? 'Перезарядки' : 'Reload errors'}
-        subtitle={ru ? 'Перезарядок с патронами в магазине (>5 патронов)' : 'Reloads with bullets still in magazine (>5 bullets)'}
+        title={t('metrics:reload.title')}
+        subtitle={t('metrics:reload.subtitle')}
         value={String(reloadErrors)} metricKey="reloadErrors" lang={lang} higherIsBetter={false}
       />
 
-      <SectionHeading label={ru ? 'Статистика' : 'Stats'} />
+      <SectionHeading label={t('metrics:reload.stats')} />
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 }}>
         {[
-          { label: ru ? 'Потеряно перезарядок' : 'Early reloads', value: String(reloadErrors) },
-          { label: ru ? 'Дуэлей сыграно' : 'Duels played', value: String(totalDuels) },
-          { label: ru ? 'На 100 выстрелов' : 'Per 100 shots', value: totalShots > 0 ? String(per100) : '—' },
+          { label: t('metrics:reload.early'), value: String(reloadErrors) },
+          { label: t('metrics:reload.duelsPlayed'), value: String(totalDuels) },
+          { label: t('metrics:reload.per100'), value: totalShots > 0 ? String(per100) : '—' },
         ].map(({ label, value }) => (
           <div key={label} style={{
             flex: '1 1 140px', minWidth: 120,
@@ -1111,18 +1034,16 @@ function ReloadErrorsPage({ analytics, lang, totalRounds }: {
           </div>
         ))}
       </div>
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 24,
       }}>
-        {ru
-          ? 'Перезарядка с патронами в магазине трактуется как ошибка, так как ты теряешь патроны и тратишь время в потенциально опасный момент. Идеально — перезаряжаться только когда магазин пуст или близок к пустому.'
-          : 'Reloading with bullets still in the magazine wastes ammo and takes time at a potentially dangerous moment. Ideally, reload only when the magazine is empty or near-empty.'}
+        {t('metrics:reload.explanation')}
       </div>
       <div style={{ marginTop: 8 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -1135,7 +1056,6 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
   const m = analytics.metrics
   const count = m.angleControlCount ?? 0
   const byPhase = m.angleControlByPhase
-  const ru = lang === 'ru'
 
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of analytics.duels) {
@@ -1143,22 +1063,22 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
   }
 
   const phaseRows = byPhase ? [
-    { key: 'early', label: ru ? 'Начало раунда (0–15с)' : 'Early (0–15s)', count: byPhase.early, color: 'var(--green)' },
-    { key: 'mid',   label: ru ? 'Середина раунда (15–45с)' : 'Mid (15–45s)',   count: byPhase.mid,   color: 'var(--accent2)' },
-    { key: 'late',  label: ru ? 'Поздняя фаза (45с+)' : 'Late (45s+)',      count: byPhase.late,  color: 'var(--red)' },
+    { key: 'early', label: t('metrics:angleControl.phaseEarly'), count: byPhase.early, color: 'var(--green)' },
+    { key: 'mid',   label: t('metrics:angleControl.phaseMid'),   count: byPhase.mid,   color: 'var(--accent2)' },
+    { key: 'late',  label: t('metrics:angleControl.phaseLate'),  count: byPhase.late,  color: 'var(--red)' },
   ] : []
 
   return (
     <div>
       <MetricHero
-        title={ru ? 'Контроль угла' : 'Angle control'}
-        subtitle={ru ? 'Позиций удержано ≥2 секунды без движения' : 'Positions held ≥2 seconds without movement'}
+        title={t('metrics:angleControl.title')}
+        subtitle={t('metrics:angleControl.subtitle')}
         value={String(count)} metricKey="angleControlCount" lang={lang}
       />
 
       {phaseRows.length > 0 && count > 0 && (
         <>
-          <SectionHeading label={ru ? 'Когда в раунде это происходит' : 'When in the round this occurs'} />
+          <SectionHeading label={t('metrics:angleControl.whenHeading')} />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 20 }}>
             {phaseRows.map(({ key, label, count: c, color }) => {
               const pct = count > 0 ? Math.round(c / count * 100) : 0
@@ -1182,19 +1102,17 @@ function AngleControlPage({ analytics, lang, totalRounds }: {
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? 'Контроль угла — уникальные позиции, где ты стоял неподвижно ≥2 секунды во время живых раундов. Высокое значение = терпеливое удержание углов. Фазы раунда показывают, когда именно ты предпочитаешь держать угол.'
-          : 'Angle control counts unique positions held still for ≥2 seconds during live rounds. A higher value means patient angle holding. Phase breakdown shows when in the round you prefer to hold angles.'}
+        {t('metrics:angleControl.explanation')}
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -1209,7 +1127,6 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
 }) {
   const m = analytics.metrics
   const rt = m.reactionTimeMs ?? 0
-  const ru = lang === 'ru'
   const wonDuels = analytics.duels.filter(d => d.won)
   const deltas: number[] = m.reactionDeltas ?? []
 
@@ -1232,15 +1149,15 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Время реакции' : 'Reaction time'}
-        subtitle={ru ? 'Ср. мс от начала движения врага до первого выстрела' : 'Avg ms from enemy peek onset to first shot'}
-        value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
+        title={t('metrics:reaction.title')}
+        subtitle={t('metrics:reaction.subtitle')}
+        value={rt > 0 ? t('metrics:reaction.value', { value: rt.toFixed(0) }) : '—'}
         metricKey="reactionTimeMs" lang={lang} higherIsBetter={false}
       />
 
       {deltas.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Распределение реакции' : 'Reaction time distribution'} />
+          <SectionHeading label={t('metrics:reaction.distribution')} />
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, marginBottom: 6, background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
             {BUCKETS.map((b, i) => {
               const h = Math.round(counts[i] / maxCount * 56)
@@ -1258,33 +1175,29 @@ function ReactionTimePage({ analytics, playerNames, lang, totalRounds }: {
             })}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 20 }}>
-            {ru
-              ? `${deltas.length} дуэлей · среднее ${rt.toFixed(0)} мс · мин ${Math.min(...deltas).toFixed(0)} мс · макс ${Math.max(...deltas).toFixed(0)} мс`
-              : `${deltas.length} duels · avg ${rt.toFixed(0)} ms · min ${Math.min(...deltas).toFixed(0)} ms · max ${Math.max(...deltas).toFixed(0)} ms`}
+            {t('metrics:reaction.summary', { n: deltas.length, avg: rt.toFixed(0), min: Math.min(...deltas).toFixed(0), max: Math.max(...deltas).toFixed(0) })}
           </div>
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? 'Время реакции — сколько мс прошло с момента, когда враг начал движение (пик), до первого выстрела в этой дуэли. Измеряется только по выигранным дуэлям, где враг двигался. Ниже = быстрее.'
-          : 'Reaction time measures how many ms elapsed from when the enemy started moving (peek onset) until your first shot in the duel. Measured on winning duels where the enemy was in motion. Lower is better.'}
+        {t('metrics:reaction.explanation')}
       </div>
 
       {wonDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Победные дуэли' : 'Winning duels'} />
+          <SectionHeading label={t('metrics:reaction.wonHeading')} />
           <EpisodeList duels={wonDuels} playerNames={playerNames} lang={lang} />
         </>
       )}
 
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -1299,7 +1212,6 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
 }) {
   const m = analytics.metrics
   const ov = m.overshootCount ?? 0
-  const ru = lang === 'ru'
   const allDuels = analytics.duels
   const wonDuels = allDuels.filter(d => d.won)
   const overshootDuels = wonDuels.filter(d => d.errors.includes('overshoot'))
@@ -1324,23 +1236,21 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Промахи прицела' : 'Overshoot count'}
-        subtitle={ru
-          ? `${overshootDuels.length} перелётов · ${undershootDuels.length} недолётов · ${cleanDuels.length} чистых (из ${wonDuels.length} побед)`
-          : `${overshootDuels.length} overshoots · ${undershootDuels.length} undershoots · ${cleanDuels.length} clean (of ${wonDuels.length} wins)`}
+        title={t('metrics:overshoot.title')}
+        subtitle={t('metrics:overshoot.subtitle', { overshoots: overshootDuels.length, undershoots: undershootDuels.length, clean: cleanDuels.length, wins: wonDuels.length })}
         value={String(ov)}
         metricKey="overshootCount" lang={lang} higherIsBetter={false}
       />
 
       {overshootDuels.length > 0 && cleanDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={allCleanRoundDuels.length} cleanWins={allCleanRoundDuels.filter(d => d.won).length}
             otherCount={allAimErrRoundDuels.length} otherWins={allAimErrRoundDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Без ошибок прицела' : 'Clean aim'}
-            otherLabel={ru ? 'Перелёт / недолёт' : 'Overshoot / undershoot'}
+            cleanLabel={t('metrics:overshoot.cleanAim')}
+            otherLabel={t('metrics:overshoot.aimError')}
           />
         </>
       )}
@@ -1348,19 +1258,19 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
       {/* split bar */}
       {wonDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Структура побед' : 'Win breakdown'} />
+          <SectionHeading label={t('metrics:shared.winBreakdown')} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 20 }}>
             {[
-              { key: 'overshoot' as const, label: ru ? 'Перелёт' : 'Overshoot', count: overshootDuels.length, color: 'var(--red)' },
-              { key: 'undershoot' as const, label: ru ? 'Недолёт' : 'Undershoot', count: undershootDuels.length, color: 'var(--accent2)' },
-              { key: 'clean' as const, label: ru ? 'Чистые' : 'Clean', count: cleanDuels.length, color: 'var(--green)' },
+              { key: 'overshoot' as const, label: t('metrics:overshoot.overshoot'), count: overshootDuels.length, color: 'var(--red)' },
+              { key: 'undershoot' as const, label: t('metrics:overshoot.undershoot'), count: undershootDuels.length, color: 'var(--accent2)' },
+              { key: 'clean' as const, label: t('metrics:overshoot.clean'), count: cleanDuels.length, color: 'var(--green)' },
             ].map(({ key, label, count, color }) => {
               const pct = wonDuels.length > 0 ? Math.round(count / wonDuels.length * 100) : 0
               return (
                 <div key={key} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
                   <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>{count}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{pct}% {ru ? 'от побед' : 'of wins'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{pct}% {t('metrics:shared.ofWins')}</div>
                   <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
                   </div>
@@ -1371,25 +1281,23 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? 'Перелёт — прицел пролетел через врага (знак угла изменился). Недолёт — прицел так и не дотянулся до врага (угол не обнулился). Чистые дуэли — ни того, ни другого.'
-          : 'Overshoot — your aim crossed past the enemy (angle sign changed). Undershoot — aim never reached the enemy (angle never zeroed). Clean duels — neither.'}
+        {t('metrics:overshoot.explanation')}
       </div>
 
       {wonDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+          <SectionHeading label={t('metrics:shared.episodes')} />
           <FilterBar
             options={[
-              { key: 'overshoot' as const, label: ru ? `Перелёт (${overshootDuels.length})` : `Overshoot (${overshootDuels.length})`, color: 'var(--red)' },
-              { key: 'undershoot' as const, label: ru ? `Недолёт (${undershootDuels.length})` : `Undershoot (${undershootDuels.length})`, color: 'var(--accent2)' },
-              { key: 'clean' as const, label: ru ? `Чистые (${cleanDuels.length})` : `Clean (${cleanDuels.length})`, color: 'var(--green)' },
+              { key: 'overshoot' as const, label: t('metrics:overshoot.filterOvershoot', { n: overshootDuels.length }), color: 'var(--red)' },
+              { key: 'undershoot' as const, label: t('metrics:overshoot.filterUndershoot', { n: undershootDuels.length }), color: 'var(--accent2)' },
+              { key: 'clean' as const, label: t('metrics:overshoot.filterClean', { n: cleanDuels.length }), color: 'var(--green)' },
             ]}
             active={filter} onChange={setFilter}
           />
@@ -1398,7 +1306,7 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
       )}
 
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -1413,7 +1321,6 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
   const m = analytics.metrics
   const pct = m.crosshairPlacementPct ?? 0
   const shots = m.firstBulletShots ?? []
-  const ru = lang === 'ru'
 
   // Build per-weapon breakdown from firstBulletShots + hurt events
   // We use the shots list and pair hits with the hitgroup from duels
@@ -1459,40 +1366,36 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Прицел на голове' : 'Crosshair placement'}
-        subtitle={ru
-          ? `${headHitsEst} попаданий в голову из ${totalHits} первых пуль`
-          : `${headHitsEst} head hits out of ${totalHits} first-bullet hits`}
+        title={t('metrics:crosshair.title')}
+        subtitle={t('metrics:crosshair.subtitle', { head: headHitsEst, total: totalHits })}
         value={pct.toFixed(1) + '%'} metricKey="crosshairPlacementPct" lang={lang}
       />
 
       {headDuels.length > 0 && bodyDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={headDuels.length} cleanWins={headDuels.filter(d => d.won).length}
             otherCount={bodyDuels.length} otherWins={bodyDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Первая пуля — голова' : 'First bullet — head'}
-            otherLabel={ru ? 'Первая пуля — тело' : 'First bullet — body'}
+            cleanLabel={t('metrics:crosshair.headLabel')}
+            otherLabel={t('metrics:crosshair.bodyLabel')}
           />
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? 'Показывает, насколько точно ты держишь прицел на уровне головы до начала дуэли. Считается как % первых попаданий по врагу, которые пришлись в голову. Высокий показатель означает правильное пре-аимирование и snappy флики.'
-          : 'Measures how accurately you pre-aim at head level before duels start. Calculated as % of first-bullet hits on an enemy that landed on the head. A high value means good pre-aim and snappy flicks.'}
+        {t('metrics:crosshair.explanation')}
       </div>
 
       {weaponRows.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'По оружию' : 'By weapon'} />
+          <SectionHeading label={t('metrics:crosshair.byWeapon')} />
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
             {weaponRows.map(([wep, { hits, headHits }]) => {
               const wpct = hits > 0 ? Math.round(headHits / hits * 100) : 0
@@ -1510,7 +1413,7 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
                     {wpct}%
                   </div>
                   <div style={{ fontSize: 11, color: 'var(--text2)' }}>
-                    {headHits}/{hits} {ru ? 'в голову' : 'head hits'}
+                    {t('metrics:crosshair.headHits', { head: headHits, total: hits })}
                   </div>
                   <div style={{ marginTop: 6, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ width: `${wpct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
@@ -1522,7 +1425,7 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
         </>
       )}
 
-      <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+      <SectionHeading label={t('metrics:shared.episodes')} />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 400, overflowY: 'auto' }}>
         {shots.filter(s => s.hit).map((s, i) => {
           const duel = duels.find(d => d.round === s.round && d.won)
@@ -1537,7 +1440,7 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
             }}>
               <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{s.round}</span>
               <span style={{ fontSize: 12, fontWeight: 700, color: isHead ? 'var(--green)' : 'var(--text2)', minWidth: 80 }}>
-                {isHead ? (ru ? '✓ Голова' : '✓ Head') : (ru ? '— Тело' : '— Body')}
+                {isHead ? t('metrics:crosshair.hitHead') : t('metrics:crosshair.hitBody')}
               </span>
               <span style={{ fontSize: 11, color: 'var(--text2)' }}>{wepLabel}</span>
             </div>
@@ -1546,7 +1449,7 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -1559,7 +1462,6 @@ function MissedFirstPage({ analytics, playerNames, lang, totalRounds }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>
   lang: 'ru' | 'en'; totalRounds: number
 }) {
-  const ru = lang === 'ru'
   const allDuels = analytics.duels
   const wonDuels = allDuels.filter(d => d.won)
   const missedDuels = wonDuels.filter(d => d.errors.includes('missed_first'))
@@ -1585,27 +1487,25 @@ function MissedFirstPage({ analytics, playerNames, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Неточный первый выстрел' : 'Inaccurate first shot'}
-        subtitle={ru
-          ? `${missedDuels.length} промахов первой пулей из ${wonDuels.length} выигранных дуэлей`
-          : `${missedDuels.length} first-bullet misses out of ${wonDuels.length} won duels`}
+        title={t('metrics:missedFirst.title')}
+        subtitle={t('metrics:missedFirst.subtitle', { missed: missedDuels.length, total: wonDuels.length })}
         value={`${pct}%`} metricKey="firstBulletAcc" lang={lang} higherIsBetter={false}
       />
 
       {wonDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Структура побед' : 'Win breakdown'} />
+          <SectionHeading label={t('metrics:shared.winBreakdown')} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
             {[
-              { key: 'missed' as const, label: ru ? 'Промах 1-й пулей' : 'Missed 1st bullet', count: missedDuels.length, color: 'var(--red)' },
-              { key: 'hit' as const, label: ru ? 'Попал 1-й пулей' : 'Hit 1st bullet', count: hitDuels.length, color: 'var(--green)' },
+              { key: 'missed' as const, label: t('metrics:missedFirst.missed'), count: missedDuels.length, color: 'var(--red)' },
+              { key: 'hit' as const, label: t('metrics:missedFirst.hit'), count: hitDuels.length, color: 'var(--green)' },
             ].map(({ key, label, count, color }) => {
               const barPct = wonDuels.length > 0 ? Math.round(count / wonDuels.length * 100) : 0
               return (
                 <div key={key} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
                   <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>{label}</div>
                   <div style={{ fontSize: 26, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>{count}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{barPct}% {ru ? 'от побед' : 'of wins'}</div>
+                  <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6 }}>{barPct}% {t('metrics:shared.ofWins')}</div>
                   <div style={{ height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
                     <div style={{ width: `${barPct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
                   </div>
@@ -1618,40 +1518,38 @@ function MissedFirstPage({ analytics, playerNames, lang, totalRounds }: {
 
       {missedDuels.length > 0 && hitDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={allHitRoundDuels.length} cleanWins={allHitRoundDuels.filter(d => d.won).length}
             otherCount={allMissedRoundDuels.length} otherWins={allMissedRoundDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Попал первой пулей' : 'Hit 1st bullet'}
-            otherLabel={ru ? 'Промахнулся 1-й пулей' : 'Missed 1st bullet'}
+            cleanLabel={t('metrics:missedFirst.hitLabel')}
+            otherLabel={t('metrics:missedFirst.missedLabel')}
           />
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? 'Неточный первый выстрел — первая пуля в дуэли не нанесла урона врагу. Даже если ты выиграл дуэль, это означает, что ты потерял преимущество первого выстрела. Улучши пре-аим и контрстрейф, чтобы снизить этот показатель.'
-          : 'Inaccurate first shot — the first bullet fired in the duel did no damage. Even when you won, it means you lost the first-bullet advantage. Improve your pre-aim and counter-strafe to reduce this number.'}
+        {t('metrics:missedFirst.explanation')}
       </div>
 
       {wonDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+          <SectionHeading label={t('metrics:shared.episodes')} />
           <FilterBar
             options={[
-              { key: 'missed' as const, label: ru ? `Промах (${missedDuels.length})` : `Missed (${missedDuels.length})`, color: 'var(--red)' },
-              { key: 'hit' as const, label: ru ? `Попал (${hitDuels.length})` : `Hit (${hitDuels.length})`, color: 'var(--green)' },
+              { key: 'missed' as const, label: t('metrics:missedFirst.filterMissed', { n: missedDuels.length }), color: 'var(--red)' },
+              { key: 'hit' as const, label: t('metrics:missedFirst.filterHit', { n: hitDuels.length }), color: 'var(--green)' },
             ]}
             active={filter} onChange={setFilter}
           />
           <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
-          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <SectionHeading label={t('metrics:shared.byRound')} />
           <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
         </>
       )}
@@ -1666,7 +1564,6 @@ function ExcellentContactsPage({ analytics, playerNames, lang, totalRounds }: {
 }) {
   const m = analytics.metrics
   const count = m.excellentContacts ?? 0
-  const ru = lang === 'ru'
   const duels = analytics.duels
   const shots = m.firstBulletShots ?? []
 
@@ -1687,39 +1584,37 @@ function ExcellentContactsPage({ analytics, playerNames, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Качественные контакты' : 'Excellent contacts'}
-        subtitle={ru ? 'Побед в дуэлях: стоял на месте + первая пуля попала' : 'Duel wins: stopped at shot + first bullet hit'}
+        title={t('metrics:excellent.title')}
+        subtitle={t('metrics:excellent.subtitle')}
         value={String(count)} metricKey="excellentContacts" lang={lang}
       />
       {excellentDuels.length > 0 && otherRoundDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={excellentRoundDuels.length} cleanWins={excellentRoundDuels.filter(d => d.won).length}
             otherCount={otherRoundDuels.length} otherWins={otherRoundDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Качественные контакты' : 'Excellent contacts'}
-            otherLabel={ru ? 'Остальные дуэли' : 'Other duels'}
+            cleanLabel={t('metrics:excellent.title')}
+            otherLabel={t('metrics:shared.otherDuels')}
           />
         </>
       )}
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? `Качественные контакты — дуэли, в которых ты победил, при этом не двигался в момент первого выстрела (скорость ≤${50} u/s) и первая пуля попала в врага. Это комбинация правильного движения и точного первого выстрела — самый ценный показатель механики в дуэлях.`
-          : `Excellent contacts are duel wins where you were not moving when you first shot (velocity ≤${50} u/s) and your first bullet hit the enemy. This combines correct movement mechanics with accurate first-shot placement — the most valuable indicator of duel mechanics.`}
+        {t('metrics:excellent.explanation', { velocity: 50 })}
       </div>
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
       {excellentDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Качественные контакты' : 'Excellent contacts'} />
+          <SectionHeading label={t('metrics:excellent.title')} />
           <EpisodeList duels={excellentDuels} playerNames={playerNames} lang={lang} />
         </>
       )}
@@ -1735,7 +1630,6 @@ function SuccessfulReactionTimePage({ analytics, lang, totalRounds }: {
   const m = analytics.metrics
   const rt = m.successfulReactionTimeMs ?? 0
   const rtAll = m.reactionTimeMs ?? 0
-  const ru = lang === 'ru'
 
   const deltas: number[] = m.reactionDeltasHit ?? []
   const deltasAll: number[] = m.reactionDeltas ?? []
@@ -1761,25 +1655,23 @@ function SuccessfulReactionTimePage({ analytics, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Реакция в попаданиях' : 'Reaction on hits'}
-        subtitle={ru
-          ? 'Среднее время реакции только в дуэлях, где первая пуля попала'
-          : 'Avg reaction time only in duels where first bullet hit'}
-        value={rt > 0 ? rt.toFixed(0) + (ru ? ' мс' : ' ms') : '—'}
+        title={t('metrics:reactionHits.title')}
+        subtitle={t('metrics:reactionHits.subtitle')}
+        value={rt > 0 ? t('metrics:reactionHits.value', { value: rt.toFixed(0) }) : '—'}
         metricKey="successfulReactionTimeMs" lang={lang} higherIsBetter={false}
       />
 
       {rtAll > 0 && rt > 0 && (
         <>
-          <SectionHeading label={ru ? 'Сравнение с общей реакцией' : 'vs. overall reaction time'} />
+          <SectionHeading label={t('metrics:reactionHits.comparison')} />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
             {[
-              { label: ru ? 'Реакция в попаданиях' : 'On hits', val: rt, color: 'var(--green)' },
-              { label: ru ? 'Общая реакция' : 'All duels', val: rtAll, color: 'var(--text2)' },
+              { label: t('metrics:reactionHits.onHits'), val: rt, color: 'var(--green)' },
+              { label: t('metrics:reactionHits.allDuels'), val: rtAll, color: 'var(--text2)' },
             ].map(({ label, val, color }) => (
               <div key={label} style={{ background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
                 <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 4 }}>{label}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color }}>{val.toFixed(0)} {ru ? 'мс' : 'ms'}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color }}>{val.toFixed(0)} {t('metrics:shared.ms')}</div>
               </div>
             ))}
           </div>
@@ -1788,7 +1680,7 @@ function SuccessfulReactionTimePage({ analytics, lang, totalRounds }: {
 
       {deltas.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Распределение реакции' : 'Reaction time distribution'} />
+          <SectionHeading label={t('metrics:reaction.distribution')} />
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 80, marginBottom: 6, background: 'var(--bg3)', borderRadius: 8, padding: '12px 14px' }}>
             {BUCKETS.map((b, i) => {
               const h = Math.round(counts[i] / maxCount * 56)
@@ -1806,15 +1698,14 @@ function SuccessfulReactionTimePage({ analytics, lang, totalRounds }: {
             })}
           </div>
           <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 20 }}>
-            {ru ? `${deltas.length} дуэлей · среднее ${rt.toFixed(0)} мс · мин ${Math.min(...deltas).toFixed(0)} мс · макс ${Math.max(...deltas).toFixed(0)} мс`
-              : `${deltas.length} duels · avg ${rt.toFixed(0)} ms · min ${Math.min(...deltas).toFixed(0)} ms · max ${Math.max(...deltas).toFixed(0)} ms`}
+            {t('metrics:reaction.summary', { n: deltas.length, avg: rt.toFixed(0), min: Math.min(...deltas).toFixed(0), max: Math.max(...deltas).toFixed(0) })}
           </div>
         </>
       )}
 
       {deltasAll.length > 0 && deltas.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           {(() => {
             const shots = m.firstBulletShots ?? []
             const hitRounds = new Set(shots.filter(s => s.hit).map(s => s.round))
@@ -1826,26 +1717,24 @@ function SuccessfulReactionTimePage({ analytics, lang, totalRounds }: {
                 cleanCount={hitDuels.length} cleanWins={hitDuels.filter(d => d.won).length}
                 otherCount={missDuels.length} otherWins={missDuels.filter(d => d.won).length}
                 lang={lang}
-                cleanLabel={ru ? 'Попал первой пулей' : 'First bullet hit'}
-                otherLabel={ru ? 'Промахнулся первой' : 'First bullet missed'}
+                cleanLabel={t('metrics:reactionHits.hitLabel')}
+                otherLabel={t('metrics:reactionHits.missedLabel')}
               />
             ) : null
           })()}
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
       }}>
-        {ru
-          ? 'Реакция в попаданиях — время реакции только в тех дуэлях, где первая пуля попала во врага. Это точнее оценивает, как быстро ты реагируешь, когда правильно целишься — без промахов, которые искажают общее среднее. Ниже = быстрее.'
-          : 'Reaction on hits shows your reaction time only in duels where your first bullet hit the enemy. This is a cleaner measure of how fast you react when you are properly aimed — without misses that inflate the overall average. Lower is better.'}
+        {t('metrics:reactionHits.explanation')}
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+        <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
       </div>
     </div>
@@ -1860,7 +1749,6 @@ function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
 }) {
   const m = analytics.metrics
   const count = m.passiveAngleCount ?? 0
-  const ru = lang === 'ru'
   // passive_angle is an attacker error: duels where we were attacker and had passive_angle
   const passiveDuels = analytics.duels.filter(d => d.errors.includes('passive_angle'))
   const cleanDuels = analytics.duels.filter(d => d.won !== undefined && !d.errors.includes('passive_angle') && d.won)
@@ -1874,33 +1762,31 @@ function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
   return (
     <div>
       <MetricHero
-        title={ru ? 'Пассивный угол' : 'Passive angle'}
-        subtitle={ru
-          ? `${count} дуэлей — стоял без движения на открытой позиции перед выстрелом`
-          : `${count} duels — stood still in an exposed position before shooting`}
+        title={t('metrics:passiveAngle.title')}
+        subtitle={t('metrics:passiveAngle.subtitle', { n: count })}
         value={String(count)} metricKey="passiveAngleCount" lang={lang} higherIsBetter={false}
       />
 
       {passiveDuels.length > 0 && cleanDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Влияние на результат' : 'Impact on outcome'} />
+          <SectionHeading label={t('metrics:shared.impact')} />
           <WinRateComparison
             cleanCount={cleanDuels.length} cleanWins={cleanDuels.filter(d => d.won).length}
             otherCount={passiveDuels.length} otherWins={passiveDuels.filter(d => d.won).length}
             lang={lang}
-            cleanLabel={ru ? 'Активный угол' : 'Active peek'}
-            otherLabel={ru ? 'Пассивный угол' : 'Passive angle'}
+            cleanLabel={t('metrics:passiveAngle.active')}
+            otherLabel={t('metrics:passiveAngle.title')}
           />
         </>
       )}
 
       {passiveDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Структура' : 'Breakdown'} />
+          <SectionHeading label={t('metrics:passiveAngle.breakdown')} />
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8, marginBottom: 20 }}>
             {[
-              { key: 'passive' as const, label: ru ? 'Пассивный угол' : 'Passive angle', count: passiveDuels.length, color: 'var(--accent2)' },
-              { key: 'clean' as const, label: ru ? 'Чистые (победы)' : 'Clean (wins)', count: cleanDuels.length, color: 'var(--green)' },
+              { key: 'passive' as const, label: t('metrics:passiveAngle.title'), count: passiveDuels.length, color: 'var(--accent2)' },
+              { key: 'clean' as const, label: t('metrics:passiveAngle.cleanWins'), count: cleanDuels.length, color: 'var(--green)' },
             ].map(({ key, label, count: c, color }) => {
               const total = passiveDuels.length + cleanDuels.length
               const pct = total > 0 ? Math.round(c / total * 100) : 0
@@ -1919,29 +1805,27 @@ function PassiveAnglePage({ analytics, playerNames, lang, totalRounds }: {
         </>
       )}
 
-      <SectionHeading label={ru ? 'Что это значит' : 'What this means'} />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
         background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {ru
-          ? 'Пассивный угол — ты стоял на месте (смещение < 40 единиц) в течение нескольких тиков перед первым выстрелом на открытой позиции. Это даёт врагу легкий тейк — он уже знает, где ты. Используй быстрые пики или смещайся перед входом в контакт.'
-          : 'Passive angle — you were stationary (displacement < 40 units) for several ticks before your first shot from an exposed position. This gives the enemy an easy take — they already know where you are. Use quick peeks or shift position before engaging.'}
+        {t('metrics:passiveAngle.explanation')}
       </div>
 
       {passiveDuels.length > 0 && (
         <>
-          <SectionHeading label={ru ? 'Эпизоды из этой демки' : 'Episodes from this demo'} />
+          <SectionHeading label={t('metrics:shared.episodes')} />
           <FilterBar
             options={[
-              { key: 'passive' as const, label: ru ? `Пассивные (${passiveDuels.length})` : `Passive (${passiveDuels.length})`, color: 'var(--accent2)' },
-              { key: 'clean' as const, label: ru ? `Чистые (${cleanDuels.length})` : `Clean (${cleanDuels.length})`, color: 'var(--green)' },
+              { key: 'passive' as const, label: t('metrics:passiveAngle.filterPassive', { n: passiveDuels.length }), color: 'var(--accent2)' },
+              { key: 'clean' as const, label: t('metrics:passiveAngle.filterClean', { n: cleanDuels.length }), color: 'var(--green)' },
             ]}
             active={filter} onChange={setFilter}
           />
           <EpisodeList duels={shown} playerNames={playerNames} lang={lang} />
-          <SectionHeading label={ru ? 'По раундам матча' : 'By round'} />
+          <SectionHeading label={t('metrics:shared.byRound')} />
           <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
         </>
       )}
@@ -2045,7 +1929,7 @@ export default function MetricsPage() {
       default:
         return (
           <div style={{ color: 'var(--text2)', fontSize: 13 }}>
-            {lang === 'ru' ? `Страница метрики «${key}» не найдена.` : `Metric page "${key}" not found.`}
+            {t('metrics:page.notFound', { key })}
           </div>
         )
     }
