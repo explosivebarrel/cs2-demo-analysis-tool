@@ -162,7 +162,6 @@ export interface PlayerAnalyticsData {
   impact: PlayerImpact
   mapEvents: MapEvent[]
   decisionsCost: DecisionEntry[]
-  firstBulletShots: FirstBulletShot[]
 }
 
 export interface DuelFrame {

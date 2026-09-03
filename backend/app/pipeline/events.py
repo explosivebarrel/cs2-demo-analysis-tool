@@ -45,8 +45,12 @@ def _build_kill_context(ctx, rb, fb, kills_df):
         return {}
 
 
-    # index ticks by tick value for fast lookup
+    # index ticks by tick value for fast lookup; kills happen at arbitrary
+    # ticks while the tick stream is downsampled — fall back to the nearest
+    # sampled tick at or before the kill
     ticks_by_tick = {t: grp for t, grp in ticks_df.groupby("tick")}
+    import numpy as _np
+    _tick_arr = _np.array(sorted(ticks_by_tick), dtype="int64")
 
     ctx_map = {}
 
@@ -72,6 +76,11 @@ def _build_kill_context(ctx, rb, fb, kills_df):
             continue
 
         frame = ticks_by_tick.get(tick)
+        if frame is None:
+            # nearest sampled tick at or before the kill (searchsorted)
+            i = int(_np.searchsorted(_tick_arr, tick, side="right")) - 1
+            if i >= 0:
+                frame = ticks_by_tick.get(int(_tick_arr[i]))
         if frame is None:
             ctx_map[(tick, a_sid, v_sid)] = {}
             continue
@@ -151,7 +160,13 @@ def build_events(ctx, rb, fb):
         kill_ctx = _build_kill_context(ctx, rb, fb, kills)
         for _, k in kills.iterrows():
             a, v = _sid(k.get("attacker_steamid")), _sid(k.get("user_steamid"))
-            if not (a and v):
+            if not v:
+                continue
+            if not a:
+                # world/C4/fall deaths belong on the event timeline too
+                events.append({"t": int(k["tick"]), "ty": "k", "a": -1, "v": idx(v),
+                               "w": weapon_id(k.get("weapon")),
+                               "h": 1 if k.get("headshot") else 0, "as": -1})
                 continue
             kc = kill_ctx.get((int(k["tick"]), a, v), {})
             ev = {"t": int(k["tick"]), "ty": "k", "a": idx(a), "v": idx(v),
@@ -225,7 +240,7 @@ def build_events(ctx, rb, fb):
                     grp["yaw"] = 0
                 else:
                     grp = pd.merge_asof(grp, player_yaw[["tick", "yaw"]],
-                                        on="tick", direction="nearest")
+                                        on="tick", direction="backward")
                 parts.append(grp)
             m = pd.concat(parts) if parts else m
             yaw_col = "yaw"
@@ -280,7 +295,7 @@ def build_events(ctx, rb, fb):
             pts = []
             rows = grp.iloc[::step]
             if len(grp) and rows.iloc[-1]["tick"] != grp.iloc[-1]["tick"]:
-                rows = rows._append(grp.iloc[-1])
+                rows = pd.concat([rows, grp.iloc[[-1]]])
             for _, r in rows.iterrows():
                 pts.extend((_f(r["x"]), _f(r["y"]), _f(r["z"])))
             if len(pts) < 6:

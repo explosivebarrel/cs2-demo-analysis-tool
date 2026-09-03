@@ -227,7 +227,7 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
             "n": r["n"], "k": pr["kills"], "d": pr["deaths"], "a": pr["assists"],
             "dmg": int(pr["dmg"]), "sv": 1 if pr["survived"] else 0,
             "kast": 1 if r["n"] in p.kastRounds else 0,
-            "opening": pr["opening"], "mk": pr["kills"] >= 2,
+            "opening": {"k": "kill", "d": "death"}.get(pr["opening"]), "mk": pr["kills"] >= 2,
             "pistol": 1 if r.get("isPistol") else 0,
             "mvp": 1 if r.get("mvp") == p.steamid else 0,
             "won": 1 if r_won else 0,
@@ -406,7 +406,7 @@ def _build_analysis(ctx, rb, fb, players):
 
 
 def _halves(rb, ctx):
-    """Half boundaries (side swaps) for UI grouping."""
+    """Half boundaries (side swaps) for UI grouping. Score is per half."""
     halves = []
     if not rb.rounds:
         return halves
@@ -423,4 +423,5 @@ def _halves(rb, ctx):
             if nxt is not None:
                 start_n = nxt["n"]
                 cur_side = nxt["sideTeam0"]
+                score0 = score1 = 0  # next half starts from 0
     return halves

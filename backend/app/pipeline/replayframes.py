@@ -269,12 +269,12 @@ class FrameBuilder:
                 if d2 < 250000:
                     st["distanceUnits"] += d2 ** 0.5
             self.prev_pos[idx] = pos
-            if r is not None and self.cur_tick <= r["endTick"]:
+            if (r is not None and self.cur_tick <= r["endTick"]
+                    and not row["is_freeze_period"]):
                 self._hold_feed(idx, pos)
-                if r["n"] % 2 == 0:
-                    plist = st["positions"]
-                    if not plist or (plist[-1][0] - pos[0]) ** 2 + (plist[-1][1] - pos[1]) ** 2 > 900:
-                        plist.append((pos[0], pos[1], pos[2], r["n"]))
+                plist = st["positions"]
+                if not plist or (plist[-1][0] - pos[0]) ** 2 + (plist[-1][1] - pos[1]) ** 2 > 900:
+                    plist.append((pos[0], pos[1], pos[2], r["n"]))
         if r is not None and self.cur_tick <= r["endTick"]:
             st["aliveAtEnd"][r["n"]] = alive
             if alive and not row["is_freeze_period"]:
@@ -333,15 +333,15 @@ class FrameBuilder:
                 if ty == "bo":
                     state, cx, cy, carrier = 2, e.get("x", cx), e.get("y", cy), -1
                 elif ty == "bu":
-                    idx = self.player_idx.get(e.get("a", ""), -1)
+                    idx = self.player_idx.get(e.get("p", e.get("a", "")), -1)
                     if idx >= 0:
                         cx, cy = self._pos_of(data, fi, idx)
                         state, carrier = 1, idx
                 elif ty == "bp":
                     state, cx, cy, carrier = 3, e.get("x", cx), e.get("y", cy), -1
-                elif ty in ("bx", "bd"):
+                elif ty in ("bx", "bf"):
                     state, carrier = 4, -1
-            if state == 0:
+            if state in (0, 2):
                 base = fi * self.n * 11
                 for idx in range(self.n):
                     if data[base + idx * 11 + 8] & 1:

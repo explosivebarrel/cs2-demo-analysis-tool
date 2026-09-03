@@ -1,5 +1,5 @@
 from app.config import BUY_FORCE_MIN, BUY_FULL_MIN
-from app.pipeline.rounds import RoundBuilder, _clean_clan
+from app.pipeline.rounds import RoundBuilder, _clean_clan, map_round_reason
 
 
 def test_buy_type_thresholds():
@@ -18,3 +18,14 @@ def test_clean_clan():
     assert _clean_clan("TEAM_X") == "X"
     assert _clean_clan("") == ""
     assert _clean_clan(None) == ""
+
+
+def test_map_round_reason():
+    assert map_round_reason("bomb_defused") == "defuse"
+    assert map_round_reason("bomb_exploded") == "bomb"
+    assert map_round_reason("t_killed") == "elimination"
+    assert map_round_reason("ct_killed") == "elimination"
+    assert map_round_reason("time_expired") == "time"
+    assert map_round_reason("targets_saved") == "time"
+    assert map_round_reason(None) == "elimination"
+    assert map_round_reason("") == "elimination"

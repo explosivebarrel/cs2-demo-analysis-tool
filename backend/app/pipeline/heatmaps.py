@@ -138,5 +138,5 @@ def frame_pos(fb, replay, idx, tick):
     fi = bisect.bisect_right(ticks, tick) - 1
     if fi < 0:
         fi = 0
-    base = fi * fb.n * 10
-    return (data[base + idx * 10], data[base + idx * 10 + 1])
+    base = fi * fb.n * 11
+    return (data[base + idx * 11], data[base + idx * 11 + 1])

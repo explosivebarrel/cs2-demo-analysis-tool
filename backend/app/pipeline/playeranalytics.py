@@ -59,7 +59,7 @@ def _build_duel_frames(
     round_end_tick: int,
     tickrate: float,
     jump_ticks: set | None = None,
-    window_ticks: int = 192,  # ≈ 3s at 64-tick (1.5s before + 1.5s after)
+    window_ticks: int | None = None,  # None = 3s at the demo's tickrate
 ) -> list[dict]:
     """
     Extract per-tick snapshots for the player in a ±window around kill_tick.
@@ -70,6 +70,8 @@ def _build_duel_frames(
     if ticks_df is None or not len(ticks_df):
         return []
 
+    if window_ticks is None:
+        window_ticks = int(3.0 * tickrate)  # ±1.5s around the kill
     t_lo = max(round_start_tick, kill_tick - window_ticks // 2)
     t_hi = min(round_end_tick, kill_tick + window_ticks // 2)
     jump_set = jump_ticks or set()
@@ -248,8 +250,12 @@ def _classify_duel(
     """
     a_row = frame_rows.get(attacker_sid)
 
-    # attacker velocity at kill tick
-    attacker_vel = round(_f(vel_lookup.get((kill_tick, attacker_sid), 0.0)), 1)
+    # attacker velocity/walking state on the FIRST SHOT of the duel, not the
+    # kill tick: by the kill the attacker may have already re-stopped (or
+    # vice versa), which systematically mislabels moving_shot / shift peek
+    shot_tick = max((t for t in weapon_fire_ticks if t <= kill_tick), default=None)
+    vel_tick = shot_tick if shot_tick is not None else kill_tick
+    attacker_vel = round(_f(vel_lookup.get((vel_tick, attacker_sid), 0.0)), 1)
 
     # attacker flash duration
     attacker_flash = 0.0
@@ -300,12 +306,13 @@ def _classify_duel(
             alive_enemies += 1
 
     # error classification (attacker perspective)
+    # NOTE: walking (shift peek) is deliberate play, not an error — tracked as
+    # a discipline metric via shiftPeekPct, not tagged here.
     errors: list[str] = []
-    if attacker_walking:
-        errors.append("shift_peek")
     if attacker_vel > 50:
         errors.append("moving_shot")
-    if (near_ally_dist is not None and near_ally_dist > 800) or alive_allies == 0:
+    # being the last one alive is a clutch situation, not an isolation mistake
+    if near_ally_dist is not None and near_ally_dist > 800 and alive_allies > 0:
         errors.append("isolated")
     if attacker_flash > 1.5:
         errors.append("flashed")
@@ -446,7 +453,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             # per-duel aim direction error: overshoot / undershoot
             try:
                 fire_ticks_rn = wf_ticks.get((steamid, rn), [])
-                TTK_MAX = max(32, int(ctx.tickrate * 0.5))
+                TTK_MAX = max(32, int(ctx.tickrate * 3.0))
                 fire_cands = [ft for ft in fire_ticks_rn if 0 <= tick - ft <= TTK_MAX]
                 if fire_cands:
                     first_fire = min(fire_cands)
@@ -455,8 +462,10 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                     )
                     if aim_err and aim_err not in errors:
                         errors.append(aim_err)
-                    # missed first shot: first bullet had no hurt event within 8 ticks
-                    first_hit = any(0 <= ht - first_fire <= 8 for ht in enemy_hurt_ticks)
+                    # missed first shot: no bullet damage within the hit window
+                    # after the duel-opening shot
+                    hit_window = max(1, int(0.15 * ctx.tickrate))
+                    first_hit = any(0 <= ht - first_fire <= hit_window for ht in enemy_hurt_ticks)
                     if not first_hit and "missed_first" not in errors:
                         errors.append("missed_first")
                     # passive angle: player was stationary for >1.5s before first fire
@@ -601,7 +610,9 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
     attacker_duels = [d for d in duels if d["won"]]
     total_duels = len(attacker_duels)
 
-    shift_peek_count = sum(1 for d in attacker_duels if "shift_peek" in d["errors"])
+    # shift peek is deliberate play (not an error tag) — read it from context
+    shift_peek_count = sum(
+        1 for d in attacker_duels if d.get("context", {}).get("attackerWalking"))
     isolated_count = sum(1 for d in duels if "isolated" in d["errors"])
 
     trade_kill_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedKill"))
@@ -765,19 +776,26 @@ def _build_decisions_cost(ctx, rb, steamid: str, winprob: list[float], replay_ti
         rn = _round_of(tick)
         if rn is None:
             continue
+        r_info = next((r for r in rb.rounds if r["n"] == rn), None)
+        if r_info is None:
+            continue
+        ahead_tick = tick + LOOK_AHEAD_TICKS
+        # the look-ahead must stay inside the same round, otherwise the
+        # "drop" would measure the round reset, not the cost of the death
+        if ahead_tick > r_info["endTick"]:
+            ahead_tick = r_info["endTick"]
+        if ahead_tick <= tick:
+            continue
 
         # WinProb is CT probability; convert to player's team perspective
         prob_before_ct = prob_at_tick(tick)
-        prob_after_ct = prob_at_tick(tick + LOOK_AHEAD_TICKS)
+        prob_after_ct = prob_at_tick(ahead_tick)
         if prob_before_ct is None or prob_after_ct is None:
             continue
 
         # player_team 0 → team 0, need to figure out their side per round
         # rb.team_with_side returns team index (0/1) for a given side string
         try:
-            r_info = next((r for r in rb.rounds if r["n"] == rn), None)
-            if r_info is None:
-                continue
             side0 = r_info.get("sideTeam0", "T")
             # player side: team 0 has side0, team 1 has opposite
             if player_team == 0:
@@ -954,19 +972,19 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             side_by_round: dict[int, str] = {}
             for r in rb.rounds:
                 side0 = r.get("sideTeam0", "T")
-                team = rb.steamid_team.get(steamid)
+                team = rb.steamid_team.get(steamid, 0)
                 if team == 0:
                     side_by_round[r["n"]] = side0
                 else:
                     side_by_round[r["n"]] = "CT" if side0 == "T" else "T"
             for d in duels:
                 t = d["tick"]
-                i = bisect.bisect_left(ticks_arr, t)
-                if i >= len(ticks_arr):
-                    i = len(ticks_arr) - 1
-                elif i > 0 and abs(ticks_arr[i - 1] - t) < abs(ticks_arr[i] - t):
+                # last frame strictly BEFORE the kill: a frame at/after the
+                # kill already includes its effect (self-confirming metric)
+                i = bisect.bisect_right(ticks_arr, t) - 1
+                if i > 0 and ticks_arr[i] >= t:
                     i -= 1
-                p_ct = winprob[i] if i < len(winprob) else None
+                p_ct = winprob[i] if i >= 0 and i < len(winprob) else None
                 if p_ct is not None:
                     side = side_by_round.get(d["round"], "T")
                     d["winProb"] = round(p_ct if side == "CT" else 1.0 - p_ct, 3)
@@ -1056,7 +1074,8 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             "impact": impact,
             "mapEvents": map_events,
             "decisionsCost": decisions_cost,
-            "firstBulletShots": aim.get("firstBulletShots", []),
+            # firstBulletShots intentionally lives only inside `metrics`
+            # (duplicating it here doubled the artifact size)
         }
 
     return result

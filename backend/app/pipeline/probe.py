@@ -33,7 +33,7 @@ def probe_demo(demo_path: str) -> dict:
     header = p.parse_header()
     map_name = header.get("map_name", "")
 
-    tickrate = float(header.get("tickrate") or 64)
+    tickrate = float(header.get("tickrate") or header.get("playback_ticks") or 64)
 
     import os
     try:

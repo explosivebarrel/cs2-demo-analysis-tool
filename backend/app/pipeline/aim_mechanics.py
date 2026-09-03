@@ -24,10 +24,27 @@ RELOAD_SAFE_BULLETS = 5      # reloads with more bullets left than this = error
 ANGLE_HOLD_SEC = 2.0         # min seconds stationary to count as angle control
 ANGLE_MOVE_THRESHOLD = 30.0  # u/s — below this counts as "not moving"
 ANGLE_GRID = 64              # world-unit grid for position deduplication
-DUEL_MERGE_TICKS = 256       # ticks gap between separate duels (≈ 2s at 128-tick)
+DUEL_MERGE_SEC = 2.0         # seconds gap between separate duels
+BULLET_HIT_WINDOW_SEC = 0.15 # hurt must follow the shot within this window to
+                             # count as a hit by that bullet (scales with tickrate)
+TTK_MAX_SEC = 3.0            # first shot searched up to this far before a kill
+OVERSHOOT_ANGLE_DEG = 10.0   # only count sign flips that carry past this angle
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+
+_NON_BULLET_CLASSES = {"grenade", "knife", "gear", "other", "?"}
+
+
+def _is_non_bullet(wname) -> bool:
+    """True for grenades, knives, C4, Zeus — anything that is not a firearm.
+
+    Normalizes via canon() so both 'weapon_smokegrenade' and 'smokegrenade'
+    styles are handled."""
+    from ..weapons import canon
+    if wname is None or (isinstance(wname, float) and wname != wname):
+        return False
+    return canon(str(wname))[2] in _NON_BULLET_CLASSES
 
 def _f(v, default: float = 0.0) -> float:
     try:
@@ -83,6 +100,11 @@ def _compute_strafe_metrics(
     if my_wf.empty:
         return 0, 0.0
 
+    # only firearms count as shots (no knives/grenades/zeus)
+    my_wf = my_wf[~my_wf["weapon"].astype(str).map(_is_non_bullet)]
+    if my_wf.empty:
+        return 0, 0.0
+
     # build set of kill ticks where this player is attacker
     kill_ticks: set[int] = set()
     if kills_df is not None and len(kills_df):
@@ -93,12 +115,13 @@ def _compute_strafe_metrics(
     ideal_total = 0
     ideal_count = 0
 
-    # group shots by "duel" — gap > DUEL_MERGE_TICKS separates duels
+    # group shots by "duel" — gap > DUEL_MERGE_SEC separates duels
+    merge_ticks = max(32, int(DUEL_MERGE_SEC * tickrate))
     shot_ticks = sorted(int(t) for t in my_wf["tick"])
     duel_starts: list[int] = []
     prev = None
     for st in shot_ticks:
-        if prev is None or (st - prev) > DUEL_MERGE_TICKS:
+        if prev is None or (st - prev) > merge_ticks:
             duel_starts.append(st)
         prev = st
 
@@ -111,10 +134,10 @@ def _compute_strafe_metrics(
         if vel > SHOOT_THRESHOLD:
             errors += 1
 
-        # duel-opening shots that resulted in a kill within DUEL_MERGE_TICKS ticks
+        # duel-opening shots that resulted in a kill within the duel window
         if tick in duel_start_set:
             for kt in kill_ticks:
-                if 0 <= kt - tick <= DUEL_MERGE_TICKS:
+                if 0 <= kt - tick <= merge_ticks:
                     ideal_total += 1
                     if vel <= SHOOT_THRESHOLD:
                         ideal_count += 1
@@ -132,6 +155,7 @@ def _compute_first_bullet_acc(
     kills_df,
     steamid: str,
     rb=None,
+    tickrate: float = 64.0,
 ) -> tuple[float, list[dict]]:
     """
     % of duel-opening shots that hit an enemy.
@@ -143,11 +167,15 @@ def _compute_first_bullet_acc(
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
         return 0.0, []
+    my_wf = my_wf[~my_wf["weapon"].astype(str).map(_is_non_bullet)]
+    if my_wf.empty:
+        return 0.0, []
 
-    # enemy hurt ticks involving this attacker
+    # enemy hurt ticks involving this attacker (bullet damage only)
     enemy_hurt_ticks: set[int] = set()
     if hurt_df is not None and len(hurt_df):
         ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
+        ah = ah[~ah["weapon"].astype(str).map(_is_non_bullet)]
         for t in ah["tick"]:
             enemy_hurt_ticks.add(int(t))
 
@@ -164,32 +192,25 @@ def _compute_first_bullet_acc(
                 return round_ns[i]
             return 0
 
-    _NON_BULLET = {
-        "weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade",
-        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
-        "weapon_c4", "weapon_knife", "weapon_knife_t", "weapon_knife_ct",
-        "weapon_knife_karambit", "weapon_knife_m9_bayonet", "weapon_knife_tactical",
-        "weapon_knife_falchion", "weapon_knife_survival_bowie", "weapon_knife_butterfly",
-        "weapon_knife_push", "weapon_knife_ursus", "weapon_knife_gypsy_jackknife",
-        "weapon_knife_stiletto", "weapon_knife_widowmaker", "weapon_knife_cord",
-        "weapon_knife_canis", "weapon_knife_outdoor", "weapon_knife_skeleton",
-        "weapon_knife_ghost",
-    }
+    merge_ticks = max(32, int(DUEL_MERGE_SEC * tickrate))
+
+    merge_ticks = max(32, int(DUEL_MERGE_SEC * tickrate))
+    hit_window = max(1, int(BULLET_HIT_WINDOW_SEC * tickrate))
 
     all_shot_rows = sorted(zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))), key=lambda x: x[0])
     # keep only actual bullet-firing weapons
-    shot_rows = [(t, w) for t, w in all_shot_rows if str(w) not in _NON_BULLET and not str(w).startswith("weapon_knife")]
+    shot_rows = [(t, w) for t, w in all_shot_rows if not _is_non_bullet(w)]
     duel_first_shots: list[tuple[int, str]] = []
     prev = None
     for st, wep in shot_rows:
-        if prev is None or (st - prev) > DUEL_MERGE_TICKS:
+        if prev is None or (st - prev) > merge_ticks:
             duel_first_shots.append((st, str(wep)))
         prev = st
 
     per_shot: list[dict] = []
     hit_total = 0
     for st, wep in duel_first_shots:
-        hit = any(0 <= ht - st <= 8 for ht in enemy_hurt_ticks)
+        hit = any(0 <= ht - st <= hit_window for ht in enemy_hurt_ticks)
         if hit:
             hit_total += 1
         rn = _rof(st) if rb is not None else 0
@@ -222,10 +243,10 @@ def _compute_ttk(
     shot_ticks = sorted(int(t) for t in my_wf["tick"])
     kill_ticks = sorted(int(t) for t in my_kills["tick"])
 
-    # for each kill find the earliest shot within a tight TTK window
-    # Use 0.5s max (not the full duel merge window) — pre-aim shots before
-    # the engagement are not part of TTK
-    TTK_MAX_TICKS = max(32, int(tickrate * 0.5))
+    # for each kill find the earliest shot within TTK_MAX_SEC before it.
+    # Long engagements are the most informative for TTK — a 0.5s window would
+    # cap the metric by construction and silently drop long duels.
+    TTK_MAX_TICKS = max(32, int(tickrate * TTK_MAX_SEC))
     deltas: list[float] = []
     for kt in kill_ticks:
         candidates = [st for st in shot_ticks if 0 <= kt - st <= TTK_MAX_TICKS]
@@ -352,7 +373,10 @@ def _compute_angle_control(ticks_df, steamid: str, tickrate: float, rb) -> tuple
         vel = _np.sqrt(dx**2 + dy**2) / dt * tickrate
 
         stationary = _np.concatenate([[False], vel < ANGLE_MOVE_THRESHOLD])
-        min_frames = max(1, int(ANGLE_HOLD_SEC * tickrate / 8))
+        # ticks between samples follow the pipeline downsample step, not a
+        # fixed 8 — derive it from tickrate the same way context.py does
+        sample_step = max(4, round(tickrate * 0.125))
+        min_frames = max(1, int(ANGLE_HOLD_SEC * tickrate / sample_step))
 
         positions_seen: set[tuple[int, int]] = set()
         held_count = 0
@@ -419,18 +443,18 @@ def _compute_reaction_time(
                      where the first bullet hit.
     """
     if ticks_df is None or not len(ticks_df) or kills_df is None or not len(kills_df):
-        return 0.0, 0, 0.0
+        return 0.0, 0, 0.0, [], []
 
     my_kills = kills_df[kills_df["attacker_steamid"].astype(str) == steamid]
     if my_kills.empty:
-        return 0.0, 0, 0.0
+        return 0.0, 0, 0.0, [], []
 
     if wf_df is None or not len(wf_df):
-        return 0.0, 0, 0.0
+        return 0.0, 0, 0.0, [], []
 
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
-        return 0.0, 0, 0.0
+        return 0.0, 0, 0.0, [], []
 
     # enemy hurt ticks for successful reaction time (hit on first bullet)
     enemy_hurt_ticks_rt: set[int] = set()
@@ -505,7 +529,9 @@ def _compute_reaction_time(
                 j = i - 1
                 while j >= 0 and speeds[j] > RT_MOTION_THRESH:
                     j -= 1
-                peek_onset_tick = int(vic_tick_arr[j + 1]) if j >= 0 else int(vic_tick_arr[i])
+                # victim was moving the whole window: onset is the window start,
+                # not the shot tick (that would collapse reaction time to ~0)
+                peek_onset_tick = int(vic_tick_arr[j + 1]) if j >= 0 else int(vic_tick_arr[0])
                 break
 
         if peek_onset_tick is None:
@@ -540,6 +566,7 @@ def _compute_reaction_time(
             fv_y = full_vic["Y"].to_numpy(dtype=float)
 
             prev_sign = None
+            prev_diff = None
             crosses = 0
             import math as _math
             for oi in range(oi_lo, oi_hi):
@@ -556,9 +583,18 @@ def _compute_reaction_time(
                 bearing2 = _math.degrees(_math.atan2(vy2, vx2))
                 diff2 = _angle_diff(atk_yaw_arr[oi], bearing2)
                 sign = 1 if diff2 >= 0 else -1
-                if prev_sign is not None and sign != prev_sign:
+                if prev_diff is not None and abs(diff2 - prev_diff) > 180.0:
+                    # angle wrapped past ±180 (target behind): not a real flip
+                    prev_sign, prev_diff = sign, diff2
+                    continue
+                if prev_sign is not None and sign != prev_sign \
+                        and abs(diff2) > OVERSHOOT_ANGLE_DEG:
+                    # only real overshoots: the crosshair carried past the
+                    # target by more than OVERSHOOT_ANGLE_DEG (micro jitter
+                    # around the bearing is precise tracking, not a miss)
                     crosses += 1
                 prev_sign = sign
+                prev_diff = diff2
             overshoot_total += crosses
         except Exception:
             pass
@@ -574,62 +610,60 @@ def _compute_crosshair_placement(
     wf_df,
     hurt_df,
     steamid: str,
+    tickrate: float = 64.0,
 ) -> float:
     """
-    % of duel-opening shots that hit AND landed on the head.
-    Measures how well the player pre-aims at head level.
+    % of duel-opening shots that landed on the head. The denominator is ALL
+    duel-opening shots (not only the ones that hit): a full miss is the main
+    symptom of bad crosshair placement and must lower the metric.
     """
     if wf_df is None or not len(wf_df):
-        return 0.0
-    if hurt_df is None or not len(hurt_df):
         return 0.0
 
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
         return 0.0
-
-    ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
-    if ah.empty:
+    my_wf = my_wf[~my_wf["weapon"].astype(str).map(_is_non_bullet)]
+    if my_wf.empty:
         return 0.0
+
+    ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid] if hurt_df is not None and len(hurt_df) else hurt_df
 
     # map hurt tick -> hitgroup (1 = head in CS2)
     hurt_map: dict[int, str] = {}
-    for _, row in ah.iterrows():
-        t = int(row["tick"])
-        hg = str(row.get("hitgroup", ""))
-        hurt_map[t] = hg
+    if ah is not None and len(ah):
+        for _, row in ah.iterrows():
+            if _is_non_bullet(row.get("weapon")):
+                continue
+            t = int(row["tick"])
+            hg = str(row.get("hitgroup", ""))
+            hurt_map[t] = hg
 
-    _NON_BULLET = {
-        "weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade",
-        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
-        "weapon_c4",
-    }
-    all_shot_rows = sorted(
-        zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))),
-        key=lambda x: x[0],
-    )
-    shot_rows = [(t, w) for t, w in all_shot_rows
-                 if str(w) not in _NON_BULLET and not str(w).startswith("weapon_knife")]
+    merge_ticks = max(32, int(DUEL_MERGE_SEC * tickrate))
+    hit_window = max(1, int(BULLET_HIT_WINDOW_SEC * tickrate))
 
     duel_first_shots: list[int] = []
     prev = None
-    for st, _ in shot_rows:
-        if prev is None or (st - prev) > DUEL_MERGE_TICKS:
+    for st in sorted(int(t) for t in my_wf["tick"]):
+        if prev is None or (st - prev) > merge_ticks:
             duel_first_shots.append(st)
         prev = st
+
+    if not duel_first_shots:
+        return 0.0
 
     head_hits = 0
     total_hits = 0
     for st in duel_first_shots:
-        # look for a hurt event within 8 ticks
+        # look for a hurt event within the bullet window
         for ht, hg in hurt_map.items():
-            if 0 <= ht - st <= 8:
+            if 0 <= ht - st <= hit_window:
                 total_hits += 1
                 if hg in ("1", "head", "Head"):
                     head_hits += 1
                 break
 
-    return round(head_hits / total_hits * 100, 1) if total_hits else 0.0
+    return round(head_hits / len(duel_first_shots) * 100, 1)
 
 
 # ── Excellent contacts ────────────────────────────────────────────────────────
@@ -669,33 +703,29 @@ def _compute_excellent_contacts(
         for t in ah["tick"]:
             enemy_hurt_ticks.add(int(t))
 
-    _NON_BULLET = {
-        "weapon_smokegrenade", "weapon_flashbang", "weapon_hegrenade",
-        "weapon_molotov", "weapon_incgrenade", "weapon_decoy",
-        "weapon_c4",
-    }
-
     all_shot_rows = sorted(
         zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))),
         key=lambda x: x[0],
     )
-    shot_rows = [(t, w) for t, w in all_shot_rows
-                 if str(w) not in _NON_BULLET and not str(w).startswith("weapon_knife")]
+    shot_rows = [(t, w) for t, w in all_shot_rows if not _is_non_bullet(w)]
+
+    merge_ticks = max(32, int(DUEL_MERGE_SEC * tickrate))
+    hit_window = max(1, int(BULLET_HIT_WINDOW_SEC * tickrate))
 
     duel_first_shots: list[tuple[int, str]] = []
     prev = None
     for st, wep in shot_rows:
-        if prev is None or (st - prev) > DUEL_MERGE_TICKS:
+        if prev is None or (st - prev) > merge_ticks:
             duel_first_shots.append((st, str(wep)))
         prev = st
 
     excellent = 0
     for st, _ in duel_first_shots:
-        # must result in a kill within DUEL_MERGE_TICKS
-        if not any(0 <= kt - st <= DUEL_MERGE_TICKS for kt in kill_ticks):
+        # must result in a kill within the duel window
+        if not any(0 <= kt - st <= merge_ticks for kt in kill_ticks):
             continue
         # first bullet must hit
-        hit = any(0 <= ht - st <= 8 for ht in enemy_hurt_ticks)
+        hit = any(0 <= ht - st <= hit_window for ht in enemy_hurt_ticks)
         if not hit:
             continue
         # attacker must be stopped at shot tick
@@ -744,7 +774,7 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         cs_errors, ideal_pct = 0, 0.0
 
     try:
-        first_bullet, first_bullet_shots = _compute_first_bullet_acc(wf_df, hurt_df, kills_df, steamid, rb)
+        first_bullet, first_bullet_shots = _compute_first_bullet_acc(wf_df, hurt_df, kills_df, steamid, rb, tickrate)
     except Exception:
         first_bullet, first_bullet_shots = 0.0, []
 
@@ -779,7 +809,7 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         excellent_contacts = 0
 
     try:
-        crosshair_placement = _compute_crosshair_placement(wf_df, hurt_df, steamid)
+        crosshair_placement = _compute_crosshair_placement(wf_df, hurt_df, steamid, tickrate)
     except Exception:
         crosshair_placement = 0.0
 

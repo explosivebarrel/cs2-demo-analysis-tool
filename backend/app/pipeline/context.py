@@ -34,6 +34,7 @@ EVENTS_PLAIN = [
     "cs_win_panel_match", "buytime_ended", "announce_phase_end",
     "player_bullet_hit", "chat_message", "player_jump",
     "round_announce_last_round_half", "round_announce_match_start",
+    "hostage_rescued",
 ]
 
 PLAYER_PROPS = ["X", "Y", "Z", "health", "armor_value", "active_weapon_name"]
