@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, AnalysisData, MapOverview, ReplayData, RoundData } from '../../api'
 import { lowerLevelNames } from '../../lib/coords'
 import { findRoundForTick, Transform } from '../../lib/replay'
@@ -93,6 +93,21 @@ export default function MapCanvas({
     return () => { alive = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replay])
+
+  // planted bomb pulses: keep redrawing while this demo contains any plant
+  const hasPlant = useMemo(
+    () => replay.events.some(e => (e as Record<string, unknown>).ty === 'bp'),
+    [replay],
+  )
+  useEffect(() => {
+    if (!hasPlant) return
+    const iv = window.setInterval(() => {
+      if (canvasRef.current && cw >= 2 && ch >= 2) {
+        drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current, nadeTrailMode, level, nadeFilter)
+      }
+    }, 150)
+    return () => window.clearInterval(iv)
+  }, [hasPlant, frameIdx, replay, overview, tx, cw, ch, nadeTrailMode, nadeFilter, level])
 
   // re-clamp zoom when the canvas is resized
   useEffect(() => { if (base > 1) setTx(clamp(txRef.current)) }, [cw, ch])

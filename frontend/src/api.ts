@@ -326,6 +326,8 @@ export interface PlayerHistoryEntry {
   adr: number
   kast: number
   rating: number
+  rws?: number
+  imp?: number
 }
 
 export interface Moment {

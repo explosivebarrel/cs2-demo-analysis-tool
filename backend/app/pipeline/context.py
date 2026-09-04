@@ -74,6 +74,7 @@ class DemoContext:
 
         self._progress("events", 12)
         ev = self.parser.parse_events(EVENTS_WITH_PLAYERS, player=PLAYER_PROPS)
+        self._progress("events", 20)
         for name, df in ev:
             self.events[name] = self._clean(df)
         ev2 = self.parser.parse_events(EVENTS_PLAIN)

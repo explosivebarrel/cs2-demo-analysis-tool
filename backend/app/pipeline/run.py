@@ -133,7 +133,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
             "players": [
                 {"steamid": p["steamid"], "name": p["name"], "team": p["team"],
                  "kills": p["kills"], "deaths": p["deaths"], "adr": p["adr"],
-                 "kast": p["kast"], "rating": p["rating"]}
+                 "kast": p["kast"], "rating": p["rating"],
+                 "rws": p.get("rws"), "imp": p.get("imp")}
                 for p in analysis["players"]
             ],
         })

@@ -271,6 +271,13 @@
     "win": "Win",
     "loss": "Loss",
     "ratingPlot": "Rating across matches",
-    "rounds": "Rounds"
+    "rounds": "Rounds",
+    "trend": "Trend over the last {{n}} matches",
+    "mapAll": "All maps",
+    "mapFilter": "Map",
+    "showAll": "Show all",
+    "showLess": "Collapse",
+    "openHint": "Click opens this match for the player",
+    "limit": "Showing the last {{n}}"
   }
 }

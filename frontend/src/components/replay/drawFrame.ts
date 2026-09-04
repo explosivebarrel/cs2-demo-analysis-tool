@@ -1,6 +1,6 @@
 import { MapOverview, ReplayData } from '../../api'
 import { worldToCanvas, zOnLevel } from '../../lib/coords'
-import { F_ALIVE, F_FLAGS, F_HP, F_TEAM, F_WID, F_X, F_Y, F_YAW, TEAM_COLORS, Transform, fieldsOf } from '../../lib/replay'
+import { F_ALIVE, F_FLAGS, F_HP, F_TEAM, F_WID, F_X, F_Y, F_YAW, FLAG_FLASHED, TEAM_COLORS, Transform, fieldsOf } from '../../lib/replay'
 
 // ── grenade zone visuals ─────────────────────────────────────────────────────
 const NADE_COLORS: Record<string, string> = {
@@ -25,6 +25,9 @@ const WEAPON_ICON_ALIAS: Record<string, string> = {
   m4a4: 'm4a1', glock18: 'glock', usp: 'usp_silencer', usp_s: 'usp_silencer',
   p2000: 'hkp2000', molotov_fire: 'molotov', knife_default: 'knife',
   elite_knife: 'elite', dual_berettas: 'elite', kevlar_helmet: 'armor_helmet',
+  // demo weapon display names keep spaces after canon-key slugging
+  'high explosive grenade': 'hegrenade', 'incendiary grenade': 'incgrenade',
+  'decoy grenade': 'decoy', 'c4 explosive': 'c4',
 }
 const weaponIconCache = new Map<string, HTMLImageElement>()
 
@@ -309,6 +312,26 @@ export default function drawFrame(
     ctx.restore()
   }
 
+  // planted bomb: pulsing marker at the plant spot until defused/exploded.
+  // bomb events are appended per-type (not tick order), so sort before replaying
+  let planted: { x: number; y: number } | null = null
+  {
+    const bombEv: { ty: string; t: number; x: number; y: number }[] = []
+    for (const ev of replay.events) {
+      const e = ev as Record<string, unknown>
+      if (e.ty === 'bp' || e.ty === 'bf' || e.ty === 'bx')
+        bombEv.push({ ty: e.ty as string, t: e.t as number, x: (e.x as number) ?? 0, y: (e.y as number) ?? 0 })
+    }
+    bombEv.sort((a, b) => a.t - b.t)
+    let plantedTick = 0
+    for (const ev of bombEv) {
+      if (ev.t > curTick) break
+      if (ev.ty === 'bp') { planted = { x: ev.x, y: ev.y }; plantedTick = ev.t }
+      else { planted = null; plantedTick = 0 }
+    }
+    if (planted && plantedTick < roundStartT) planted = null
+  }
+
   // players
   const n = replay.players.length
   const fi = Math.floor(frameIdx)
@@ -378,6 +401,31 @@ export default function drawFrame(
     ctx.fillStyle = color + 'cc'; ctx.fill()
     ctx.strokeStyle = hasBomb ? '#fff' : color
     ctx.lineWidth = (hasBomb ? 2.5 : 1.5) * dotScale; ctx.stroke()
+
+    // blind timer: shrinking yellow pie while the player is flashed
+    if ((flags & FLAG_FLASHED) !== 0) {      const backFrames = Math.ceil(replay.tickrate * 6 / Math.max(1, replay.frameStep))
+      const minFi = Math.max(0, fi - backFrames)
+      let flashStart = fi
+      for (let f = fi; f >= minFi; f--) {
+        const b = f * n * FIELDS + i * FIELDS
+        if ((replay.data[b + F_FLAGS] & FLAG_FLASHED) === 0) break
+        flashStart = f
+      }
+      const blindSec = (fi - flashStart) * replay.frameStep / Math.max(1, replay.tickrate)
+      const frac = Math.max(0, 1 - blindSec / 3)
+      if (frac > 0) {
+        ctx.beginPath()
+        ctx.moveTo(cx, cy)
+        ctx.arc(cx, cy, r * 0.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac)
+        ctx.closePath()
+        ctx.fillStyle = 'rgba(255,214,64,0.5)'
+        ctx.fill()
+      }
+      // thin ring: still blinded even after the visual countdown ran out
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.95 + 1.5 * dotScale, 0, Math.PI * 2)
+      ctx.strokeStyle = 'rgba(255,214,64,0.85)'
+      ctx.lineWidth = 1.5 * dotScale; ctx.stroke()
+    }
 
     const numFontSize = Math.round(r * 1.5)
     ctx.font = `bold ${numFontSize}px sans-serif`
@@ -466,6 +514,29 @@ export default function drawFrame(
     ctx.fillStyle = hp > 50 ? '#4caf7d' : hp > 25 ? '#f5c542' : '#e05252'
     ctx.fillRect(bx, by, bw * hp / 100, bh)
     ctx.globalAlpha = 1
+  }
+
+  // planted bomb marker: pulsing glow, light red <-> darker red
+  if (planted) {
+    const [px2, py2] = worldToCanvas(planted.x, planted.y, ov, SZ, SZ)
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160)
+    const cr = Math.round(255 - 70 * pulse)
+    const cg = Math.round(90 - 60 * pulse)
+    const glow = ctx.createRadialGradient(px2, py2, 0, px2, py2, 26 * dotScale)
+    glow.addColorStop(0, `rgba(${cr},${cg},${cg},${(0.4 + 0.25 * pulse).toFixed(3)})`)
+    glow.addColorStop(1, 'rgba(160,0,0,0)')
+    ctx.beginPath(); ctx.arc(px2, py2, 26 * dotScale, 0, Math.PI * 2)
+    ctx.fillStyle = glow; ctx.fill()
+    const img = weaponIcon('planted_c4')
+    if (img) {
+      const h = 15 * dotScale
+      const w = h * (img.naturalWidth / img.naturalHeight || 1)
+      ctx.drawImage(img, px2 - w / 2, py2 - h / 2, w, h)
+    } else {
+      ctx.beginPath(); ctx.arc(px2, py2, 5 * dotScale, 0, Math.PI * 2)
+      ctx.fillStyle = `rgba(255,60,60,${(0.6 + 0.4 * pulse).toFixed(3)})`
+      ctx.fill()
+    }
   }
 
   ctx.restore()

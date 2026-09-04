@@ -1,6 +1,13 @@
 {
   "demos": "Demos",
   "settings": "Settings",
+  "grenades": "Grenades",
+  "reasons": {
+    "elimination": "Elimination",
+    "bomb": "Bomb exploded",
+    "defuse": "Bomb defused",
+    "time": "Time ran out"
+  },
   "overview": "Match Overview",
   "heatmaps": "Heatmaps",
   "replay": "Replay",

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useReducer, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, DemoEntry } from '../api'
 import { t } from '../i18n'
@@ -72,14 +72,31 @@ function StatusBadge({ d }: { d: DemoEntry }) {
 
 // ── ProgressRow ──────────────────────────────────────────────────────────────
 
+// parse start timestamps survive re-renders so the elapsed label keeps ticking
+const parseStart: Record<string, number> = {}
+
 function ProgressRow({ d }: { d: DemoEntry }) {
-  if (!isRunning(d)) return null
+  const [, tick] = useReducer(x => x + 1, 0)
+  useEffect(() => {
+    if (!isRunning(d)) return
+    parseStart[d.id] ??= Date.now()
+    const iv = window.setInterval(tick, 1000)
+    return () => window.clearInterval(iv)
+  }, [d.id, d.status, d.progress])
+  if (!isRunning(d)) {
+    delete parseStart[d.id]
+    return null
+  }
+  if (!parseStart[d.id]) parseStart[d.id] = Date.now()
+  const elapsed = Math.max(0, Math.floor((Date.now() - parseStart[d.id]) / 1000))
+  const label = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
   const pct = d.progress ?? 0
   return (
-    <div style={{ marginTop: 6 }}>
+    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
       <div className="progress-bar" style={{ width: 200 }}>
         <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
       </div>
+      <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{label}</span>
     </div>
   )
 }

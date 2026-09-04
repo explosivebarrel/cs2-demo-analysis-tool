@@ -121,3 +121,7 @@ tr:hover td { background: var(--bg3); }
 .text-right { text-align: right; }
 .bold { font-weight: 700; }
 .w-full { width: 100%; }
+
+/* clickable table rows (player history, etc.) */
+.row-link { cursor: pointer; }
+.row-link:hover { background: var(--bg3); }

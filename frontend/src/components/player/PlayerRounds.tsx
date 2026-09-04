@@ -96,7 +96,7 @@ export default function PlayerRounds({ series, rounds }: Props) {
               <th style={{ padding: '8px 10px' }}>K</th>
               <th style={{ padding: '8px 10px' }}>D</th>
               <th style={{ padding: '8px 10px' }}>{t('player:rounds.colDmg')}</th>
-              <th style={{ padding: '8px 10px' }} title={t('player:rounds.colNadesTitle')}>🔴</th>
+              <th style={{ padding: '8px 10px' }} title={t('player:rounds.colNadesTitle')}>{t('grenades')}</th>
               <th style={{ padding: '8px 10px' }}>IMP</th>
               <th style={{ padding: '8px 6px' }}></th>
             </tr>
