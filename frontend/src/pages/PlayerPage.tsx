@@ -4,6 +4,7 @@ import { api, AnalysisData, PlayerData, PlayerAnalyticsData } from '../api'
 import { t } from '../i18n'
 import { useLang, useBenchmarks } from '../App'
 import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../benchmarkUtils'
+import PlayerHistory from '../components/player/PlayerHistory'
 import MatchNav from '../components/MatchNav'
 import PlayerOverview from '../components/player/PlayerOverview'
 import PlayerStrengths from '../components/player/PlayerStrengths'
@@ -14,9 +15,9 @@ import PlayerMap from '../components/player/PlayerMap'
 import PlayerRounds from '../components/player/PlayerRounds'
 
 // ------------------------------------------------------------------ tab types
-type Tab = 'overview' | 'impact' | 'duels' | 'weapons' | 'map' | 'rounds'
+type Tab = 'overview' | 'impact' | 'duels' | 'weapons' | 'map' | 'rounds' | 'history'
 
-const TABS: Tab[] = ['overview', 'impact', 'duels', 'weapons', 'map', 'rounds']
+const TABS: Tab[] = ['overview', 'impact', 'duels', 'weapons', 'map', 'rounds', 'history']
 
 // ------------------------------------------------------------------ small helpers
 function Kv({ label, value, accent }: { label: string; value: React.ReactNode; accent?: boolean }) {
@@ -565,6 +566,10 @@ export default function PlayerPage() {
               <div key={i} className="skeleton" style={{ height: 52, borderRadius: 6 }} />
             ))}
           </div>
+        )}
+
+        {tab === 'history' && (
+          <PlayerHistory steamid={steamid ?? ''} currentDemoId={id ?? ''} />
         )}
 
         {tab === 'weapons' && (

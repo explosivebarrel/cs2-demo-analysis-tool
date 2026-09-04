@@ -20,7 +20,8 @@
     "duels": "Duels",
     "weapons": "Weapons",
     "map": "Map",
-    "rounds": "Rounds"
+    "rounds": "Rounds",
+    "history": "History"
   },
   "mode": {
     "global": "Global",
@@ -260,5 +261,15 @@
       "shiftPeekPct": "Shift peeks",
       "isolatedPct": "Isolated plays"
     }
+  },
+  "history": {
+    "tab": "History",
+    "empty": "No analyzed matches yet",
+    "match": "Match",
+    "result": "Result",
+    "win": "Win",
+    "loss": "Loss",
+    "ratingPlot": "Rating across matches",
+    "rounds": "Rounds"
   }
 }

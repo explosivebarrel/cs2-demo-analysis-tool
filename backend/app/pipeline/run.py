@@ -77,14 +77,15 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     hm = build_heatmap(ctx, rb, players, fb, replay)
 
     prog("analytics", 92)
-    from .playeranalytics import build_player_analytics
+    from .playeranalytics import build_player_analytics, build_moments
     pa = build_player_analytics(ctx, rb, fb, players, winprob=winprob, replay_ticks=replay["ticks"])
+    moments = build_moments(ctx, rb, fb, players, pa, winprob, replay["ticks"])
 
     prog("chat", 94)
     chat_messages = build_chat(ctx, rb)
 
     prog("writing", 95)
-    analysis = _build_analysis(ctx, rb, fb, players)
+    analysis = _build_analysis(ctx, rb, fb, players, moments=moments)
     replay_payload = {
         "tickrate": ctx.tickrate,
         "frameStep": ctx.frame_step,
@@ -112,6 +113,30 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
     _gz_write(os.path.join(out_dir, "player_analytics.json.gz"), pa)
     _gz_write(os.path.join(out_dir, "chat.json.gz"), chat_messages)
+
+    # lightweight cross-match history entry (progression tracking)
+    try:
+        from datetime import datetime, timezone
+        try:
+            mtime = os.path.getmtime(demo_path)
+            date_iso = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+        except OSError:
+            date_iso = ""
+        storage.save_history_entry({
+            "demoId": did,
+            "map": analysis["meta"]["map"],
+            "date": date_iso,
+            "score": analysis["meta"]["score"],
+            "teamNames": analysis["meta"]["teamNames"],
+            "players": [
+                {"steamid": p["steamid"], "name": p["name"], "team": p["team"],
+                 "kills": p["kills"], "deaths": p["deaths"], "adr": p["adr"],
+                 "kast": p["kast"], "rating": p["rating"]}
+                for p in analysis["players"]
+            ],
+        })
+    except Exception as hist_err:  # never fail the analysis on history
+        print(f"[{did}] history entry failed: {hist_err}", flush=True)
 
     prog("done", 100)
     return {
@@ -324,7 +349,7 @@ def _side_summary(p, rb, side):
             "kd": round(kills / deaths, 2) if deaths else kills}
 
 
-def _build_analysis(ctx, rb, fb, players):
+def _build_analysis(ctx, rb, fb, players, moments=None):
     rounds = rb.rounds
     score = rb.final_score
     team_names = [_team_name(rb, 0, list(players.values())),
@@ -401,6 +426,7 @@ def _build_analysis(ctx, rb, fb, players):
         "players": players_payload,
         "rounds": rounds_payload,
         "halves": halves,
+        "moments": moments,
         "weapons": weapon_id_table(),
     }
 

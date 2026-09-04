@@ -307,6 +307,26 @@ def chat(did: str):
     return _read_artifact(did, "chat.json.gz")
 
 
+@app.get("/api/players/{steamid}/history")
+def player_history(steamid: str):
+    out = []
+    for e in storage.load_history():
+        pl = next((p for p in e.get("players", []) if p.get("steamid") == steamid), None)
+        if pl is None:
+            continue
+        score = e.get("score", [0, 0])
+        team = pl.get("team", 0)
+        out.append({
+            "demoId": e.get("demoId"), "map": e.get("map"), "date": e.get("date"),
+            "score": score, "teamNames": e.get("teamNames", ["", ""]), "team": team,
+            "won": score[team] > score[1 - team],
+            "kills": pl.get("kills", 0), "deaths": pl.get("deaths", 0),
+            "adr": pl.get("adr", 0), "kast": pl.get("kast", 0),
+            "rating": pl.get("rating", 0),
+        })
+    return out
+
+
 @app.get("/api/demos/{did}/player/{steamid}/analytics")
 async def get_player_analytics(did: str, steamid: str):
     data = storage.read_player_analytics(did)

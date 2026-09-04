@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom'
 import MatchNavShared from '../components/MatchNav'
 import { api, ReplayData, MapOverview, AnalysisData, RoundData } from '../api'
 import { worldToCanvas, zOnLevel, lowerLevelNames } from '../lib/coords'
+import MomentsPanel, { frameForTickMinus, momentsAround } from '../components/replay/MomentsPanel'
 import { t, getLang } from '../i18n'
 import { useLang } from '../App'
 
@@ -1020,10 +1021,12 @@ export default function ReplayPage() {
   const lastTimeRef = useRef<number>(0)
   const frameIdxRef = useRef(0)
   const replayRef = useRef<ReplayData | null>(null)
+  const analysisRef = useRef<AnalysisData | null>(null)
 
   useEffect(() => { frameIdxRef.current = frameIdx }, [frameIdx])
   useEffect(() => { txRef.current = tx }, [tx])
   useEffect(() => { replayRef.current = replay }, [replay])
+  useEffect(() => { analysisRef.current = analysis }, [analysis])
 
   useEffect(() => {
     if (!id) return
@@ -1079,6 +1082,15 @@ export default function ReplayPage() {
       if (e.key === ',') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.max(0, i - 1)] })
       if (e.key === '.') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.min(SPEEDS.length - 1, i + 1)] })
       if (e.key === '0') setTx({ scale: 1, ox: 0, oy: 0 })
+      if (e.key === '[' || e.key === ']') {
+        const curTick = replayRef.current?.ticks[frameIdxRef.current] ?? 0
+        const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replayRef.current?.tickrate ?? 64)
+        const m = e.key === '[' ? mm.prev : mm.next
+        if (m && replayRef.current) {
+          setFrameIdx(frameForTickMinus(replayRef.current, m.tick, 3))
+          setPlaying(false)
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -1155,6 +1167,13 @@ export default function ReplayPage() {
   }
 
   function jumpToFrame(fi: number) { setFrameIdx(fi); setPlaying(false) }
+
+  function jumpToMoment(dir: 1 | -1) {
+    const curTick = replay?.ticks[frameIdx] ?? 0
+    const mm = momentsAround(analysis?.moments ?? [], curTick, replay?.tickrate ?? 64)
+    const m = dir === 1 ? mm.next : mm.prev
+    if (m && replay) jumpToFrame(frameForTickMinus(replay, m.tick, 3))
+  }
 
   const curTick = replay?.ticks[frameIdx] ?? 0
   const currentRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
@@ -1246,12 +1265,27 @@ export default function ReplayPage() {
             )}
           </div>
 
+          {(analysis?.moments?.length ?? 0) > 0 && (
+            <div className="card" style={{ marginTop: 8, padding: 10 }}>
+              <MomentsPanel moments={analysis!.moments!} replay={replay}
+                onJump={tk => { jumpToFrame(frameForTickMinus(replay, tk, 3)) }} />
+            </div>
+          )}
+
           {/* controls + win prob scrubber */}
           <div className="card" style={{ marginTop: 8 }}>
             <div className="flex items-center gap-12" style={{ marginBottom: 8 }}>
               <button className="btn-primary" style={{ minWidth: 72 }} onClick={() => setPlaying(p => !p)}>
                 {playing ? t('pause') : t('play')}
               </button>
+              {(analysis?.moments?.length ?? 0) > 0 && (
+                <>
+                  <button className="btn-ghost" title={t('replay:moments.prev')}
+                    onClick={() => jumpToMoment(-1)}>⏮</button>
+                  <button className="btn-ghost" title={t('replay:moments.next')}
+                    onClick={() => jumpToMoment(1)}>⏭</button>
+                </>
+              )}
               <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 40 }}>{fmtTime(frameIdx)}</span>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>/ {fmtTime(totalFrames - 1)}</span>
               {winprob.length > 0 && currentRound && (

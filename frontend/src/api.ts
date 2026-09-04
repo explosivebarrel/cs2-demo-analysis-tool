@@ -1,5 +1,24 @@
 const BASE = '/api'
 
+// per-demo analysis artifacts are immutable once written — cache them client
+// side so back-and-forth navigation does not refetch multi-MB payloads
+const _cache = new Map<string, unknown>()
+
+function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const hit = _cache.get(key)
+  if (hit !== undefined) return Promise.resolve(hit as T)
+  return fn().then(v => {
+    _cache.set(key, v)
+    return v
+  })
+}
+
+function evictDemo(did: string) {
+  for (const k of [..._cache.keys()]) {
+    if (k.endsWith(`:${did}`)) _cache.delete(k)
+  }
+}
+
 async function req<T>(url: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(BASE + url, opts)
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
@@ -36,6 +55,7 @@ export interface AnalysisData {
   rounds: RoundData[]
   halves: HalfData[]
   weapons: Record<number, string>
+  moments?: Moment[]
 }
 
 export interface TeamData {
@@ -280,6 +300,31 @@ export interface ChatMessage {
   round: number | null
 }
 
+export interface PlayerHistoryEntry {
+  demoId: string
+  map: string
+  date: string
+  score: [number, number]
+  teamNames: [string, string]
+  team: number
+  won: boolean
+  kills: number
+  deaths: number
+  adr: number
+  kast: number
+  rating: number
+}
+
+export interface Moment {
+  type: 'clutch' | 'multikill' | 'openingDeath' | 'mistake' | 'swing'
+  tick: number
+  round: number
+  steamid: string | null
+  won?: boolean
+  count?: number
+  detail?: string
+}
+
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
   benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
@@ -287,17 +332,25 @@ export const api = {
     const fd = new FormData(); fd.append('file', file)
     return req('/demos/upload', { method: 'POST', body: fd })
   },
-  analyze: (id: string): Promise<unknown> => req(`/demos/${id}/analyze`, { method: 'POST' }),
+  analyze: (id: string): Promise<unknown> => {
+    evictDemo(id)  // re-analysis invalidates cached artifacts
+    return req(`/demos/${id}/analyze`, { method: 'POST' })
+  },
   probe: (id: string): Promise<unknown> => req(`/demos/${id}/probe`, { method: 'POST' }),
   status: (id: string): Promise<StatusData> => req(`/demos/${id}/status`),
-  delete: (id: string): Promise<unknown> => req(`/demos/${id}`, { method: 'DELETE' }),
-  analysis: (id: string): Promise<AnalysisData> => req(`/demos/${id}/analysis`),
-  heatmap: (id: string): Promise<HeatmapData> => req(`/demos/${id}/heatmap`),
-  replay: (id: string): Promise<ReplayData> => req(`/demos/${id}/replay`),
-  chat: (id: string): Promise<ChatMessage[]> => req(`/demos/${id}/chat`),
-  mapOverview: (map: string): Promise<MapOverview> => req(`/maps/${map}/overview`),
+  delete: (id: string): Promise<unknown> => {
+    evictDemo(id)
+    return req(`/demos/${id}`, { method: 'DELETE' })
+  },
+  analysis: (id: string): Promise<AnalysisData> => cached(`analysis:${id}`, () => req(`/demos/${id}/analysis`)),
+  heatmap: (id: string): Promise<HeatmapData> => cached(`heatmap:${id}`, () => req(`/demos/${id}/heatmap`)),
+  replay: (id: string): Promise<ReplayData> => cached(`replay:${id}`, () => req(`/demos/${id}/replay`)),
+  chat: (id: string): Promise<ChatMessage[]> => cached(`chat:${id}`, () => req(`/demos/${id}/chat`)),
+  mapOverview: (map: string): Promise<MapOverview> => cached(`overview:${map}`, () => req(`/maps/${map}/overview`)),
   radarUrl: (map: string, level?: string) =>
     `/api/maps/${map}/radar${level && level !== 'default' ? `?level=${encodeURIComponent(level)}` : ''}`,
+  playerHistory: (steamid: string): Promise<PlayerHistoryEntry[]> =>
+    req(`/players/${steamid}/history`),
   playerAnalytics: (id: string, steamid: string): Promise<PlayerAnalyticsData> =>
-    req(`/demos/${id}/player/${steamid}/analytics`),
+    cached(`panalytics:${id}:${steamid}`, () => req(`/demos/${id}/player/${steamid}/analytics`)),
 }

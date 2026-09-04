@@ -135,3 +135,26 @@ def list_demos():
         result.append(entry)
     result.sort(key=lambda x: -x["mtime"])
     return result
+
+
+# ------------------------------------------------------------------ history
+HISTORY_PATH = os.path.join(config.STORE_DIR, "history.json")
+
+
+def load_history() -> list[dict]:
+    try:
+        with open(HISTORY_PATH, "r", encoding="utf-8") as f:
+            return json.load(f).get("entries", [])
+    except Exception:
+        return []
+
+
+def save_history_entry(entry: dict) -> None:
+    entries = load_history()
+    entries = [e for e in entries if e.get("demoId") != entry.get("demoId")]
+    entries.append(entry)
+    entries.sort(key=lambda e: e.get("date") or "")
+    tmp = HISTORY_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"entries": entries}, f, ensure_ascii=False)
+    os.replace(tmp, HISTORY_PATH)

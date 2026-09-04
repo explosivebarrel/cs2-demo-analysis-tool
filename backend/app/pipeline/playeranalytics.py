@@ -1079,3 +1079,87 @@ def build_player_analytics(ctx, rb, fb, players: dict,
         }
 
     return result
+
+
+# ------------------------------------------------------------------ curated moments
+
+def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
+                  replay_ticks: list[int]) -> list[dict]:
+    """Match-wide highlight moments for the replay player navigation.
+
+    Types: clutch, multikill, openingDeath, mistake (death with error tags),
+    swing (large winprob shift inside a round). Sorted by tick, capped.
+    """
+    import numpy as _np
+
+    moments: list[dict] = []
+
+    # tick -> round number via round freeze ticks (duel payloads may carry 0)
+    fe = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
+
+    def _round_n(tick: int) -> int:
+        i = int(_np.searchsorted(fe, int(tick), side="right")) - 1
+        return rb.rounds[i]["n"] if 0 <= i < len(rb.rounds) else 0
+
+    # clutches (attempt start tick is when the 1vX situation formed)
+    for c in getattr(fb.clutch, "attempts", []):
+        moments.append({"type": "clutch", "tick": int(c["t0"]),
+                        "round": _round_n(int(c["t0"])) or c["round"],
+                        "steamid": c["player"], "won": bool(c.get("won")),
+                        "count": int(c.get("maxEnemies", 0))})
+
+    # multikills: >=3 kills by one player in one round, moment at first kill
+    kills = ctx.ev("player_death")
+    if len(kills):
+        kt = kills["tick"].to_numpy()
+        at = kills["attacker_steamid"].astype(str).to_numpy()
+        per = defaultdict(list)
+        for t, a in zip(kt, at):
+            if not a:
+                continue
+            rn = _round_n(int(t))
+            if rn:
+                per[(a, rn)].append(int(t))
+        for (a, rn), ticks in per.items():
+            if len(ticks) >= 3 and a in players:
+                moments.append({"type": "multikill", "tick": min(ticks), "round": rn,
+                                "steamid": a, "count": len(ticks)})
+
+    # opening deaths
+    for r in rb.rounds:
+        ok = r.get("openingKill")
+        if ok and ok.get("victim") in players:
+            moments.append({"type": "openingDeath", "tick": int(ok["tick"]),
+                            "round": r["n"], "steamid": ok["victim"]})
+
+    # mistakes: deaths with error tags (flashed / isolated / moving_shot / missed_first)
+    for sid, block in pa.items():
+        for d in block.get("duels", []):
+            if d.get("victim") != sid or d.get("won"):
+                continue
+            errs = [e for e in d.get("errors", []) if e != "strong_duel"]
+            tick = int(d["tick"])
+            if errs and _round_n(tick):
+                moments.append({"type": "mistake", "tick": tick,
+                                "round": _round_n(tick), "steamid": sid,
+                                "detail": ",".join(sorted(errs))})
+
+    # winprob swings: largest single-step shift inside a round
+    if winprob and replay_ticks:
+        ticks_arr = _np.array(replay_ticks, dtype="int64")
+        wp = _np.array(winprob, dtype="float64")
+        for r in rb.rounds:
+            i0 = int(_np.searchsorted(ticks_arr, r["freezeEndTick"]))
+            i1 = int(_np.searchsorted(ticks_arr, r["endTick"]))
+            if i1 - i0 < 2:
+                continue
+            seg = wp[i0:i1 + 1]
+            d = _np.abs(_np.diff(seg))
+            j = int(d.argmax())
+            if d[j] >= 0.2:
+                moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + 1]),
+                                "round": r["n"], "steamid": None,
+                                "detail": f"{d[j] * 100:.0f}%"})
+
+    moments.sort(key=lambda m: m["tick"])
+    return moments[:300]

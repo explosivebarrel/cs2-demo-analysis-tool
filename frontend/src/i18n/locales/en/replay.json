@@ -61,5 +61,17 @@
     "tailTip": "Grenade trail: fading tail while in flight",
     "path": "🔴 Path",
     "pathTip": "Grenade path: full trajectory since the throw"
+  },
+  "moments": {
+    "title": "Moments",
+    "all": "All",
+    "clutch": "Clutch",
+    "multikill": "Multi",
+    "mistake": "Mistake",
+    "openingDeath": "Early death",
+    "swing": "Swing",
+    "prev": "Previous moment",
+    "next": "Next moment",
+    "empty": "No moments"
   }
 }
