@@ -3,7 +3,6 @@
 The real HLTV formula is private; this is a documented community-style
 approximation: five sub-ratings (kill, survival, damage, KAST, impact)
 normalized to a mean of 1.00 across the match, combined by fixed weights."""
-import math
 
 from .. import config
 

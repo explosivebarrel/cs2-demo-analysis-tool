@@ -5,10 +5,9 @@ import os
 import time
 from collections import defaultdict
 
-import numpy as np
 
 from .. import config, storage
-from ..weapons import canon, weapon_id_table
+from ..weapons import canon, inventory_table, weapon_id_table
 from .context import DemoContext
 from .rounds import RoundBuilder
 from .replayframes import FrameBuilder
@@ -16,6 +15,8 @@ from .players import compute_players, METERS_PER_UNIT
 from .rating import compute_ratings
 from .heatmaps import build_heatmap
 from .events import build_events
+from .winprob import compute_winprob
+from .chat import build_chat
 
 
 def _gz_write(path, payload):
@@ -30,20 +31,30 @@ def _team_name(rb, team, players):
     clans = Counter(p.clan for p in players if p.team == team and p.clan)
     if clans:
         return clans.most_common(1)[0][0]
+    # no clan tag — use the name of the first player on the team
+    # but only if it doesn't look like a raw steamid (pure digits, 17 chars)
+    team_players = [p for p in players if p.team == team and p.name]
+    for p in team_players:
+        name = p.name.strip()
+        if name and not (name.isdigit() and len(name) >= 15):
+            return name
     sids = [s for s, t in rb.steamid_team.items() if t == team]
     return f"Team {sids[0]}" if sids else f"Team {team + 1}"
 
 
 def analyze_demo(demo_path: str, did: str, progress=None):
-    prog = progress or (lambda phase, pct: None)
+    prog = progress or (lambda phase, pct, detail="": None)
     t0 = time.time()
 
-    ctx = DemoContext(demo_path)
+    prog("loading", 2)
+    ctx = DemoContext(demo_path, progress=lambda phase, pct: prog(phase, pct))
     ctx.load()
 
     prog("rounds", 62)
     rb = RoundBuilder(ctx)
     rb.rounds = rb.build()
+    n_rounds = len(rb.rounds)
+    prog("rounds", 65, f"{n_rounds} rounds")
 
     prog("frames", 70)
     fb = FrameBuilder(ctx, rb)
@@ -51,17 +62,30 @@ def analyze_demo(demo_path: str, did: str, progress=None):
 
     prog("players", 78)
     players = compute_players(ctx, rb, fb)
+    n_players = len(players)
     compute_ratings(players)
+    prog("players", 82, f"{n_players} players")
 
     prog("events", 84)
     ev = build_events(ctx, rb, fb)
     fb.finalize_bomb(replay, ev["events"])
 
+    prog("winprob", 88)
+    winprob = compute_winprob(fb, rb, replay)
+
     prog("heatmaps", 90)
     hm = build_heatmap(ctx, rb, players, fb, replay)
 
-    prog("writing", 94)
-    analysis = _build_analysis(ctx, rb, fb, players)
+    prog("analytics", 92)
+    from .playeranalytics import build_player_analytics, build_moments
+    pa = build_player_analytics(ctx, rb, fb, players, winprob=winprob, replay_ticks=replay["ticks"])
+    moments = build_moments(ctx, rb, fb, players, pa, winprob, replay["ticks"])
+
+    prog("chat", 94)
+    chat_messages = build_chat(ctx, rb)
+
+    prog("writing", 95)
+    analysis = _build_analysis(ctx, rb, fb, players, moments=moments)
     replay_payload = {
         "tickrate": ctx.tickrate,
         "frameStep": ctx.frame_step,
@@ -69,10 +93,13 @@ def analyze_demo(demo_path: str, did: str, progress=None):
                     for s in fb.players],
         "ticks": replay["ticks"],
         "data": replay["data"],
+        "inv": replay.get("inv", []),
+        "invWeapons": inventory_table(),
         "bomb": replay["bomb"],
         "events": ev["events"],
         "shots": ev["shots"],
         "weapons": weapon_id_table(),
+        "winprob": winprob,
     }
     heatmap_payload = {
         "layers": hm,
@@ -86,6 +113,32 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "analysis.json.gz"), analysis)
     _gz_write(os.path.join(out_dir, "replay.json.gz"), replay_payload)
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
+    _gz_write(os.path.join(out_dir, "player_analytics.json.gz"), pa)
+    _gz_write(os.path.join(out_dir, "chat.json.gz"), chat_messages)
+
+    # lightweight cross-match history entry (progression tracking)
+    try:
+        from datetime import datetime, timezone
+        try:
+            mtime = os.path.getmtime(demo_path)
+            date_iso = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
+        except OSError:
+            date_iso = ""
+        storage.save_history_entry({
+            "demoId": did,
+            "map": analysis["meta"]["map"],
+            "date": date_iso,
+            "score": analysis["meta"]["score"],
+            "teamNames": analysis["meta"]["teamNames"],
+            "players": [
+                {"steamid": p["steamid"], "name": p["name"], "team": p["team"],
+                 "kills": p["kills"], "deaths": p["deaths"], "adr": p["adr"],
+                 "kast": p["kast"], "rating": p["rating"]}
+                for p in analysis["players"]
+            ],
+        })
+    except Exception as hist_err:  # never fail the analysis on history
+        print(f"[{did}] history entry failed: {hist_err}", flush=True)
 
     prog("done", 100)
     return {
@@ -201,11 +254,12 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
             "n": r["n"], "k": pr["kills"], "d": pr["deaths"], "a": pr["assists"],
             "dmg": int(pr["dmg"]), "sv": 1 if pr["survived"] else 0,
             "kast": 1 if r["n"] in p.kastRounds else 0,
-            "opening": pr["opening"], "mk": pr["kills"] >= 2,
+            "opening": {"k": "kill", "d": "death"}.get(pr["opening"]), "mk": pr["kills"] >= 2,
             "pistol": 1 if r.get("isPistol") else 0,
             "mvp": 1 if r.get("mvp") == p.steamid else 0,
             "won": 1 if r_won else 0,
             "imp": imp,
+            "nades": pr.get("nades", 0),
         })
 
     overall_imp = round(sum(s["imp"] for s in series) / len(series), 2) if series else 0.0
@@ -297,7 +351,7 @@ def _side_summary(p, rb, side):
             "kd": round(kills / deaths, 2) if deaths else kills}
 
 
-def _build_analysis(ctx, rb, fb, players):
+def _build_analysis(ctx, rb, fb, players, moments=None):
     rounds = rb.rounds
     score = rb.final_score
     team_names = [_team_name(rb, 0, list(players.values())),
@@ -368,20 +422,20 @@ def _build_analysis(ctx, rb, fb, players):
         "firstSideTeam0": "T" if getattr(rb, "team0_first_side_t", True) else "CT",
     }
 
-    kill_feed = []  # (kill feed lives in replay events; analysis keeps aggregates)
-
     return {
         "meta": meta,
         "teams": teams,
         "players": players_payload,
         "rounds": rounds_payload,
         "halves": halves,
+        "knifeRound": getattr(rb, "knife_round", None),
+        "moments": moments,
         "weapons": weapon_id_table(),
     }
 
 
 def _halves(rb, ctx):
-    """Half boundaries (side swaps) for UI grouping."""
+    """Half boundaries (side swaps) for UI grouping. Score is per half."""
     halves = []
     if not rb.rounds:
         return halves
@@ -398,4 +452,5 @@ def _halves(rb, ctx):
             if nxt is not None:
                 start_n = nxt["n"]
                 cur_side = nxt["sideTeam0"]
+                score0 = score1 = 0  # next half starts from 0
     return halves

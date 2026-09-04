@@ -35,7 +35,7 @@ export default function AboutPage() {
       <div style={{ fontSize: 22, fontWeight: 800, marginBottom: 4 }}>{t('aboutTitle')}</div>
       <P>{t('aboutIntro')}</P>
 
-      <Section title="Rating 2.0">
+      <Section title={t('about:sections.rating')}>
         <P>{t('aboutRatingDesc')}</P>
         <Formula>{'Rating = 0.0073 × KAST + 0.3591 × KPR − 0.5329 × DPR + 0.2372 × Impact + 0.0032 × ADR + 0.1587'}</Formula>
         <H>{t('aboutRatingComponents')}</H>
@@ -49,19 +49,19 @@ export default function AboutPage() {
         <P>{t('aboutRatingNote')}</P>
       </Section>
 
-      <Section title="RWS (Round Win Share)">
+      <Section title={t('about:sections.rws')}>
         <P>{t('aboutRwsDesc')}</P>
         <Formula>{'RWS = mean( player_dmg / team_dmg × 100 )  [over won rounds only]'}</Formula>
         <P>{t('aboutRwsNote')}</P>
       </Section>
 
-      <Section title="KAST">
+      <Section title={t('about:sections.kast')}>
         <P>{t('aboutKastDesc')}</P>
         <Formula>{'KAST = (rounds with K or A or S or T) / total_rounds × 100%'}</Formula>
         <P>{t('aboutKastNote')}</P>
       </Section>
 
-      <Section title="IMP (Impact)">
+      <Section title={t('about:sections.imp')}>
         <P>{t('aboutImpDesc')}</P>
         <H>{t('aboutImpFormula')}</H>
         <Formula>{t('aboutImpFormulaBody')}</Formula>

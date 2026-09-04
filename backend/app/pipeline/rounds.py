@@ -5,9 +5,28 @@ from bomb events + alive counts at the end of each round window."""
 import numpy as np
 
 from .. import config
+from ..weapons import canon
 from .ticksview import TicksView
 
 REASONS = {"elimination": "elimination", "bomb": "bomb", "defuse": "defuse", "time": "time"}
+
+# CS2 round_end reason strings → canonical set. Check defuse BEFORE bomb:
+# "bomb_defused" contains "bomb".
+_REASON_MAP = [
+    ("defus", "defuse"),
+    ("explod", "bomb"),
+    ("bomb", "bomb"),
+    ("time", "time"),
+    ("saved", "time"),
+]
+
+
+def map_round_reason(rsn: str) -> str:
+    rsn = str(rsn or "").lower()
+    for needle, canonical in _REASON_MAP:
+        if needle in rsn:
+            return canonical
+    return "elimination"
 
 
 def _clean_clan(clan: str) -> str:
@@ -44,10 +63,26 @@ class RoundBuilder:
 
     # ------------------------------------------------------------- main
     def build(self) -> dict:
+        self.knife_round = self._knife_round()
         fe = self.ctx.ev("round_freeze_end")
         freeze_ends = [int(t) for t in fe["tick"] if self.match_start < t <= self.match_end]
         prestarts = sorted(int(t) for t in self.ctx.ev("round_prestart")["tick"])
         officially = sorted(int(t) for t in self.ctx.ev("round_officially_ended")["tick"])
+        round_end_ticks = sorted(int(t) for t in self.ctx.ev("round_end")["tick"]) \
+            if self.ctx.has_ev("round_end") else []
+
+        kill_ticks = sorted(int(t) for t in self.ctx.ev("player_death")["tick"]) \
+            if self.ctx.has_ev("player_death") else []
+        bomb_ticks = []
+        for ev_name in ("bomb_planted", "bomb_defused", "bomb_exploded"):
+            if self.ctx.has_ev(ev_name):
+                bomb_ticks += [int(t) for t in self.ctx.ev(ev_name)["tick"]]
+        bomb_ticks.sort()
+
+        def has_any(ticks_sorted, lo: int, hi: int) -> bool:
+            import bisect
+            i = bisect.bisect_left(ticks_sorted, lo)
+            return i < len(ticks_sorted) and ticks_sorted[i] <= hi
 
         rounds = []
         for i, fe_tick in enumerate(freeze_ends):
@@ -56,14 +91,23 @@ class RoundBuilder:
             next_pre = next((p for p in prestarts if p > fe_tick), nxt)
             off = next((o for o in officially if fe_tick < o <= next_pre), None)
             end_tick = off if off else next_pre - 1
-            rounds.append({
+            entry = {
                 "n": i + 1,
                 "freezeEndTick": fe_tick,
                 "startTick": fe_tick,          # live start (freeze handled via flag)
                 "endTick": min(end_tick, nxt - 1),
                 "nextStart": next_pre,
                 "officialTick": off,
-            })
+            }
+            # cancelled/restarted rounds: no official end, no round_end, no
+            # kills and no bomb action anywhere before the next freeze — skip
+            if off is None and not has_any(round_end_ticks, fe_tick, nxt) \
+                    and not has_any(kill_ticks, fe_tick, nxt) \
+                    and not has_any(bomb_ticks, fe_tick, nxt):
+                continue
+            rounds.append(entry)
+        for i, r in enumerate(rounds):
+            r["n"] = i + 1
 
         # sides per round + team identity
         self._assign_sides(rounds)
@@ -76,10 +120,48 @@ class RoundBuilder:
         self._finalize_teams(rounds)
         return rounds
 
+    # ------------------------------------------------------------- knife
+    def _knife_round(self) -> dict | None:
+        """Pre-match knife round (FACEIT): a decisive round_end before
+        begin_new_match, validated by knives-only loadout in that window."""
+        ms = self.match_start
+        if ms <= 0:
+            return None
+        re_ev = self.ctx.ev("round_end")
+        if not len(re_ev) or "winner" not in re_ev.columns:
+            return None
+        cand = re_ev[(re_ev["tick"] < ms) & re_ev["winner"].isin(["CT", "T"])]
+        if not len(cand):
+            return None
+        end_tick = int(cand["tick"].max())
+        winner = str(cand.sort_values("tick").iloc[-1]["winner"])
+        rs = self.ctx.ev("round_start")
+        start_tick = int(rs["tick"].min()) if len(rs) else 0
+        # confirm via loadout: from the window's freeze end on, no alive
+        # player carries a gun or grenade (warmup does; knives pass —
+        # incl. cosmetic names like "Bayonet" without the "knife" substring)
+        fe = self.ctx.ev("round_freeze_end")
+        pre_fe = [int(t) for t in fe["tick"] if start_tick < t < ms]
+        # the knife round's own freeze end — restarts after round_end also
+        # emit freeze_end events, keep only ones inside the round window
+        knife_fe = next((t for t in pre_fe if t <= end_tick), None)
+        probe_tick = knife_fe or max(start_tick, (start_tick + end_tick) // 2)
+        ticks = self.ctx.ticks
+        win = ticks[(ticks["tick"] >= probe_tick) & (ticks["tick"] <= end_tick)]
+        if "is_alive" in win.columns:
+            win = win[win["is_alive"] == True]  # noqa: E712
+        if len(win):
+            gun_classes = ("rifle", "sniper", "smg", "heavy", "pistol", "grenade")
+            if any(canon(w)[2] in gun_classes for w in win["active_weapon_name"].unique()):
+                return None
+        return {"startTick": start_tick, "freezeEndTick": knife_fe,
+                "endTick": end_tick, "winner": winner}
+
     # ------------------------------------------------------------- sides
     def _assign_sides(self, rounds):
-        team_of_clan: dict = {}
-        steamid_team: dict = {}
+        # collect clan -> observed tnums and player counts across the match
+        clan_tnums: dict[str, set] = {}
+        clan_players: dict[str, set] = {}
         for r in rounds:
             teams = self.tv.col_at_tick(r["freezeEndTick"], "team_num")
             clans = self.tv.col_at_tick(r["freezeEndTick"], "team_clan_name")
@@ -93,21 +175,38 @@ class RoundBuilder:
                 sides[sid] = side
                 clan = _clean_clan(clans.get(sid, ""))
                 if clan and tnum in (2, 3):
-                    if clan not in team_of_clan:
-                        team_of_clan[clan] = len(team_of_clan) if len(team_of_clan) < 2 else None
-                    if team_of_clan.get(clan) is not None:
-                        steamid_team[sid] = team_of_clan[clan]
+                    clan_tnums.setdefault(clan, set()).add(tnum)
+                    clan_players.setdefault(clan, set()).add(sid)
             r["sides"] = sides
             r["clans"] = {sid: _clean_clan(c) for sid, c in clans.items()}
 
-        # fallback: identity by side in the first round
-        if len(team_of_clan) < 2:
+        # two teams are the largest clans whose tnum sets never overlap
+        # (players of the same clan never appear on both sides)
+        order = sorted(clan_players, key=lambda c: -len(clan_players[c]))
+        team_clan: dict[int, str] = {}
+        for clan in order:
+            if len(team_clan) >= 2:
+                break
+            tnums = clan_tnums[clan]
+            if any(tnums & clan_tnums[other] for other in team_clan.values()):
+                continue
+            team_clan[len(team_clan)] = clan
+
+        steamid_team: dict[str, int] = {}
+        if len(team_clan) == 2:
+            clan_to_team = {c: t for t, c in team_clan.items()}
+            for r in rounds:
+                clans = r["clans"]
+                for sid, side in r["sides"].items():
+                    if clans.get(sid) in clan_to_team and side in ("T", "CT"):
+                        steamid_team[sid] = clan_to_team[clans[sid]]
+        if len(team_clan) < 2:
+            # fallback: identity by side in the first round
             steamid_team = {}
             first = rounds[0] if rounds else None
             if first:
                 for sid, side in first["sides"].items():
                     steamid_team[sid] = 0 if side == "T" else 1 if side == "CT" else 0
-            team_of_clan = {}
 
         # players not yet assigned (joined late) default to team 0
         for r in rounds:
@@ -140,29 +239,89 @@ class RoundBuilder:
     def _winners(self, rounds):
         exploded = set(self.ctx.ev("bomb_exploded")["tick"]) if self.ctx.has_ev("bomb_exploded") else set()
         defused = set(self.ctx.ev("bomb_defused")["tick"]) if self.ctx.has_ev("bomb_defused") else set()
+
+        # Build round_end lookup: tick -> (winner_side, reason)
+        # winner_side is "CT" or "T"; reason is the raw string from the event
+        round_end_by_tick: dict[int, tuple[str, str]] = {}
+        re_ev = self.ctx.ev("round_end")
+        if len(re_ev) and "winner" in re_ev.columns:
+            for _, row in re_ev.iterrows():
+                t = int(row["tick"])
+                w = str(row.get("winner") or "")
+                rsn = str(row.get("reason") or "")
+                if w in ("CT", "T"):
+                    round_end_by_tick[t] = (w, rsn)
+
         for r in rounds:
             w0, w1 = r["freezeEndTick"], r["endTick"]
             winner_team, reason = None, "elimination"
-            if any(w0 <= t <= w1 for t in exploded):
-                winner_team = self.team_with_side(r, "T")
-                reason = "bomb"
-            elif any(w0 <= t <= w1 for t in defused):
-                winner_team = self.team_with_side(r, "CT")
-                reason = "defuse"
+
+            # 1. Authoritative: round_end event with winner field (present in most demos)
+            #    Search in a window [w0 .. w1 + 5s] to handle slight tick offsets
+            search_end = w1 + int(self.ctx.tickrate * 5)
+            for t, (win_side, rsn) in round_end_by_tick.items():
+                if w0 <= t <= search_end:
+                    winner_team = self.team_with_side(r, win_side)
+                    reason = map_round_reason(rsn)
+                    break
+
+            # 2. Bomb events override reason (more reliable than round_end reason string)
+            if winner_team is not None:
+                if any(w0 <= t <= w1 for t in exploded):
+                    reason = "bomb"
+                elif any(w0 <= t <= w1 for t in defused):
+                    reason = "defuse"
+
+            # 2b. Hostage rescue: CT side wins the round
+            rescued = self.ctx.ev("hostage_rescued")
+            if len(rescued):
+                rt = rescued["tick"].to_numpy()
+                if any(w0 <= t <= w1 for t in rt):
+                    winner_team = self.team_with_side(r, "CT")
+                    reason = "defuse"  # rescue semantics: objective completed by CT
+
+            # 3. Fallback: alive-count heuristic (used when round_end not available)
             if winner_team is None:
-                counts = self.tv.alive_by_team(min(w1, self.ctx.max_tick), None)
-                ct_team = self.team_with_side(r, "CT")
-                t_team = self.team_with_side(r, "T")
-                alive_ct = counts.get(3, 0)
-                alive_t = counts.get(2, 0)
-                if alive_t == 0 and alive_ct > 0:
-                    winner_team, reason = ct_team, "elimination"
-                elif alive_ct == 0 and alive_t > 0:
-                    winner_team, reason = t_team, "elimination"
+                if any(w0 <= t <= w1 for t in exploded):
+                    winner_team = self.team_with_side(r, "T")
+                    reason = "bomb"
+                elif any(w0 <= t <= w1 for t in defused):
+                    winner_team = self.team_with_side(r, "CT")
+                    reason = "defuse"
                 else:
-                    winner_team, reason = ct_team, "time"
+                    counts = self.tv.alive_by_team(min(w1, self.ctx.max_tick), None)
+                    # the downsampled frame may predate the last kills of the
+                    # round — replay deaths in (frame_tick, w1] on top of it
+                    frame_tick = self.tv.frame_tick_before(min(w1, self.ctx.max_tick))
+                    deaths = self.ctx.ev("player_death")
+                    if len(deaths) and frame_tick is not None:
+                        late = deaths[(deaths["tick"] > frame_tick) & (deaths["tick"] <= w1)]
+                        for _, d in late.iterrows():
+                            v_team = self.ctx_tnum_of(str(d.get("user_steamid", "")), min(w1, self.ctx.max_tick))
+                            if v_team in (2, 3):
+                                counts[v_team] = max(0, counts.get(v_team, 0) - 1)
+                    ct_team = self.team_with_side(r, "CT")
+                    t_team = self.team_with_side(r, "T")
+                    alive_ct = counts.get(3, 0)
+                    alive_t = counts.get(2, 0)
+                    if alive_t == 0 and alive_ct > 0:
+                        winner_team, reason = ct_team, "elimination"
+                    elif alive_ct == 0 and alive_t > 0:
+                        winner_team, reason = t_team, "elimination"
+                    else:
+                        # both sides alive: T failed to complete the objective
+                        winner_team, reason = ct_team, "time"
+
             r["winnerTeam"] = int(winner_team)
             r["reason"] = reason
+
+    def ctx_tnum_of(self, steamid: str, tick: int) -> int | None:
+        """Raw team_num of a player at a tick (2=T, 3=CT), None if unknown."""
+        tnum = self.tv.col_at_tick(tick, "team_num").get(steamid)
+        try:
+            return int(tnum) if tnum is not None else None
+        except (TypeError, ValueError):
+            return None
 
     def team_with_side(self, round_: dict, side: str) -> int:
         return 0 if round_["sideTeam0"] == side else 1
@@ -173,6 +332,11 @@ class RoundBuilder:
         defused = self.ctx.ev("bomb_defused")
         begin_plant = self.ctx.ev("bomb_beginplant")
         begin_defuse = self.ctx.ev("bomb_begindefuse")
+        # site is a zone id (not always 0/1); map distinct ids to A/B by order
+        site_label: dict[int, str] = {}
+        if len(planted):
+            for raw in sorted({int(s) for s in planted["site"].dropna().unique()}):
+                site_label[raw] = "AB"[len(site_label)] if len(site_label) < 2 else f"S{raw}"
         for r in rounds:
             w0, w1 = r["freezeEndTick"], r["endTick"]
             r["bombPlanted"] = False
@@ -191,6 +355,8 @@ class RoundBuilder:
                     r["plantTick"] = int(row["tick"])
                     r["planter"] = str(row.get("user_steamid", ""))
                     r["bombSiteRaw"] = row.get("site")
+                    r["bombSite"] = site_label.get(int(row.get("site"))) \
+                        if row.get("site") is not None else None
                     r["plantX"] = float(row.get("user_X")) if np.isfinite(row.get("user_X", np.nan)) else None
                     r["plantY"] = float(row.get("user_Y")) if np.isfinite(row.get("user_Y", np.nan)) else None
             for _, row in defused.iterrows():
@@ -221,7 +387,8 @@ class RoundBuilder:
             for i in idx:
                 row = kills.iloc[i]
                 a, v = row.get("attacker_steamid"), row.get("user_steamid")
-                if a and v and a == a:
+                if a and v and a == a and v == v \
+                        and self.team_of(a) != self.team_of(v):
                     r["openingKill"] = {
                         "tick": int(row["tick"]),
                         "attacker": str(a), "victim": str(v),
@@ -233,11 +400,17 @@ class RoundBuilder:
 
     # ------------------------------------------------------------- buys
     def _buys(self, rounds):
+        # buy time continues ~20s after freeze end; read spend at the
+        # buytime_ended tick when available, else at freeze end
+        bt = self.ctx.ev("buytime_ended")
+        buy_ticks = sorted(int(t) for t in bt["tick"]) if len(bt) else []
         for r in rounds:
-            spend = self.tv.col_at_tick(r["freezeEndTick"], "cash_spent_this_round")
+            read_tick = next((t for t in buy_ticks if r["freezeEndTick"] < t <= r["endTick"]),
+                             r["freezeEndTick"])
+            spend = self.tv.col_at_tick(read_tick, "cash_spent_this_round")
             vals = {0: [], 1: []}
             for sid, v in spend.items():
-                if isinstance(v, (int, float, np.integer, np.floating)):
+                if sid in self.steamid_team and isinstance(v, (int, float, np.integer, np.floating)):
                     t = self.team_of(sid)
                     if t in vals:
                         vals[t].append(int(v))
@@ -268,6 +441,7 @@ class RoundBuilder:
         hurt = hurt.sort_values("tick")
         ht = hurt["tick"].to_numpy()
         a_st = hurt["attacker_steamid"].astype(str).to_numpy()
+        v_st = hurt["user_steamid"].astype(str).to_numpy()
         a_dmg = hurt["dmg_health"].fillna(0).to_numpy(dtype="float64")
         for r in rounds:
             r["mvp"] = None
@@ -278,9 +452,15 @@ class RoundBuilder:
             if i0 >= i1:
                 continue
             dmg: dict = {}
-            for sid, d in zip(a_st[i0:i1], a_dmg[i0:i1]):
-                if sid and sid != "None" and self.team_of(sid) == wt:
-                    dmg[sid] = dmg.get(sid, 0) + d
+            for sid, vid, d in zip(a_st[i0:i1], v_st[i0:i1], a_dmg[i0:i1]):
+                if sid in ("", "None", "nan"):
+                    continue
+                if self.team_of(sid) != wt:
+                    continue
+                # count only damage dealt to enemies (no team/self damage)
+                if vid in ("", "None", "nan") or self.team_of(vid) == wt:
+                    continue
+                dmg[sid] = dmg.get(sid, 0) + d
             if dmg:
                 r["mvp"] = max(dmg.items(), key=lambda kv: kv[1])[0]
 

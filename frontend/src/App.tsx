@@ -1,17 +1,22 @@
-import { useState, createContext, useContext } from 'react'
+import { useState, useEffect, createContext, useContext } from 'react'
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom'
 import { getLang, setLang, Lang, t } from './i18n'
+import { api, Benchmarks } from './api'
 import DemosPage from './pages/DemosPage'
 import OverviewPage from './pages/OverviewPage'
 import PlayerPage from './pages/PlayerPage'
+import MetricsPage from './pages/MetricsPage'
 import HeatmapsPage from './pages/HeatmapsPage'
-import ReplayPage from './pages/ReplayPage'
+import ReplayScreen from './pages/ReplayScreen'
 import AboutPage from './pages/AboutPage'
 
 export const LangCtx = createContext<{ lang: Lang; toggle: () => void }>({
   lang: 'ru', toggle: () => {},
 })
 export function useLang() { return useContext(LangCtx) }
+
+export const BenchmarksCtx = createContext<Benchmarks>({})
+export function useBenchmarks() { return useContext(BenchmarksCtx) }
 
 function AppNav() {
   const { lang, toggle } = useLang()
@@ -32,20 +37,28 @@ function AppNav() {
 export default function App() {
   const [lang, setL] = useState<Lang>(getLang())
   const toggle = () => { const nl = lang === 'ru' ? 'en' : 'ru'; setLang(nl); setL(nl) }
+  const [benchmarks, setBenchmarks] = useState<Benchmarks>({})
+
+  useEffect(() => {
+    api.benchmarks().then(setBenchmarks).catch(() => {})
+  }, [])
 
   return (
     <LangCtx.Provider value={{ lang, toggle }}>
-      <BrowserRouter>
-        <AppNav />
-        <Routes>
-          <Route path="/" element={<DemosPage />} />
-          <Route path="/match/:id" element={<OverviewPage />} />
-          <Route path="/match/:id/player/:steamid" element={<PlayerPage />} />
-          <Route path="/match/:id/heatmaps" element={<HeatmapsPage />} />
-          <Route path="/match/:id/replay" element={<ReplayPage />} />
-          <Route path="/about" element={<AboutPage />} />
-        </Routes>
-      </BrowserRouter>
+      <BenchmarksCtx.Provider value={benchmarks}>
+        <BrowserRouter>
+          <AppNav />
+          <Routes>
+            <Route path="/" element={<DemosPage />} />
+            <Route path="/match/:id" element={<OverviewPage />} />
+            <Route path="/match/:id/player/:steamid" element={<PlayerPage />} />
+            <Route path="/match/:id/player/:steamid/metrics/:key" element={<MetricsPage />} />
+            <Route path="/match/:id/heatmaps" element={<HeatmapsPage />} />
+            <Route path="/match/:id/replay" element={<ReplayScreen />} />
+            <Route path="/about" element={<AboutPage />} />
+          </Routes>
+        </BrowserRouter>
+      </BenchmarksCtx.Provider>
     </LangCtx.Provider>
   )
 }

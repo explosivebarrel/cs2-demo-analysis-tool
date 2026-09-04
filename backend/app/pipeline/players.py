@@ -7,7 +7,6 @@ import numpy as np
 
 from .. import config
 from ..weapons import canon
-from .rounds import _clean_clan
 
 GUN_CLASSES = {"rifle", "sniper", "smg", "heavy", "pistol"}
 METERS_PER_UNIT = 0.01905
@@ -32,7 +31,7 @@ class PlayerStats:
             "postPlantTaken": 0.0, "enemyFlashed": 0, "blindSec": 0.0,
             "effectiveFlashes": 0, "plant": 0, "defuse": 0, "defuseAttempt": 0,
             "tradedDeath": False, "tradedKill": False, "opening": None,
-            "shots": 0, "hits": 0, "survived": False,
+            "shots": 0, "hits": 0, "survived": False, "nades": 0,
         })
         self.weapons: dict[str, dict] = defaultdict(lambda: {
             "kills": 0, "hs": 0, "shots": 0, "hits": 0, "dmg": 0.0})
@@ -88,7 +87,6 @@ def compute_players(ctx, rb, fb):
         names[str(sid)] = str(rows_first[sid])
 
     players: dict[str, PlayerStats] = {}
-    rounds_by_n = {r["n"]: r for r in rb.rounds}
     for sid, team in rb.steamid_team.items():
         players[sid] = PlayerStats(sid, names.get(sid, sid), team, clans.get(sid, ""))
 
@@ -105,7 +103,6 @@ def compute_players(ctx, rb, fb):
     # pre-resolve round ranges for tick -> round mapping
     fe_ticks = np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
     end_ticks = np.array([r["endTick"] for r in rb.rounds], dtype="int64")
-    round_ns = [r["n"] for r in rb.rounds]
 
     def round_of_tick(t: int):
         i = int(np.searchsorted(fe_ticks, t, side="right")) - 1
@@ -132,7 +129,9 @@ def compute_players(ctx, rb, fb):
                 continue
             pv = P(v)
             rr = round_of_tick(int(ht[i]))
-            n = rr["n"] if rr else 0
+            if rr is None:
+                continue
+            n = rr["n"]
             if pv is not None:
                 pv.r(n)["taken"] += dh[i]
             pa = P(a)
@@ -174,7 +173,9 @@ def compute_players(ctx, rb, fb):
             a, v = _sid(a_arr[i]), _sid(v_arr[i])
             ass = _sid(as_arr[i])
             rr = round_of_tick(t)
-            n = rr["n"] if rr else 0
+            if rr is None:
+                continue
+            n = rr["n"]
             pv = P(v)
             if pv is not None:
                 pv.r(n)["deaths"] += 1
@@ -224,9 +225,10 @@ def compute_players(ctx, rb, fb):
                 if pm is None or m == a or pm.team != pv.team:
                     continue
                 pm.tradeKills += 1
-                pm.r(round_of_tick(int(kt[j]))["n"] if round_of_tick(int(kt[j])) else 0)["tradedKill"] = True
+                trade_rn = round_of_tick(int(kt[j]))["n"] if round_of_tick(int(kt[j])) else 0
+                pm.r(trade_rn)["tradedKill"] = int(kt[j])  # store tick instead of True
                 pv.tradedDeaths += 1
-                pv.r(n)["tradedDeath"] = True
+                pv.r(n)["tradedDeath"] = int(kt[i])  # store original kill tick
                 break
 
         # opening kills
@@ -246,10 +248,13 @@ def compute_players(ctx, rb, fb):
         # multikills
         per_round: dict[tuple[str, int], int] = defaultdict(int)
         for i in range(len(kills)):
-            a = _sid(a_arr[i])
+            a, v = _sid(a_arr[i]), _sid(v_arr[i])
             rr = round_of_tick(int(kt[i]))
-            if a and rr:
-                per_round[(a, rr["n"])] += 1
+            # teamkills and world deaths never count toward multikills
+            if a and v and rr and a != v:
+                pa, pv = players.get(a), players.get(v)
+                if pa and pv and pa.team != pv.team:
+                    per_round[(a, rr["n"])] += 1
         for (a, n), c in per_round.items():
             pa = P(a)
             if pa and c >= 2:
@@ -271,7 +276,9 @@ def compute_players(ctx, rb, fb):
                 pa.friendlyFlashed += 1
                 continue
             rr = round_of_tick(int(bt[i]))
-            n = rr["n"] if rr else 0
+            if rr is None:
+                continue
+            n = rr["n"]
             pa.r(n)["enemyFlashed"] += 1
             pa.r(n)["blindSec"] += float(dur[i])
             if dur[i] >= config.FLASH_EFFECTIVE_SECONDS:
@@ -283,12 +290,21 @@ def compute_players(ctx, rb, fb):
         type_map = {"CSmokeGrenade": "smoke", "CHEGrenade": "he", "CFlashbang": "flash",
                     "CMolotovGrenade": "fire", "CIncendiaryGrenade": "fire",
                     "CDecoyGrenade": "decoy"}
-        g2 = g.dropna(subset=["steamid"])
+        g2 = g.dropna(subset=["steamid"]).sort_values("tick")
+        # entity ids are reused across rounds — split a (steamid, entity)
+        # stream into separate throws whenever the tick gap exceeds 5s
         try:
-            seg = g2.groupby(["steamid", "grenade_entity_id"])["grenade_type"].first()
+            throw_rows = []  # (sid, first_tick, gtype)
+            for (sid, _eid), grp in g2.groupby(["steamid", "grenade_entity_id"], sort=False):
+                prev_t = None
+                for t, gtype in zip(grp["tick"], grp["grenade_type"]):
+                    t = int(t)
+                    if prev_t is None or t - prev_t > 5 * tr:
+                        throw_rows.append((sid, t, str(gtype)))
+                    prev_t = t
         except Exception:
-            seg = []
-        for (sid, _eid), gtype in seg.items():
+            throw_rows = []
+        for sid, first_tick, gtype in throw_rows:
             p = players.get(str(sid))
             if p is None:
                 continue
@@ -303,6 +319,11 @@ def compute_players(ctx, rb, fb):
                 p.fireThrows += 1
             elif t == "decoy":
                 p.decoyThrows += 1
+            # per-round nades counter (all utility types)
+            if t in ("flash", "smoke", "he", "fire", "decoy"):
+                rr = round_of_tick(first_tick)
+                if rr is not None:
+                    p.r(rr["n"])["nades"] += 1
 
     # ---------------------------------------------------------- shots (gun trigger pulls)
     if len(wf):
@@ -349,6 +370,17 @@ def compute_players(ctx, rb, fb):
                                      "won": c["won"], "kills": c["kills"]})
 
     # ---------------------------------------------------------- frame stats
+    # deaths indexed per victim: the last downsampled frame of a round may
+    # predate kills in the final ticks — survived must account for them
+    victim_death_ticks: dict[str, list[int]] = defaultdict(list)
+    if len(kills):
+        vt = kills["tick"].to_numpy()
+        vs = kills["user_steamid"].astype(str).to_numpy()
+        for t, v in zip(vt, vs):
+            victim_death_ticks[v].append(int(t))
+        for v in victim_death_ticks:
+            victim_death_ticks[v].sort()
+
     for sid, st in players.items():
         fs = fb.stats.get(sid, {})
         st.distanceUnits = fs.get("distanceUnits", 0.0)
@@ -356,10 +388,19 @@ def compute_players(ctx, rb, fb):
         st.holds = fs.get("holds", [])
         st.positions = fs.get("positions", [])
         alive_at_end = fs.get("aliveAtEnd", {})
+        d_ticks = victim_death_ticks.get(sid, [])
         for rr in rb.rounds:
             pr = st.r(rr["n"])
-            pr["survived"] = bool(alive_at_end.get(str(rr["n"])))
-            if not pr["survived"] and rr["winnerTeam"] != st.team:
+            survived = bool(alive_at_end.get(str(rr["n"])))
+            if survived and d_ticks:
+                # a death between the last sampled frame and the round end
+                # means the player did not survive the round
+                i = int(np.searchsorted(d_ticks, rr["endTick"]))
+                if i > 0 and d_ticks[i - 1] > rr["freezeEndTick"]:
+                    survived = False
+            pr["survived"] = survived
+            # a save = survived a lost round (kept the weapon)
+            if pr["survived"] and rr["winnerTeam"] != st.team:
                 st.saves += 1
             # KAST: kill OR assist OR survive OR traded death
             if (pr["kills"] or pr["assists"] or pr["flashAssists"] or pr["survived"]

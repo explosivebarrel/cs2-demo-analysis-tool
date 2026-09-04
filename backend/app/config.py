@@ -14,6 +14,8 @@ for _d in (BASE_DIR, STORE_DIR, UPLOADS_DIR, ANALYSES_DIR, STATUS_DIR, RADARS_DI
     os.makedirs(_d, exist_ok=True)
 
 MAX_UPLOAD_BYTES = int(os.environ.get("CS2_MAX_UPLOAD_MB", "1200")) * 1024 * 1024
+# 0 = unlimited (default): local tool — parallel analyses are allowed
+MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "0"))
 
 # ------------------------------------------------------- radar sources
 RADAR_REPO = "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main"
@@ -50,3 +52,36 @@ KNOWN_MAPS_HINT = [
     "de_nuke", "de_overpass", "de_train", "de_vertigo", "de_cache",
     "de_office", "de_mills", "de_arena", "de_brewery", "de_golden",
 ]
+
+# --------------------------------------------------------- player benchmarks
+# Tiers based on Faceit/Premier competitive population data.
+# Keys match PlayerData / PlayerMetrics field names used on the frontend.
+BENCHMARKS: dict[str, dict[str, float]] = {
+    "adr":             {"weak": 55,   "avg": 70,   "good": 85,   "elite": 100},
+    "kd":              {"weak": 0.7,  "avg": 0.9,  "good": 1.1,  "elite": 1.4},
+    "kast":            {"weak": 60,   "avg": 70,   "good": 78,   "elite": 85 },
+    "hsPct":           {"weak": 30,   "avg": 45,   "good": 55,   "elite": 65 },
+    "rating":          {"weak": 0.8,  "avg": 1.0,  "good": 1.15, "elite": 1.3},
+    "openingWinPct":   {"weak": 40,   "avg": 50,   "good": 60,   "elite": 70 },
+    "tradeKillPct":    {"weak": 15,   "avg": 25,   "good": 35,   "elite": 45 },
+    "tradedDeathPct":  {"weak": 20,   "avg": 35,   "good": 50,   "elite": 65 },
+    "flashEfficiency": {"weak": 20,   "avg": 40,   "good": 60,   "elite": 75 },
+    "clutchWinPct":    {"weak": 15,   "avg": 25,   "good": 35,   "elite": 50 },
+    "idealStrafePct":  {"weak": 40,   "avg": 55,   "good": 70,   "elite": 85 },
+    "firstBulletAcc":  {"weak": 20,   "avg": 35,   "good": 50,   "elite": 65 },
+    # lower is better — stored inverted: elite < good < avg < weak
+    "ttk_ms":          {"weak": 900,  "avg": 650,  "good": 450,  "elite": 280},
+    "angleControlCount":{"weak": 1,   "avg": 3,    "good": 6,    "elite": 10 },
+    "counterStrafeErrors":{"weak": 15,"avg": 8,    "good": 3,    "elite": 0  },
+    "reloadErrors":    {"weak": 6,    "avg": 3,    "good": 1,    "elite": 0  },
+    "reactionTimeMs":  {"weak": 600,  "avg": 450,  "good": 300,  "elite": 180},
+    "overshootCount":  {"weak": 20,   "avg": 12,   "good": 6,    "elite": 2  },
+    "excellentContacts": {"weak": 1,  "avg": 3,    "good": 6,    "elite": 10 },
+    "crosshairPlacementPct": {"weak": 20, "avg": 35, "good": 50,  "elite": 65 },
+    # lower is better
+    "passiveAngleCount":  {"weak": 8,    "avg": 4,    "good": 1,    "elite": 0  },
+    "successfulReactionTimeMs": {"weak": 550, "avg": 400, "good": 270, "elite": 160},
+    # lower is better — discipline metrics
+    "shiftPeekPct":  {"weak": 60, "avg": 35, "good": 15, "elite": 5 },
+    "isolatedPct":   {"weak": 50, "avg": 30, "good": 15, "elite": 5 },
+}

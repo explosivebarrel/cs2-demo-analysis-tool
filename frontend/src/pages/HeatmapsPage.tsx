@@ -1,21 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, NavLink } from 'react-router-dom'
 import { api, AnalysisData, HeatmapData, MapOverview } from '../api'
+import { worldToCanvas, zOnLevel, lowerLevelNames } from '../lib/coords'
 import { t } from '../i18n'
 import { useLang } from '../App'
-
-function MatchNav({ id }: { id: string }) {
-  useLang()
-  const base = `/match/${id}`
-  const s = (active: boolean) => ({ color: active ? 'var(--accent)' : 'var(--text2)', fontWeight: active ? 700 : 400, textDecoration: 'none', fontSize: 13 })
-  return (
-    <div className="flex gap-16 items-center" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 20 }}>
-      <NavLink to={base} end style={({ isActive }) => s(isActive)}>{t('overview')}</NavLink>
-      <NavLink to={`${base}/heatmaps`} style={({ isActive }) => s(isActive)}>{t('heatmaps')}</NavLink>
-      <NavLink to={`${base}/replay`} style={({ isActive }) => s(isActive)}>{t('replay')}</NavLink>
-    </div>
-  )
-}
+import MatchNav from '../components/MatchNav'
 
 const LAYER_COLORS: Record<string, string> = {
   kills: '255,80,80', deaths: '80,160,255', damage: '255,160,40',
@@ -41,7 +30,7 @@ function layerLabel(key: string): string {
 
 // Decode compact array → {x, y, v?, dur?, pIdx, tick}
 // Schema docs in backend/app/pipeline/heatmaps.py
-function decodePoint(layer: string, arr: number[]): { x: number; y: number; v?: number; dur?: number; pIdx: number; tick: number } {
+function decodePoint(layer: string, arr: number[]): { x: number; y: number; z?: number; v?: number; dur?: number; pIdx: number; tick: number } {
   switch (layer) {
     case 'kills': case 'deaths': case 'opening_duels':
       // [ax, ay, vx, vy, pIdx, tick, flags]
@@ -60,18 +49,11 @@ function decodePoint(layer: string, arr: number[]): { x: number; y: number; v?: 
       return { x: arr[0], y: arr[1], v: arr[2], pIdx: arr[3], tick: arr[4] }
     case 'positions':
       // [x, y, z, round, pIdx]
-      return { x: arr[0], y: arr[1], pIdx: arr[4], tick: 0 }
+      return { x: arr[0], y: arr[1], z: arr[2], pIdx: arr[4], tick: 0 }
     default:
       // shots, flash_throws, smokes, hes, molotovs, plants, defuses: [x, y, pIdx, tick]
       return { x: arr[0], y: arr[1], pIdx: arr[2], tick: arr[3] }
   }
-}
-
-function worldToCanvas(wx: number, wy: number, ov: MapOverview, size: number) {
-  const px = (wx - ov.pos_x) / ov.scale
-  const py = (ov.pos_y - wy) / ov.scale
-  const ratio = size / 1024
-  return [px * ratio, py * ratio] as [number, number]
 }
 
 function drawHeatmap(
@@ -81,6 +63,7 @@ function drawHeatmap(
   ov: MapOverview,
   playerIdxSet: Set<number> | null,
   pointAlpha: number,
+  level: string,
 ) {
   const size = canvas.width
   const ctx = canvas.getContext('2d')!
@@ -94,8 +77,10 @@ function drawHeatmap(
     const pt = decodePoint(layer, arr)
 
     if (playerIdxSet !== null && !playerIdxSet.has(pt.pIdx)) continue
+    // z-aware layers (positions) are filtered by the selected map level
+    if (pt.z !== undefined && !zOnLevel(pt.z, ov, level)) continue
 
-    const [cx, cy] = worldToCanvas(pt.x, pt.y, ov, size)
+    const [cx, cy] = worldToCanvas(pt.x, pt.y, ov, size, size)
     if (!isFinite(cx) || !isFinite(cy)) continue
     if (cx < -radius || cx > size + radius || cy < -radius || cy > size + radius) continue
 
@@ -119,6 +104,7 @@ export default function HeatmapsPage() {
   const [heatmap, setHeatmap] = useState<HeatmapData | null>(null)
   const [overview, setOverview] = useState<MapOverview | null>(null)
   const [layer, setLayer] = useState('kills')
+  const [level, setLevel] = useState('default')
   const [selectedPlayers, setSelectedPlayers] = useState<Set<number>>(new Set())
   const [pointAlpha, setPointAlpha] = useState(0.35)
   const [error, setError] = useState('')
@@ -168,16 +154,16 @@ export default function HeatmapsPage() {
     if (!cv || !analysis || !overview) return
     const img = new Image()
     img.onload = () => { cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height) }
-    img.src = api.radarUrl(analysis.meta.map)
-  }, [analysis, overview, leftWidth])
+    img.src = api.radarUrl(analysis.meta.map, level)
+  }, [analysis, overview, leftWidth, level])
 
   useEffect(() => {
     const cv = canvasRef.current
     if (!cv || !heatmap || !overview) return
     const raw = (heatmap.layers[layer] ?? []) as unknown as number[][]
     const playerFilter = selectedPlayers.size > 0 ? selectedPlayers : null
-    drawHeatmap(cv, raw, layer, overview, playerFilter, pointAlpha)
-  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, leftWidth])
+    drawHeatmap(cv, raw, layer, overview, playerFilter, pointAlpha, level)
+  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, leftWidth, level])
 
   const togglePlayer = useCallback((idx: number) => {
     setSelectedPlayers(prev => {
@@ -229,15 +215,30 @@ export default function HeatmapsPage() {
   function onMouseUp() { dragRef.current = null }
 
   if (error) return <div className="page"><div className="text-muted">{error}</div></div>
-  if (!analysis || !heatmap || !overview) return <div className="page"><div className="text-muted">{t('loading')}</div></div>
+  if (!analysis || !heatmap || !overview) return (
+    <div className="page">
+      <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 20 }} />
+      <div style={{ display: 'grid', gridTemplateColumns: '600px 8px 1fr', gap: 0, alignItems: 'start' }}>
+        <div className="skeleton" style={{ height: 600, borderRadius: 8 }} />
+        <div />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 14 }).map((_, i) => (
+            <div key={i} className="skeleton" style={{ height: 32, borderRadius: 6 }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
   const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
+  const lowerLevels = lowerLevelNames(overview)
+  const hasLevels = lowerLevels.length > 0
   const SIZE = leftWidth
   const cur = scale > 1 ? 'grab' : 'default'
 
   return (
     <div className="page">
-      <MatchNav id={id!} />
+      <MatchNav id={id!} players={analysis?.players} />
       <div style={{ display: 'grid', gridTemplateColumns: `${leftWidth}px 8px 1fr`, gap: 0, alignItems: 'start' }}>
         <div className="card" style={{ padding: 8, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
           <div
@@ -252,11 +253,11 @@ export default function HeatmapsPage() {
                 style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
             </div>
           </div>
-          {scale > 1 && (
-            <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
-              {scale.toFixed(1)}x · scroll out to {t('zoomReset')}
-            </div>
-          )}
+          <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
+            {scale > 1
+              ? `${scale.toFixed(1)}× · ${t('zoomReset')}`
+              : t('zoomHint')}
+          </div>
         </div>
 
         {/* resizer */}
@@ -271,6 +272,27 @@ export default function HeatmapsPage() {
         </div>
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 220, padding: 16 }}>
+          {hasLevels && (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('mapLevel')}</div>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={() => setLevel('default')} style={{
+                  flex: 1,
+                  background: level === 'default' ? 'var(--accent)' : 'var(--bg3)',
+                  color: level === 'default' ? '#fff' : 'var(--text)',
+                  border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
+                }}>{t('levelUpper')}</button>
+                {lowerLevels.map(sec => (
+                  <button key={sec} onClick={() => setLevel(sec)} style={{
+                    flex: 1,
+                    background: level === sec ? 'var(--accent)' : 'var(--bg3)',
+                    color: level === sec ? '#fff' : 'var(--text)',
+                    border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
+                  }}>{t('levelLower')}</button>
+                ))}
+              </div>
+            </div>
+          )}
           <div>
             <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

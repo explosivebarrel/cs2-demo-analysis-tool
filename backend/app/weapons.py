@@ -80,11 +80,42 @@ _SLUG_ALIASES = {
     "fivesevenn": "fiveseven", "m4a1sir": "m4a1_silencer",
 }
 
+# inventory display-name ("AK-47", "C4 Explosive", ...) extras the slug table misses
+_INVENTORY_ALIASES = {
+    "c4": "c4", "c4 explosive": "c4",
+    "smoke grenade": "smokegrenade",
+    "he grenade": "hegrenade", "high explosive grenade": "hegrenade",
+    "incendiary grenade": "incgrenade", "incendiary": "incgrenade",
+    "decoy grenade": "decoy",
+    "kevlar vest": "kevlar", "kevlar vest + helmet": "kevlar_helmet",
+    "defuse kit": "defuser",
+}
+
 _WEAPON_ID = {}
 
 
 def _slug(raw: str) -> str:
     return "".join(c for c in raw.lower() if c.isalnum())
+
+
+def inventory_keys(names) -> list[str]:
+    """Inventory display-name list -> sorted canonical id list (stable for diffing)."""
+    out = set()
+    for name in names if isinstance(names, (list, tuple)) else []:
+        low = str(name).strip().lower()
+        if not low or low == "world":
+            continue
+        if low in _INVENTORY_ALIASES:
+            out.add(_INVENTORY_ALIASES[low])
+            continue
+        slug = _slug(low)
+        if slug in _SLUG_ALIASES:
+            slug = _SLUG_ALIASES[slug]
+        if slug in _WEAPON_TABLE:
+            out.add(slug)
+        elif "knife" in low:
+            out.add("knife")
+    return sorted(out)
 
 
 def canon(raw: str):
@@ -126,6 +157,12 @@ def weapon_id_table():
         en, ru, cls = canon(raw)
         out[wid] = {"raw": raw, "en": en, "ru": ru, "cls": cls}
     return out
+
+
+def inventory_table() -> dict:
+    """Canon inventory id -> {en, ru, cls}; the full closed set inventory_keys() can emit."""
+    return {key: {"en": en, "ru": ru, "cls": cls}
+            for key, (en, ru, cls) in _WEAPON_TABLE.items()}
 
 
 def class_order(cls: str) -> int:

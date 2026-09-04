@@ -1,5 +1,24 @@
 const BASE = '/api'
 
+// per-demo analysis artifacts are immutable once written — cache them client
+// side so back-and-forth navigation does not refetch multi-MB payloads
+const _cache = new Map<string, unknown>()
+
+function cached<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const hit = _cache.get(key)
+  if (hit !== undefined) return Promise.resolve(hit as T)
+  return fn().then(v => {
+    _cache.set(key, v)
+    return v
+  })
+}
+
+function evictDemo(did: string) {
+  for (const k of [..._cache.keys()]) {
+    if (k.endsWith(`:${did}`)) _cache.delete(k)
+  }
+}
+
 async function req<T>(url: string, opts?: RequestInit): Promise<T> {
   const r = await fetch(BASE + url, opts)
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
@@ -14,11 +33,14 @@ export interface DemoEntry {
   status?: string
   progress?: number
   phase?: string
+  detail?: string
   error?: string
   mtime?: number
   map?: string
   score?: number[]
   teamNames?: string[]
+  players?: { steamid: string; name: string; clan: string; team: number }[]
+  date?: string
 }
 
 export interface AnalysisData {
@@ -32,7 +54,9 @@ export interface AnalysisData {
   players: PlayerData[]
   rounds: RoundData[]
   halves: HalfData[]
+  knifeRound?: { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string } | null
   weapons: Record<number, string>
+  moments?: Moment[]
 }
 
 export interface TeamData {
@@ -79,7 +103,7 @@ export interface SideSummary {
   rounds: number; kills: number; deaths: number; assists: number; adr: number; kd: number
 }
 
-export interface SeriesPoint { n: number; k: number; d: number; a: number; dmg: number; sv: number; kast: number; opening: string | null; mk: boolean; pistol: number; mvp: number; won: number; imp: number }
+export interface SeriesPoint { n: number; k: number; d: number; a: number; dmg: number; sv: number; kast: number; opening: string | null; mk: boolean; pistol: number; mvp: number; won: number; imp: number; nades: number }
 
 export interface ClutchEntry { round: number; enemies: number; won: boolean; kills: number }
 
@@ -109,15 +133,25 @@ export interface HeatPoint {
 
 export interface WeaponInfo { raw: string; en: string; ru: string; cls: string }
 
+export interface InvWeaponInfo { en: string; ru: string; cls: string }
+
 export interface ReplayData {
   tickrate: number; frameStep: number
   players: { steamid: string; name: string; team: number }[]
   ticks: number[]
-  data: number[]  // flat: frame * nPlayers * FIELDS + playerIdx * FIELDS + field
+  // flat: frame * nPlayers * FIELDS + playerIdx * FIELDS + field;
+  // payload v2: 13 fields [x,y,z,yaw,hp,armor,alive,weaponId,flags,team,equip,money,ammo],
+  // legacy payloads without `inv` have 11 fields (no money/ammo)
+  data: number[]
+  /** Sparse inventory change-log: [frameIdx, playerIdx, "id,id,..."] (v2 only). */
+  inv?: [number, number, string][]
+  /** Canonical inventory id -> label/class, for decoding `inv` (v2 only). */
+  invWeapons?: Record<string, InvWeaponInfo>
   bomb: (number | null)[][]
   events: ReplayEvent[]
   shots: number[][]  // compact: [tick, playerIdx, x, y, yaw]
   weapons: Record<number, WeaponInfo>
+  winprob?: number[]  // ct win probability per frame [0.05, 0.95]
 }
 
 export interface ReplayEvent {
@@ -130,26 +164,194 @@ export interface ShotEvent {
 }
 
 export interface StatusData {
-  status: string; progress?: number; phase?: string; error?: string
+  status: string; progress?: number; phase?: string; detail?: string; error?: string
+  map?: string; score?: number[]; teamNames?: string[]
+  players?: { steamid: string; name: string; clan: string; team: number }[]
+  date?: string
+}
+
+export interface DecisionEntry {
+  round: number
+  tick: number
+  probBefore: number
+  probAfter: number
+  drop: number
+  side: string
+}
+
+export interface FirstBulletShot {
+  round: number
+  tick: number
+  hit: boolean
+  weapon: string
+}
+
+export interface PlayerAnalyticsData {
+  duels: DuelEpisode[]
+  metrics: PlayerMetrics
+  impact: PlayerImpact
+  mapEvents: MapEvent[]
+  decisionsCost: DecisionEntry[]
+}
+
+export interface DuelFrame {
+  t: number      // ms offset from kill tick (negative = before)
+  vel: number    // speed in u/s
+  jump: boolean  // player_jump event in this tick window
+  duck: boolean  // duck_amount > 0.3
+  walk: boolean  // is_walking (Shift)
+}
+
+export interface DuelEpisode {
+  round: number
+  tick: number
+  timestamp: number
+  attacker: string
+  victim: string
+  weapon: string
+  headshot: boolean
+  won: boolean
+  opening: boolean
+  isTradeKill: boolean
+  isTradedDeath: boolean
+  errors: string[]
+  winProb?: number | null
+  context: {
+    nearAllyDist: number | null
+    flashDur: number
+    attackerVel: number
+    victimVel: number
+    aliveAllies: number
+    aliveEnemies: number
+    attackerWalking: boolean
+  }
+  frames: DuelFrame[]
+}
+
+export interface PlayerMetrics {
+  tradeKillPct: number
+  tradedDeathPct: number
+  openingWinPct: number
+  flashEfficiency: number
+  clutchWinPct: number
+  shiftPeekPct: number
+  isolatedPct: number
+  mainProblem: string | null
+  tradeKillRounds: number[]
+  tradedDeathRounds: number[]
+  tradeKillTicks: number[]
+  tradedDeathTicks: number[]
+  // aim mechanics (Batch 2)
+  counterStrafeErrors: number
+  idealStrafePct: number
+  firstBulletAcc: number
+  firstBulletShots: FirstBulletShot[]
+  ttk_ms: number
+  reloadErrors: number
+  angleControlCount: number
+  angleControlByPhase?: { early: number; mid: number; late: number }
+  reactionTimeMs: number
+  overshootCount: number
+  excellentContacts: number
+  crosshairPlacementPct: number
+  successfulReactionTimeMs: number
+  reactionDeltas: number[]
+  reactionDeltasHit: number[]
+  passiveAngleCount: number
+}
+
+export interface PlayerImpact {
+  topRoundsPositive: { n: number; imp: number }[]
+  topRoundsNegative: { n: number; imp: number }[]
+  avgWinProbAtDuel: number | null
+}
+
+export interface MapEvent {
+  tick: number
+  round: number
+  type: 'kill' | 'death'
+  x: number
+  y: number
+  vx: number
+  vy: number
+  weapon: string
+  headshot: boolean
+}
+
+export interface MapVerticalSection {
+  altitudeMin: number
+  altitudeMax: number
+  pos_x?: number
+  pos_y?: number
+  scale?: number
 }
 
 export interface MapOverview {
   pos_x: number; pos_y: number; scale: number
+  verticalsections?: Record<string, MapVerticalSection>
+  availableLevels?: string[]
   sections?: { id: string; altitudeMax: number; altitudeMin: number; pos_x?: number; pos_y?: number; scale?: number }[]
+}
+
+export interface BenchmarkTiers {
+  weak: number
+  avg: number
+  good: number
+  elite: number
+}
+
+export type Benchmarks = Record<string, BenchmarkTiers>
+
+export interface PlayerHistoryEntry {
+  demoId: string
+  map: string
+  date: string
+  score: [number, number]
+  teamNames: [string, string]
+  team: number
+  won: boolean
+  kills: number
+  deaths: number
+  adr: number
+  kast: number
+  rating: number
+}
+
+export interface Moment {
+  type: 'clutch' | 'multikill' | 'openingDeath' | 'mistake' | 'swing'
+  tick: number
+  round: number
+  steamid: string | null
+  won?: boolean
+  count?: number
+  detail?: string
 }
 
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
+  benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
   upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
     const fd = new FormData(); fd.append('file', file)
     return req('/demos/upload', { method: 'POST', body: fd })
   },
-  analyze: (id: string): Promise<unknown> => req(`/demos/${id}/analyze`, { method: 'POST' }),
+  analyze: (id: string): Promise<unknown> => {
+    evictDemo(id)  // re-analysis invalidates cached artifacts
+    return req(`/demos/${id}/analyze`, { method: 'POST' })
+  },
+  probe: (id: string): Promise<unknown> => req(`/demos/${id}/probe`, { method: 'POST' }),
   status: (id: string): Promise<StatusData> => req(`/demos/${id}/status`),
-  delete: (id: string): Promise<unknown> => req(`/demos/${id}`, { method: 'DELETE' }),
-  analysis: (id: string): Promise<AnalysisData> => req(`/demos/${id}/analysis`),
-  heatmap: (id: string): Promise<HeatmapData> => req(`/demos/${id}/heatmap`),
-  replay: (id: string): Promise<ReplayData> => req(`/demos/${id}/replay`),
-  mapOverview: (map: string): Promise<MapOverview> => req(`/maps/${map}/overview`),
-  radarUrl: (map: string) => `/api/maps/${map}/radar`,
+  delete: (id: string): Promise<unknown> => {
+    evictDemo(id)
+    return req(`/demos/${id}`, { method: 'DELETE' })
+  },
+  analysis: (id: string): Promise<AnalysisData> => cached(`analysis:${id}`, () => req(`/demos/${id}/analysis`)),
+  heatmap: (id: string): Promise<HeatmapData> => cached(`heatmap:${id}`, () => req(`/demos/${id}/heatmap`)),
+  replay: (id: string): Promise<ReplayData> => cached(`replay:${id}`, () => req(`/demos/${id}/replay`)),
+  mapOverview: (map: string): Promise<MapOverview> => cached(`overview:${map}`, () => req(`/maps/${map}/overview`)),
+  radarUrl: (map: string, level?: string) =>
+    `/api/maps/${map}/radar${level && level !== 'default' ? `?level=${encodeURIComponent(level)}` : ''}`,
+  playerHistory: (steamid: string): Promise<PlayerHistoryEntry[]> =>
+    req(`/players/${steamid}/history`),
+  playerAnalytics: (id: string, steamid: string): Promise<PlayerAnalyticsData> =>
+    cached(`panalytics:${id}:${steamid}`, () => req(`/demos/${id}/player/${steamid}/analytics`)),
 }

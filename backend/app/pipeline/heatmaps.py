@@ -42,7 +42,6 @@ def build_heatmap(ctx, rb, players, fb, replay):
 
     kills = ctx.ev("player_death")
     if len(kills):
-        kt = kills["tick"].to_numpy()
         open_by_round = {r["n"]: r.get("openingKill") for r in rb.rounds}
         # tick -> round via searchsorted on freezeEnd ticks
         fe = np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
@@ -139,5 +138,5 @@ def frame_pos(fb, replay, idx, tick):
     fi = bisect.bisect_right(ticks, tick) - 1
     if fi < 0:
         fi = 0
-    base = fi * fb.n * 10
-    return (data[base + idx * 10], data[base + idx * 10 + 1])
+    base = fi * fb.n * 13
+    return (data[base + idx * 13], data[base + idx * 13 + 1])

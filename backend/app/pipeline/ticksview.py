@@ -23,6 +23,13 @@ class TicksView:
         t = int(self.unique_ticks[pos])
         return self.df[self.tick_values == t]
 
+    def frame_tick_before(self, tick: int) -> int | None:
+        """Nearest sampled tick <= tick, or None if tick predates all samples."""
+        pos = np.searchsorted(self.unique_ticks, tick, side="right") - 1
+        if pos < 0:
+            return None
+        return int(self.unique_ticks[pos])
+
     def col_at_tick(self, tick: int, col: str, default=None):
         rows = self.rows_for_tick(tick)
         return dict(zip(rows["steamid"].astype(str), rows[col]))

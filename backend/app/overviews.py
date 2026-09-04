@@ -1,5 +1,4 @@
 """Map overviews: radar images + coordinate reference, downloaded & cached."""
-import io
 import json
 import os
 import re
@@ -185,9 +184,30 @@ def load_overview(map_name: str) -> dict:
     return ov
 
 
-def radar_png_path(map_name: str) -> str:
-    load_overview(map_name)  # ensures fetch/cache
-    return os.path.join(config.RADARS_DIR, f"{map_name}_radar.png")
+def radar_png_path(map_name: str, level: str = "default") -> str:
+    """Path to the cached radar png for a map level ('default' or a
+    verticalsection name like 'lower'). Downloads on first use, falls back to
+    the default radar, then to a placeholder grid when offline."""
+    load_overview(map_name)  # ensures overview fetch/cache
+    if level in ("default", "", None):
+        return os.path.join(config.RADARS_DIR, f"{map_name}_radar.png")
+    safe = re.sub(r"[^a-z0-9_-]", "", level.lower())
+    if not safe:
+        return os.path.join(config.RADARS_DIR, f"{map_name}_radar.png")
+    img = os.path.join(config.RADARS_DIR, f"{map_name}_{safe}_radar.png")
+    if not os.path.exists(img):
+        try:
+            data = _download(config.RADAR_IMG_URL.format(map=f"{map_name}_{safe}"))
+            with open(img, "wb") as f:
+                f.write(data)
+        except Exception:
+            # no separate image for this level — reuse the default radar
+            default = os.path.join(config.RADARS_DIR, f"{map_name}_radar.png")
+            if os.path.exists(default):
+                return default
+            with open(img, "wb") as f:
+                f.write(_placeholder_png())
+    return img
 
 
 def world_to_pixels(x: float, y: float, z: float, ov: dict):

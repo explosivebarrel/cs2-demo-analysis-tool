@@ -1,184 +1,72 @@
+// i18n: i18next bootstrap + backwards-compatible facade.
+//
+// Dictionaries live in i18n/locales/<lang>/<ns>.json. To add a language:
+// copy the en/ folder next to ru/, translate, then extend `resources` and
+// the `Lang` type below.
+//
+// Components keep calling the module-level t(key) / useLang(); keys resolve
+// against the namespace files (fallbackNS searches every namespace, so flat
+// legacy keys work without a prefix). New code should prefer namespaced
+// keys, e.g. t('metrics:reaction.title').
+//
+// NOTE: t() is not reactive by itself — components must call useLang()
+// (even without using its value) to re-render on language switch.
+import i18next from 'i18next'
+
+import ruCommon from './i18n/locales/ru/common.json'
+import ruDemos from './i18n/locales/ru/demos.json'
+import ruMatch from './i18n/locales/ru/match.json'
+import ruPlayer from './i18n/locales/ru/player.json'
+import ruMetrics from './i18n/locales/ru/metrics.json'
+import ruReplay from './i18n/locales/ru/replay.json'
+import ruHeatmaps from './i18n/locales/ru/heatmaps.json'
+import ruAbout from './i18n/locales/ru/about.json'
+
+import enCommon from './i18n/locales/en/common.json'
+import enDemos from './i18n/locales/en/demos.json'
+import enMatch from './i18n/locales/en/match.json'
+import enPlayer from './i18n/locales/en/player.json'
+import enMetrics from './i18n/locales/en/metrics.json'
+import enReplay from './i18n/locales/en/replay.json'
+import enHeatmaps from './i18n/locales/en/heatmaps.json'
+import enAbout from './i18n/locales/en/about.json'
+
 export type Lang = 'ru' | 'en'
 
-const T = {
+const resources = {
   ru: {
-    demos: 'Демо', overview: 'Обзор матча', player: 'Игрок',
-    heatmaps: 'Хитмапы', replay: 'Реплей',
-    upload: 'Загрузить демо', analyze: 'Анализировать', delete: 'Удалить', view: 'Открыть',
-    analyzing: 'Анализируется...', ready: 'Готово', error: 'Ошибка',
-    new: 'Новое', queued: 'В очереди',
-    map: 'Карта', rounds: 'Раундов', score: 'Счёт', duration: 'Длительность',
-    tickrate: 'Тикрейт', server: 'Сервер',
-    kills: 'Убийства', deaths: 'Смерти', assists: 'Ассисты',
-    adr: 'ADR', kast: 'KAST%', rating: 'Рейтинг', hs: 'HS%',
-    kd: 'K/D', kpr: 'KPR', dpr: 'DPR', opening: 'Открывашки',
-    multiKills: 'Мультикиллы', clutches: 'Клатчи', weapons: 'Оружия',
-    utility: 'Утилити', economy: 'Экономика', movement: 'Передвижение',
-    hitgroups: 'Хитгруппы', bySide: 'По сторонам',
-    side_T: 'T', side_CT: 'CT',
-    team: 'Команда', player_: 'Игрок',
-    pistolRounds: 'Пистолетные', firstKills: 'Первые убийства',
-    clutchesWon: 'Клатчи', utilDmg: 'Урон утилити',
-    round: 'Раунд', reason: 'Исход', winner: 'Победитель',
-    buy: 'Закупка', plant: 'Закладка',
-    eco: 'Эко', force: 'Форс', full: 'Полная', pistol: 'Пистолет',
-    layer: 'Слой', filters: 'Фильтры', allPlayers: 'Все игроки',
-    allSides: 'Все стороны', allPhases: 'Все фазы',
-    freeze: 'Фриз', early: 'Начало', mid: 'Середина', late: 'Конец',
-    play: 'Воспроизвести', pause: 'Пауза', speed: 'Скорость',
-    loading: 'Загрузка...', notAnalyzed: 'Не проанализировано',
-    dropHere: 'Перетащите .dem файл сюда или', chooseFile: 'выберите файл',
-    avgSpend: 'Ср. трата', totalSpend: 'Всего потрачено',
-    distKm: 'Дистанция (км)', survival: 'Выживаемость', saves: 'Сейвы',
-    flashThrown: 'Брошено', enemiesFlashed: 'Ослеплено врагов',
-    blindSec: 'Секунд ослепл.', effectiveFlash: 'Эффективные',
-    plants: 'Закладки', defuses: 'Разминирования',
-    tradeKills: 'Трейд-килы', tradedDeaths: 'Трейд-смерти',
-    shots: 'Выстрелов', hits: 'Попаданий', accuracy: 'Точность', dmg: 'Урон',
-    halves: 'Половины',
-    noData: 'Нет данных',
-    head: 'Голова', chest: 'Грудь', stomach: 'Живот', arms: 'Руки', legs: 'Ноги',
-    left_arm: 'Лев. рука', right_arm: 'Прав. рука', left_leg: 'Лев. нога', right_leg: 'Прав. нога', generic: 'Общий', neck: 'Шея',
-    players: 'Игроки',
-    roundsCount: 'Раундов',
-    seriesTitle: 'Статистика по раундам',
-    seriesLegend: 'Зелёный = K>D, красный = D>K, полупрозрачный = не в KAST',
-    viewChart: 'График', viewTable: 'Таблица',
-    colRound: 'Р', colResult: 'Итог', colOpening: 'Открывашка',
-    resultWon: 'W', resultLost: 'L',
-    colImp: 'IMP', impLabel: 'IMP',
-    replayRound: 'Раунд', replayScore: 'Счёт',
-    opacity: 'Прозрачность точек',
-    bombPlantedSite: 'Бомба заложена · сайт',
-    weaponCol: 'Оружие',
-    uploadErrorArchive: 'Не удалось прочитать файл. Если это файл из архива — сначала распакуйте его на диск.',
-    uploadErrorGeneric: 'Ошибка загрузки',
-    zoomReset: 'сбросить зум',
-    slowDown: 'Замедлить', speedUp: 'Ускорить',
-    confirmDeleteDemo: 'Удалить демо?',
-    onlyDemFiles: 'Только .dem файлы',
-    pistolRound: 'пистолетка',
-    hotPause: 'Пауза / Воспроизведение',
-    hotZoom: 'Зум', hotPan: 'Перемещение',
-    layerKills: 'Убийства', layerDeaths: 'Смерти', layerDmg: 'Урон нанесённый',
-    layerDmgTaken: 'Урон полученный', layerShots: 'Выстрелы',
-    layerFlashThrows: 'Броски флешки', layerFlashHits: 'Ослепления',
-    layerSmokes: 'Смоки', layerMolotovs: 'Молотовы/Зажигательные',
-    layerHEs: 'HE гранаты', layerPlants: 'Закладки', layerDefuses: 'Разминирования',
-    layerOpeningDuels: 'Первые дуэли', layerClutches: 'Клатчи',
-    layerHolds: 'Долгие позиции', layerPositions: 'Позиции',
-    about: 'О метриках',
-    aboutTitle: 'О метриках',
-    aboutIntro: 'Здесь описано, какие метрики используются в анализаторе, как они считаются и почему.',
-    aboutRatingDesc: 'Рейтинг — основная метрика производительности игрока, аналог HLTV Rating 2.0.',
-    aboutRatingComponents: 'Компоненты:',
-    aboutRatingKpr: 'убийств за раунд',
-    aboutRatingDpr: 'смертей за раунд',
-    aboutRatingKast: '% раундов с kill/assist/survived/traded',
-    aboutRatingAdr: 'средний урон за раунд',
-    aboutRatingNote: 'Рейтинг 1.0 считается нормой, больше — лучше среднего, меньше — хуже.',
-    aboutRwsDesc: 'RWS показывает, какую долю урона игрок нанёс в выигранных командой раундах.',
-    aboutRwsNote: 'Считается только по выигранным раундам команды — каноническая формула RWS. Значение ~17–20 — норма для топ-фрагера.',
-    aboutKastDesc: 'KAST — % раундов, где игрок был полезен: kill, assist, survived или traded (его убийца был сам убит союзником в течение 5 с).',
-    aboutKastNote: 'Норма для профессионалов — 70%+.',
-    aboutImpDesc: 'IMP — упрощённый аналог Swing от HLTV. Swing требует внутренних данных HLTV, поэтому мы считаем собственный IMP из событий демки.',
-    aboutImpFormula: 'Формула (за раунд):',
-    aboutImpFormulaBody: 'opening kill + won:   +2.0\nopening kill + lost:  +0.5\nopening death + won:  −0.5\nopening death + lost: −1.0\nкаждый доп. килл:     +0.5\nклатч выигран:        +1.5\nсейв (выжил/проигр.): +0.2',
-    aboutImpNote1: 'Общий IMP — среднее за матч. Положительный IMP = игрок регулярно влиял на исход раундов.',
-    aboutImpNote2: 'В таблице по раундам IMP со знаком: +2.0 = открывашка в выигранном, −1.0 = смерть первым в проигранном.',
+    common: ruCommon, demos: ruDemos, match: ruMatch, player: ruPlayer,
+    metrics: ruMetrics, replay: ruReplay, heatmaps: ruHeatmaps, about: ruAbout,
   },
   en: {
-    demos: 'Demos', overview: 'Match Overview', player: 'Player',
-    heatmaps: 'Heatmaps', replay: 'Replay',
-    upload: 'Upload Demo', analyze: 'Analyze', delete: 'Delete', view: 'View',
-    analyzing: 'Analyzing...', ready: 'Ready', error: 'Error',
-    new: 'New', queued: 'Queued',
-    map: 'Map', rounds: 'Rounds', score: 'Score', duration: 'Duration',
-    tickrate: 'Tickrate', server: 'Server',
-    kills: 'Kills', deaths: 'Deaths', assists: 'Assists',
-    adr: 'ADR', kast: 'KAST%', rating: 'Rating', hs: 'HS%',
-    kd: 'K/D', kpr: 'KPR', dpr: 'DPR', opening: 'Opening',
-    multiKills: 'Multi-kills', clutches: 'Clutches', weapons: 'Weapons',
-    utility: 'Utility', economy: 'Economy', movement: 'Movement',
-    hitgroups: 'Hit Groups', bySide: 'By Side',
-    side_T: 'T', side_CT: 'CT',
-    team: 'Team', player_: 'Player',
-    pistolRounds: 'Pistol Rounds', firstKills: 'First Kills',
-    clutchesWon: 'Clutches Won', utilDmg: 'Util Damage',
-    round: 'Round', reason: 'Reason', winner: 'Winner',
-    buy: 'Buy', plant: 'Plant',
-    eco: 'Eco', force: 'Force', full: 'Full Buy', pistol: 'Pistol',
-    layer: 'Layer', filters: 'Filters', allPlayers: 'All Players',
-    allSides: 'All Sides', allPhases: 'All Phases',
-    freeze: 'Freeze', early: 'Early', mid: 'Mid', late: 'Late',
-    play: 'Play', pause: 'Pause', speed: 'Speed',
-    loading: 'Loading...', notAnalyzed: 'Not analyzed',
-    dropHere: 'Drop .dem file here or', chooseFile: 'choose file',
-    avgSpend: 'Avg Spend', totalSpend: 'Total Spend',
-    distKm: 'Distance (km)', survival: 'Survival', saves: 'Saves',
-    flashThrown: 'Thrown', enemiesFlashed: 'Enemies Flashed',
-    blindSec: 'Blind Sec', effectiveFlash: 'Effective',
-    plants: 'Plants', defuses: 'Defuses',
-    tradeKills: 'Trade Kills', tradedDeaths: 'Traded Deaths',
-    shots: 'Shots', hits: 'Hits', accuracy: 'Accuracy', dmg: 'Damage',
-    halves: 'Halves',
-    noData: 'No data',
-    head: 'Head', chest: 'Chest', stomach: 'Stomach', arms: 'Arms', legs: 'Legs',
-    left_arm: 'Left arm', right_arm: 'Right arm', left_leg: 'Left leg', right_leg: 'Right leg', generic: 'Generic', neck: 'Neck',
-    players: 'Players',
-    roundsCount: 'Rounds',
-    seriesTitle: 'Round-by-round stats',
-    seriesLegend: 'Green = K>D, red = D>K, faded = not in KAST',
-    viewChart: 'Chart', viewTable: 'Table',
-    colRound: 'R', colResult: 'Result', colOpening: 'Opening',
-    resultWon: 'W', resultLost: 'L',
-    colImp: 'IMP', impLabel: 'IMP',
-    replayRound: 'Round', replayScore: 'Score',
-    opacity: 'Point opacity',
-    bombPlantedSite: 'Bomb planted · site',
-    weaponCol: 'Weapon',
-    uploadErrorArchive: 'Could not read file. If it\'s inside an archive — extract it to disk first.',
-    uploadErrorGeneric: 'Upload failed',
-    zoomReset: 'reset zoom',
-    slowDown: 'Slow down', speedUp: 'Speed up',
-    confirmDeleteDemo: 'Delete demo?',
-    onlyDemFiles: '.dem files only',
-    pistolRound: 'pistol',
-    hotPause: 'Pause / Play',
-    hotZoom: 'Zoom', hotPan: 'Pan',
-    layerKills: 'Kills', layerDeaths: 'Deaths', layerDmg: 'Damage dealt',
-    layerDmgTaken: 'Damage taken', layerShots: 'Shots',
-    layerFlashThrows: 'Flash throws', layerFlashHits: 'Flash hits',
-    layerSmokes: 'Smokes', layerMolotovs: 'Molotovs/Incendiaries',
-    layerHEs: 'HE grenades', layerPlants: 'Plants', layerDefuses: 'Defuses',
-    layerOpeningDuels: 'Opening duels', layerClutches: 'Clutches',
-    layerHolds: 'Long holds', layerPositions: 'Positions',
-    about: 'About',
-    aboutTitle: 'About Metrics',
-    aboutIntro: 'This page describes all metrics used in the analyzer — how they are calculated and why.',
-    aboutRatingDesc: 'Rating is the primary performance metric, similar to HLTV Rating 2.0.',
-    aboutRatingComponents: 'Components:',
-    aboutRatingKpr: 'kills per round',
-    aboutRatingDpr: 'deaths per round',
-    aboutRatingKast: '% of rounds with kill/assist/survived/traded',
-    aboutRatingAdr: 'average damage per round',
-    aboutRatingNote: 'Rating 1.0 is average. Above 1.0 is above average; below is below average.',
-    aboutRwsDesc: 'RWS shows how much damage the player contributed in rounds their team won.',
-    aboutRwsNote: 'Only won rounds are included — this is the canonical RWS definition. ~17–20 is typical for a top fragger.',
-    aboutKastDesc: 'KAST — % of rounds where the player contributed: Kill, Assist, Survived, or Traded (their killer was eliminated by a teammate within 5 s).',
-    aboutKastNote: '70%+ is professional-level.',
-    aboutImpDesc: 'IMP is a simplified substitute for HLTV\'s Swing metric. Swing requires internal HLTV data unavailable from demos, so we compute our own IMP from demo events.',
-    aboutImpFormula: 'Per-round formula:',
-    aboutImpFormulaBody: 'opening kill + won:   +2.0\nopening kill + lost:  +0.5\nopening death + won:  −0.5\nopening death + lost: −1.0\neach extra kill:      +0.5\nclutch won:           +1.5\nsave (survived/lost): +0.2',
-    aboutImpNote1: 'Overall IMP is the mean per-round IMP for the match. Positive IMP = player consistently made round-impacting plays.',
-    aboutImpNote2: 'In the round table, IMP has a sign: +2.0 = opening kill in a won round; −1.0 = opening death in a lost round.',
+    common: enCommon, demos: enDemos, match: enMatch, player: enPlayer,
+    metrics: enMetrics, replay: enReplay, heatmaps: enHeatmaps, about: enAbout,
   },
 }
 
-export type TKey = keyof typeof T.ru
+const saved = localStorage.getItem('lang')
+void i18next.init({
+  resources,
+  lng: saved === 'en' ? 'en' : 'ru',
+  fallbackLng: 'ru',
+  defaultNS: 'common',
+  // legacy flat keys live in common; per-domain keys also resolve without an
+  // explicit prefix — t('layerKills') still finds heatmaps:layerKills
+  fallbackNS: ['demos', 'match', 'player', 'metrics', 'replay', 'heatmaps', 'about'],
+  interpolation: { escapeValue: false },
+})
 
-let _lang: Lang = (localStorage.getItem('lang') as Lang) || 'ru'
+export function getLang(): Lang {
+  return i18next.language === 'en' ? 'en' : 'ru'
+}
 
-export function getLang(): Lang { return _lang }
-export function setLang(l: Lang) { _lang = l; localStorage.setItem('lang', l) }
-export function t(k: TKey): string { return (T[_lang] as Record<string, string>)[k] ?? k }
+export function setLang(l: Lang) {
+  localStorage.setItem('lang', l)
+  void i18next.changeLanguage(l)
+}
+
+export function t(k: string, args?: Record<string, unknown>): string {
+  return i18next.t(k, args ?? {}) ?? k
+}
+
+export type TKey = string

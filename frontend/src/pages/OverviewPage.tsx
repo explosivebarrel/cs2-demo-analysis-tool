@@ -1,21 +1,9 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, NavLink } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { api, AnalysisData, PlayerData, RoundData } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
-
-function MatchNav({ id }: { id: string }) {
-  useLang()
-  const base = `/match/${id}`
-  const s = (active: boolean) => ({ color: active ? 'var(--accent)' : 'var(--text2)', fontWeight: active ? 700 : 400, textDecoration: 'none', fontSize: 13 })
-  return (
-    <div className="flex gap-16 items-center" style={{ borderBottom: '1px solid var(--border)', paddingBottom: 12, marginBottom: 20 }}>
-      <NavLink to={base} end style={({ isActive }) => s(isActive)}>{t('overview')}</NavLink>
-      <NavLink to={`${base}/heatmaps`} style={({ isActive }) => s(isActive)}>{t('heatmaps')}</NavLink>
-      <NavLink to={`${base}/replay`} style={({ isActive }) => s(isActive)}>{t('replay')}</NavLink>
-    </div>
-  )
-}
+import MatchNav from '../components/MatchNav'
 
 function ScoreBoard({ data, id }: { data: AnalysisData; id: string }) {
   useLang()
@@ -139,6 +127,14 @@ function RoundsTable({ data }: { data: AnalysisData }) {
   const buyLabel = (b: string) => ({ pistol: t('pistol'), eco: t('eco'), force: t('force'), full: t('full') }[b] ?? b)
   const sideColor = (s: string) => s === 'T' ? 'var(--t-color)' : 'var(--ct-color)'
 
+  // build round -> total nades map from all players' series
+  const nadesPerRound: Record<number, number> = {}
+  for (const p of data.players) {
+    for (const s of p.series) {
+      nadesPerRound[s.n] = (nadesPerRound[s.n] ?? 0) + (s.nades ?? 0)
+    }
+  }
+
   return (
     <div className="card" style={{ overflowX: 'auto', marginTop: 16 }}>
       <div style={{ fontWeight: 700, marginBottom: 10 }}>{t('round')}</div>
@@ -148,6 +144,7 @@ function RoundsTable({ data }: { data: AnalysisData }) {
             <th>#</th><th>{t('score')}</th><th>{t('winner')}</th>
             <th>{t('reason')}</th><th>{t('buy')} {teams[0].name}</th>
             <th>{t('buy')} {teams[1].name}</th><th>{t('plant')}</th>
+            <th>🔴</th>
             <th>MVP</th>
           </tr>
         </thead>
@@ -175,6 +172,9 @@ function RoundsTable({ data }: { data: AnalysisData }) {
                   {buyLabel(r.buyTeam1)}
                 </td>
                 <td>{r.bombPlanted ? (r.bombSite || '✓') : '—'}</td>
+                <td style={{ textAlign: 'center', color: (nadesPerRound[r.n] ?? 0) > 0 ? 'var(--accent2)' : 'var(--text2)', fontWeight: (nadesPerRound[r.n] ?? 0) > 0 ? 700 : 400 }}>
+                  {nadesPerRound[r.n] ?? 0}
+                </td>
                 <td style={{ color: 'var(--text2)', fontSize: 12 }}>{mvpPlayer?.name ?? '—'}</td>
               </tr>
             )
@@ -197,11 +197,30 @@ export default function OverviewPage() {
   }, [id])
 
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
-  if (!data) return <div className="page"><div className="spinner" /> <span className="text-muted" style={{ marginLeft: 8 }}>{t('loading')}</span></div>
+  if (!data) return (
+    <div className="page">
+      <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 20 }} />
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div className="skeleton" style={{ width: 120, height: 24 }} />
+          <div className="skeleton" style={{ width: 80, height: 48 }} />
+          <div className="skeleton" style={{ width: 120, height: 24 }} />
+        </div>
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 20, marginBottom: 8, borderRadius: 4 }} />
+        ))}
+      </div>
+      <div className="card" style={{ overflowX: 'auto' }}>
+        {[...Array(11)].map((_, i) => (
+          <div key={i} className="skeleton" style={{ height: 36, marginBottom: 6, borderRadius: 4 }} />
+        ))}
+      </div>
+    </div>
+  )
 
   return (
     <div className="page">
-      <MatchNav id={id!} />
+      <MatchNav id={id!} players={data.players} />
       <ScoreBoard data={data} id={id!} />
       <Scoreboard data={data} id={id!} />
       <RoundsTable data={data} />

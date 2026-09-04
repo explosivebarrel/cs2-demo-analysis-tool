@@ -1,0 +1,27 @@
+{
+  "about": "About",
+  "aboutTitle": "About Metrics",
+  "aboutIntro": "This page describes all metrics used in the analyzer — how they are calculated and why.",
+  "aboutRatingDesc": "Rating is the primary performance metric, similar to HLTV Rating 2.0.",
+  "aboutRatingComponents": "Components:",
+  "aboutRatingKpr": "kills per round",
+  "aboutRatingDpr": "deaths per round",
+  "aboutRatingKast": "% of rounds with kill/assist/survived/traded",
+  "aboutRatingAdr": "average damage per round",
+  "aboutRatingNote": "Rating 1.0 is average. Above 1.0 is above average; below is below average.",
+  "aboutRwsDesc": "RWS shows how much damage the player contributed in rounds their team won.",
+  "aboutRwsNote": "Only won rounds are included — this is the canonical RWS definition. ~17–20 is typical for a top fragger.",
+  "aboutKastDesc": "KAST — % of rounds where the player contributed: Kill, Assist, Survived, or Traded (their killer was eliminated by a teammate within 5 s).",
+  "aboutKastNote": "70%+ is professional-level.",
+  "aboutImpDesc": "IMP is a simplified substitute for HLTV's Swing metric. Swing requires internal HLTV data unavailable from demos, so we compute our own IMP from demo events.",
+  "aboutImpFormula": "Per-round formula:",
+  "aboutImpFormulaBody": "opening kill + won:   +2.0\\nopening kill + lost:  +0.5\\nopening death + won:  −0.5\\nopening death + lost: −1.0\\neach extra kill:      +0.5\\nclutch won:           +1.5\\nsave (survived/lost): +0.2",
+  "aboutImpNote1": "Overall IMP is the mean per-round IMP for the match. Positive IMP = player consistently made round-impacting plays.",
+  "aboutImpNote2": "In the round table, IMP has a sign: +2.0 = opening kill in a won round; −1.0 = opening death in a lost round.",
+  "sections": {
+    "rating": "Rating 2.0",
+    "rws": "RWS (Round Win Share)",
+    "kast": "KAST",
+    "imp": "IMP (Impact)"
+  }
+}
