@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { PlayerData } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
@@ -13,6 +13,7 @@ interface Props {
 export default function MatchNav({ id, players, currentSteamid }: Props) {
   useLang()
   const navigate = useNavigate()
+  const location = useLocation()
   const base = `/match/${id}`
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -40,8 +41,6 @@ export default function MatchNav({ id, players, currentSteamid }: Props) {
     >
       <NavLink to={base} end style={({ isActive }) => linkStyle(isActive)}>{t('overview')}</NavLink>
       <NavLink to={`${base}/heatmaps`} style={({ isActive }) => linkStyle(isActive)}>{t('heatmaps')}</NavLink>
-      <NavLink to={`${base}/replay`} style={({ isActive }) => linkStyle(isActive)}>{t('replay')}</NavLink>
-      <NavLink to={`${base}/chat`} style={({ isActive }) => linkStyle(isActive)}>{t('chat')}</NavLink>
 
       {players && players.length > 0 && (
         <div ref={ref} style={{ position: 'relative' }}>
@@ -117,6 +116,14 @@ export default function MatchNav({ id, players, currentSteamid }: Props) {
           )}
         </div>
       )}
+
+      <button
+        className="btn-primary"
+        style={{ marginLeft: 'auto', fontSize: 12, padding: '4px 14px', flexShrink: 0 }}
+        onClick={() => navigate(`/match/${id}/replay`, { state: { from: location.pathname } })}
+      >
+        ▶ {t('replay')}
+      </button>
     </div>
   )
 }

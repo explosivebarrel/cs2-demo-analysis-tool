@@ -133,11 +133,20 @@ export interface HeatPoint {
 
 export interface WeaponInfo { raw: string; en: string; ru: string; cls: string }
 
+export interface InvWeaponInfo { en: string; ru: string; cls: string }
+
 export interface ReplayData {
   tickrate: number; frameStep: number
   players: { steamid: string; name: string; team: number }[]
   ticks: number[]
-  data: number[]  // flat: frame * nPlayers * FIELDS + playerIdx * FIELDS + field
+  // flat: frame * nPlayers * FIELDS + playerIdx * FIELDS + field;
+  // payload v2: 13 fields [x,y,z,yaw,hp,armor,alive,weaponId,flags,team,equip,money,ammo],
+  // legacy payloads without `inv` have 11 fields (no money/ammo)
+  data: number[]
+  /** Sparse inventory change-log: [frameIdx, playerIdx, "id,id,..."] (v2 only). */
+  inv?: [number, number, string][]
+  /** Canonical inventory id -> label/class, for decoding `inv` (v2 only). */
+  invWeapons?: Record<string, InvWeaponInfo>
   bomb: (number | null)[][]
   events: ReplayEvent[]
   shots: number[][]  // compact: [tick, playerIdx, x, y, yaw]
@@ -293,14 +302,6 @@ export interface BenchmarkTiers {
 
 export type Benchmarks = Record<string, BenchmarkTiers>
 
-export interface ChatMessage {
-  tick: number
-  steamid: string
-  name: string
-  text: string
-  round: number | null
-}
-
 export interface PlayerHistoryEntry {
   demoId: string
   map: string
@@ -346,7 +347,6 @@ export const api = {
   analysis: (id: string): Promise<AnalysisData> => cached(`analysis:${id}`, () => req(`/demos/${id}/analysis`)),
   heatmap: (id: string): Promise<HeatmapData> => cached(`heatmap:${id}`, () => req(`/demos/${id}/heatmap`)),
   replay: (id: string): Promise<ReplayData> => cached(`replay:${id}`, () => req(`/demos/${id}/replay`)),
-  chat: (id: string): Promise<ChatMessage[]> => cached(`chat:${id}`, () => req(`/demos/${id}/chat`)),
   mapOverview: (map: string): Promise<MapOverview> => cached(`overview:${map}`, () => req(`/maps/${map}/overview`)),
   radarUrl: (map: string, level?: string) =>
     `/api/maps/${map}/radar${level && level !== 'default' ? `?level=${encodeURIComponent(level)}` : ''}`,

@@ -20,7 +20,6 @@ import ruPlayer from './i18n/locales/ru/player.json'
 import ruMetrics from './i18n/locales/ru/metrics.json'
 import ruReplay from './i18n/locales/ru/replay.json'
 import ruHeatmaps from './i18n/locales/ru/heatmaps.json'
-import ruChat from './i18n/locales/ru/chat.json'
 import ruAbout from './i18n/locales/ru/about.json'
 
 import enCommon from './i18n/locales/en/common.json'
@@ -30,7 +29,6 @@ import enPlayer from './i18n/locales/en/player.json'
 import enMetrics from './i18n/locales/en/metrics.json'
 import enReplay from './i18n/locales/en/replay.json'
 import enHeatmaps from './i18n/locales/en/heatmaps.json'
-import enChat from './i18n/locales/en/chat.json'
 import enAbout from './i18n/locales/en/about.json'
 
 export type Lang = 'ru' | 'en'
@@ -38,11 +36,11 @@ export type Lang = 'ru' | 'en'
 const resources = {
   ru: {
     common: ruCommon, demos: ruDemos, match: ruMatch, player: ruPlayer,
-    metrics: ruMetrics, replay: ruReplay, heatmaps: ruHeatmaps, chat: ruChat, about: ruAbout,
+    metrics: ruMetrics, replay: ruReplay, heatmaps: ruHeatmaps, about: ruAbout,
   },
   en: {
     common: enCommon, demos: enDemos, match: enMatch, player: enPlayer,
-    metrics: enMetrics, replay: enReplay, heatmaps: enHeatmaps, chat: enChat, about: enAbout,
+    metrics: enMetrics, replay: enReplay, heatmaps: enHeatmaps, about: enAbout,
   },
 }
 
@@ -54,7 +52,7 @@ void i18next.init({
   defaultNS: 'common',
   // legacy flat keys live in common; per-domain keys also resolve without an
   // explicit prefix — t('layerKills') still finds heatmaps:layerKills
-  fallbackNS: ['demos', 'match', 'player', 'metrics', 'replay', 'heatmaps', 'chat', 'about'],
+  fallbackNS: ['demos', 'match', 'player', 'metrics', 'replay', 'heatmaps', 'about'],
   interpolation: { escapeValue: false },
 })
 

@@ -11,6 +11,18 @@
   "hotPause": "Pause / Play",
   "hotZoom": "Zoom",
   "hotPan": "Pan",
+  "hotSeek": "Jump ±5 seconds",
+  "hotMoments": "Previous / next moment",
+  "hotReset": "Reset zoom",
+  "hotUi": "Hide / show UI",
+  "hotFullscreen": "Fullscreen",
+  "back": "Back",
+  "fullscreen": "Fullscreen",
+  "exitFullscreen": "Exit fullscreen",
+  "hideUi": "Hide UI",
+  "showUi": "Show UI",
+  "hotkeys": "Hotkeys",
+  "nadesTitle": "Nades",
   "roundShort": "R",
   "side": {
     "t": "T",
@@ -55,7 +67,21 @@
     "smoke": "🌫 Smoke",
     "he": "💥 HE",
     "flash": "⚡ Flash",
-    "molotov": "🔥 Molotov"
+    "molotov": "🔥 Molotov",
+    "decoy": "🔊 Decoy"
+  },
+  "card": {
+    "armor": "Armor",
+    "money": "Money",
+    "weapon": "Held",
+    "ammo": "Ammo",
+    "speed": "Speed",
+    "primary": "Primary",
+    "secondary": "Pistol",
+    "nades": "Grenades",
+    "gear": "Gear",
+    "kit": "Kit",
+    "noData": "Detailed data unavailable — re-analyze the demo"
   },
   "trail": {
     "tail": "🔴 Trail",
