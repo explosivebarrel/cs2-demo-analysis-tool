@@ -313,8 +313,11 @@ export default function DemosPage() {
     refresh()
   }
 
+  const DEMO_EXTS = ['.dem', '.dem.zst', '.zst', '.dem.gz', '.gz']
+  const isDemoFile = (name: string) => DEMO_EXTS.some(ext => name.toLowerCase().endsWith(ext))
+
   async function uploadFile(file: File) {
-    if (!file.name.endsWith('.dem')) { setUploadErr(t('onlyDemFiles')); return }
+    if (!isDemoFile(file.name)) { setUploadErr(t('onlyDemFiles')); return }
     setUploadErr('')
     setUploading(true)
     try {
@@ -417,7 +420,7 @@ export default function DemosPage() {
           <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? <span className="spinner" /> : t('upload')}
           </button>
-          <input ref={fileRef} type="file" accept=".dem" style={{ display: 'none' }}
+          <input ref={fileRef} type="file" accept=".dem,.dem.zst,.zst,.dem.gz,.gz" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = '' }} />
         </div>
       </div>

@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
-from . import config, storage
+from . import config, storage, ingest
 from .overviews import overview_for_client, radar_png_path
 
 app = FastAPI(title="CS2 Demo Analyzer")
@@ -215,20 +215,22 @@ async def upload(file: UploadFile = File(...)):
     if len(data) > config.MAX_UPLOAD_BYTES:
         raise HTTPException(413, "file too large")
     name = file.filename or "upload.dem"
-    if not name.lower().endswith(".dem"):
+    if not ingest.is_supported(name):
         name += ".dem"
-    did = storage.demo_id(os.path.basename(name), len(data))
-    dest = os.path.join(config.UPLOADS_DIR, did + ".dem")
-    with open(dest, "wb") as f:
-        f.write(data)
-    with open(dest + ".name", "w", encoding="utf-8") as f:
-        json.dump({"name": os.path.basename(name)}, f)
+    try:
+        did, base, size = ingest.save_demo(name, data)
+    except ValueError as e:
+        raise HTTPException(413, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    with open(os.path.join(config.UPLOADS_DIR, did + ".dem.name"), "w", encoding="utf-8") as f:
+        json.dump({"name": base, "origin": "upload"}, f)
     # auto-start probe so map/teams appear immediately
     demo = _find_demo(did)
     st = storage.read_status(did)
     if not st or st.get("status") in ("new", None):
         _start_probe(demo)
-    return {"id": did, "name": name, "size": len(data)}
+    return {"id": did, "name": base, "size": size}
 
 
 @app.post("/api/demos/{did}/probe")

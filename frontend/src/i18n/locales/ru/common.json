@@ -104,7 +104,7 @@
   "levelLower": "Нижний",
   "slowDown": "Замедлить",
   "confirmDeleteDemo": "Удалить демо?",
-  "onlyDemFiles": "Только .dem файлы",
+  "onlyDemFiles": "Только файлы .dem / .dem.zst / .gz",
   "pistolRound": "пистолетка",
   "benchmarks": {
     "tier": {

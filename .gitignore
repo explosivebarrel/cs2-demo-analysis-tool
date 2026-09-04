@@ -45,3 +45,7 @@ memory/
 # Debug screenshots
 heatmap-*.png
 replay-*.png
+
+# Local reference materials / stray artifacts (never commit)
+FFF/
+/package-lock.json
