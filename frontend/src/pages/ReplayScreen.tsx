@@ -17,6 +17,9 @@ import { t } from '../i18n'
 
 const LEFT_WIDTH = 300
 const RIGHT_WIDTH = 280
+// moments are played from a few seconds before the action; prev/next moment
+// navigation uses the same window so a fresh jump doesn't re-target itself
+const SEEK_BACK_SEC = 3
 
 /** Full-viewport replay player screen (route /match/:id/replay). */
 export default function ReplayScreen() {
@@ -49,6 +52,7 @@ export default function ReplayScreen() {
   const rafRef = useRef(0)
   const lastTimeRef = useRef(0)
   const frameIdxRef = useRef(0)
+  const momentHlTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const replayRef = useRef<ReplayData | null>(null)
   const analysisRef = useRef<AnalysisData | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -97,6 +101,8 @@ export default function ReplayScreen() {
   useEffect(() => {
     if (!playing || !replay) return
     const secPerFrame = (replay.frameStep / replay.tickrate) / speed
+    // avoid a stale-dt jump on the first tick after (re)starting playback
+    lastTimeRef.current = performance.now()
     function tick(now: number) {
       const dt = (now - lastTimeRef.current) / 1000
       lastTimeRef.current = now
@@ -128,7 +134,10 @@ export default function ReplayScreen() {
   }, [])
 
   // ── navigation helpers ──────────────────────────────────────────────────────
-  function jumpToFrame(fi: number) { setFrameIdx(fi); setPlaying(false) }
+  function jumpToFrame(fi: number, play = false) {
+    setFrameIdx(fi)
+    setPlaying(play)
+  }
 
   function seekSec(deltaSec: number) {
     if (!replay) return
@@ -138,7 +147,7 @@ export default function ReplayScreen() {
 
   function jumpToMoment(dir: 1 | -1) {
     const curTick = replay?.ticks[Math.floor(frameIdx)] ?? 0
-    const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replay?.tickrate ?? 64)
+    const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replay?.tickrate ?? 64, SEEK_BACK_SEC)
     const m = dir === 1 ? mm.next : mm.prev
     if (m) onMomentSelect(m)
   }
@@ -149,16 +158,23 @@ export default function ReplayScreen() {
     return i < 0 ? replay.ticks.length - 1 : Math.max(0, i)
   }
 
-  /** Jump to a moment and flash its episode on the winprob timeline. */
+  /** Jump to a moment (and play it), flashing its episode on the winprob timeline. */
   function onMomentSelect(m: Moment) {
     if (!replay) return
-    jumpToFrame(frameForTickMinus(replay, m.tick, 3))
+    const back = Math.max(SEEK_BACK_SEC, Math.min(m.preSec ?? SEEK_BACK_SEC, 12))
+    jumpToFrame(frameForTickMinus(replay, m.tick, back), true)
     const rate = replay.tickrate
     setMomentHl({
-      startFi: fiForTick(m.tick - (m.preSec ?? 3) * rate),
+      startFi: fiForTick(m.tick - (m.preSec ?? SEEK_BACK_SEC) * rate),
       endFi: fiForTick(m.tick + (m.durSec ?? 6) * rate),
     })
+    if (momentHlTimer.current) clearTimeout(momentHlTimer.current)
+    momentHlTimer.current = setTimeout(() => setMomentHl(null), 6000)
   }
+
+  // latest-ref so hotkeys can trigger moment jumps without effect dep churn
+  const onMomentSelectRef = useRef<(m: Moment) => void>(() => {})
+  useEffect(() => { onMomentSelectRef.current = onMomentSelect })
 
   function seekTick(tick: number) {
     const fi = replay?.ticks.findIndex(t => t >= tick) ?? -1
@@ -181,12 +197,9 @@ export default function ReplayScreen() {
       else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') toggleFullscreen()
       else if (e.key === '[' || e.key === ']') {
         const curTick = replayRef.current?.ticks[Math.floor(frameIdxRef.current)] ?? 0
-        const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replayRef.current?.tickrate ?? 64)
+        const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replayRef.current?.tickrate ?? 64, SEEK_BACK_SEC)
         const m = e.key === '[' ? mm.prev : mm.next
-        if (m && replayRef.current) {
-          setFrameIdx(frameForTickMinus(replayRef.current, m.tick, 3))
-          setPlaying(false)
-        }
+        if (m) onMomentSelectRef.current(m)
       }
     }
     window.addEventListener('keydown', onKey)

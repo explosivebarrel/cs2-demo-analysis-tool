@@ -101,12 +101,15 @@ export function frameForTickMinus(replay: ReplayData, tick: number, seconds: num
   return res
 }
 
-export function momentsAround(moments: Moment[], curTick: number, tickrate: number): {
+export function momentsAround(moments: Moment[], curTick: number, tickrate: number, lookaheadSec = 1): {
   prev: Moment | null; next: Moment | null
 } {
   let prev: Moment | null = null
   let next: Moment | null = null
-  const lookahead = Math.round(tickrate * 1)  // current position counts as "at" the moment
+  // moments within the lookahead window count as "at current position"; callers
+  // that jump back `lookaheadSec` before a moment pass the same value so the
+  // freshly-jumped moment counts as prev, not next
+  const lookahead = Math.round(tickrate * lookaheadSec)
   for (const m of moments) {
     if (m.tick <= curTick + lookahead) prev = m
     else if (!next) { next = m; break }

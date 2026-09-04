@@ -167,6 +167,10 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
     (`replay.ticks[frameIdx]`, `replay.data[frameIdx * ...]`, `winprob[frameIdx]`)
     вне drawFrame обязано делать `Math.floor(frameIdx)` — иначе undefined → 0:00 /
     сбитые раунды / NaN в драверах.
+17. **Навигация по моментам**: клик по моменту = seek назад на
+    `max(3, min(preSec, 12))` с (SEEK_BACK_SEC) + автозапуск playback; `momentsAround`
+    должна получать тот же lookahead (SEEK_BACK_SEC), иначе свежепрыгнутый момент
+    считается «next» и кнопка »/« застревает на нём же. Клик по раунду/скраб — пауза.
 
 ## Стиль работы
 
