@@ -64,7 +64,7 @@ The current status of both sources is shown on the About page of a running insta
 
 ## Configuration
 
-All settings are optional environment variables of the `backend` container (set them in `docker-compose.yml`):
+All settings are optional environment variables of the `backend` container: copy `.env.example` to `.env` (docker compose picks it up automatically) or set them directly in `docker-compose.yml`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
