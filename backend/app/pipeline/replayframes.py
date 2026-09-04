@@ -138,9 +138,10 @@ class ClutchTracker:
 
 
 class FrameBuilder:
-    def __init__(self, ctx, rb):
+    def __init__(self, ctx, rb, progress=None):
         self.ctx = ctx
         self.rb = rb
+        self._progress = progress or (lambda frac: None)
         names = {sid: self._first_name(sid) for sid in rb.steamid_team}
         t0 = sorted([s for s, t in rb.steamid_team.items() if t == 0], key=lambda s: names[s])
         t1 = sorted([s for s, t in rb.steamid_team.items() if t == 1], key=lambda s: names[s])
@@ -194,8 +195,17 @@ class FrameBuilder:
 
         self.rb.rounds_by_tick = round_at
 
+        # this loop is the heaviest pure-Python stage; report sub-progress so
+        # the status bar crawls 70 -> 78 instead of stalling at 70
+        total_ticks = df["tick"].nunique()
+        done_ticks = 0
+
         for tick, group in df.groupby("tick", sort=True):
             tick = int(tick)
+            self.cur_tick = tick
+            done_ticks += 1
+            if done_ticks % 500 == 0:
+                self._progress(done_ticks / total_ticks)
             self.cur_tick = tick
             fi = len(frame_ticks)
             r = round_at(tick)

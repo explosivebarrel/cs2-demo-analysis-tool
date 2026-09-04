@@ -950,7 +950,8 @@ def _build_map_events(ctx, rb, steamid: str) -> list[dict]:
 
 def build_player_analytics(ctx, rb, fb, players: dict,
                            winprob: list | None = None,
-                           replay_ticks: list | None = None) -> dict:
+                           replay_ticks: list | None = None,
+                           progress=None) -> dict:
     """Compute per-player deep analytics for all players in fb.players.
 
     Returns a dict keyed by steamid with keys: duels, metrics, impact, mapEvents.
@@ -987,10 +988,15 @@ def build_player_analytics(ctx, rb, fb, players: dict,
             }
         return result
 
+    total = max(1, len(fb.players))
+    done = 0
     for steamid in fb.players:
         p = players.get(steamid)
         if p is None:
             continue
+        done += 1
+        if progress:
+            progress(done / total)
 
         try:
             duels = _build_duels(ctx, rb, fb, players, steamid)

@@ -57,7 +57,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     prog("rounds", 65, f"{n_rounds} rounds")
 
     prog("frames", 70)
-    fb = FrameBuilder(ctx, rb)
+    # the frame builder is the longest stage — feed sub-progress into 70..78
+    fb = FrameBuilder(ctx, rb, progress=lambda frac: prog("frames", 70 + int(frac * 8)))
     replay = fb.build()
 
     prog("players", 78)
@@ -78,13 +79,19 @@ def analyze_demo(demo_path: str, did: str, progress=None):
 
     prog("analytics", 92)
     from .playeranalytics import build_player_analytics, build_moments
-    pa = build_player_analytics(ctx, rb, fb, players, winprob=winprob, replay_ticks=replay["ticks"])
+    # per-player sub-progress: the analytics stage is another long one
+    pa = build_player_analytics(
+        ctx, rb, fb, players,
+        winprob=winprob, replay_ticks=replay["ticks"],
+        progress=lambda f: prog("analytics", 92 + int(f * 4)),
+    )
+    prog("analytics", 96, "moments")
     moments = build_moments(ctx, rb, fb, players, pa, winprob, replay["ticks"])
 
-    prog("chat", 94)
+    prog("chat", 97)
     chat_messages = build_chat(ctx, rb)
 
-    prog("writing", 95)
+    prog("writing", 98)
     analysis = _build_analysis(ctx, rb, fb, players, moments=moments)
     replay_payload = {
         "tickrate": ctx.tickrate,
