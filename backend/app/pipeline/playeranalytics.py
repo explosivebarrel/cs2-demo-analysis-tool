@@ -1205,7 +1205,10 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
                                 "detail": ",".join(sorted(errs)),
                                 "preSec": 1.5, "durSec": 1.5})
 
-    # winprob swings: largest single-step shift inside a round
+    # winprob swings: largest single-step shift inside a round. States where
+    # the round is already decided (wp <= 0.08 / >= 0.92 — round collapse and
+    # the next-round reset) are excluded, otherwise every round boundary
+    # produces a fake 40-50% "swing"
     if winprob and replay_ticks:
         ticks_arr = _np.array(replay_ticks, dtype="int64")
         wp = _np.array(winprob, dtype="float64")
@@ -1215,7 +1218,9 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
             if i1 - i0 < 2:
                 continue
             seg = wp[i0:i1 + 1]
+            contested = (seg > 0.08) & (seg < 0.92)
             d = _np.abs(_np.diff(seg))
+            d[~(contested[:-1] & contested[1:])] = 0
             j = int(d.argmax())
             if d[j] >= 0.2:
                 moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + 1]),

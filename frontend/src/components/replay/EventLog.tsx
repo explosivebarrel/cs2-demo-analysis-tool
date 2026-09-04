@@ -130,9 +130,11 @@ export default function EventLog({
     if (bombLabels[ty]) {
       const pidx = e.p as number
       const pname = replay.players[pidx]?.name ?? ''
+      const bombIcon = ty === 'bp' ? 'planted_c4' : ty === 'bf' ? 'defuser' : ty === 'bx' ? 'c4' : 'bomb_c4'
       return (
         <div key={idx} style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
+          <img src={`/icons/weapons/${bombIcon}.svg`} alt="" width={13} height={13} style={{ flexShrink: 0 }} />
           <span style={{ fontSize: 12 }}>{bombLabels[ty]}{pname ? ` · ${pname}` : ''}</span>
         </div>
       )
@@ -141,12 +143,16 @@ export default function EventLog({
     const nadeLabels: Record<string, string> = {
       sm: t('replay:nade.smoke'), hd: t('replay:nade.he'), fd: t('replay:nade.flash'), fr: t('replay:nade.molotov'),
     }
+    const nadeIcons: Record<string, string> = {
+      sm: 'smokegrenade', hd: 'hegrenade', fd: 'flashbang', fr: 'molotov',
+    }
     if (nadeLabels[ty]) {
       const pidx = e.p as number
       const pname = replay.players[pidx]?.name ?? ''
       return (
         <div key={idx} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', opacity: 0.8 }}>
           <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
+          <img src={`/icons/weapons/${nadeIcons[ty]}.svg`} alt="" width={13} height={13} style={{ flexShrink: 0 }} />
           <span style={{ fontSize: 11, color: 'var(--text2)' }}>{nadeLabels[ty]}{pname ? ` · ${pname}` : ''}</span>
         </div>
       )

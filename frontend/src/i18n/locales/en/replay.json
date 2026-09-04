@@ -56,19 +56,19 @@
     "outnumbered": "Enemies had a numbers advantage {{enemies}}v{{allies}}"
   },
   "bomb": {
-    "planted": "💣 Bomb planted",
-    "picked": "🤲 Picked up the bomb",
-    "dropped": "📦 Bomb dropped",
-    "defuseStart": "🔧 Started defusing",
-    "defused": "✅ Bomb defused",
-    "exploded": "💥 Bomb exploded"
+    "planted": "Bomb planted",
+    "picked": "Picked up the bomb",
+    "dropped": "Bomb dropped",
+    "defuseStart": "Started defusing",
+    "defused": "Bomb defused",
+    "exploded": "Bomb exploded"
   },
   "nade": {
-    "smoke": "🌫 Smoke",
-    "he": "💥 HE",
-    "flash": "⚡ Flash",
-    "molotov": "🔥 Molotov",
-    "decoy": "🔊 Decoy"
+    "smoke": "Smoke",
+    "he": "HE",
+    "flash": "Flash",
+    "molotov": "Molotov",
+    "decoy": "Decoy"
   },
   "card": {
     "armor": "Armor",
