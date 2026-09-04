@@ -317,13 +317,14 @@ function findRoundForTick(rounds: RoundData[], tick: number): RoundData | null {
 
 /** Numbered round buttons with a vertical scrubber line sliding across the active round. */
 function RoundSwitcher({
-  rounds, ticks, frameIdx, onJump, knifeRound,
+  rounds, ticks, frameIdx, onJump, knifeRound, matchStartTick,
 }: {
   rounds: RoundData[]
   ticks: number[]
   frameIdx: number
   onJump: (fi: number) => void
-  knifeRound?: { startTick: number; endTick: number; winner: string } | null
+  knifeRound?: { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string } | null
+  matchStartTick?: number
 }) {
   const curTick = ticks[frameIdx] ?? 0
   const tick0 = ticks[0] ?? 0
@@ -407,13 +408,19 @@ function RoundSwitcher({
         </button>
       )}
 
-      {rounds.map((r) => {
+      {rounds.map((r, ri) => {
         const isActive = activeRound?.n === r.n
-        // scrubber spans the live part of the round only: freeze time sits
-        // at 0% so a round button always starts at its left edge
-        const liveDur = r.endTick - r.freezeEndTick
-        const roundPct = isActive && liveDur > 0
-          ? scrubberPct(r.freezeEndTick, r.endTick)
+        // scrubber spans freeze time + live part: it keeps moving through
+        // the freeze, and a click still jumps past it (to freezeEnd)
+        const prevRound = ri > 0 ? rounds[ri - 1] : null
+        const windowStart = prevRound
+          ? prevRound.endTick
+          : matchStartTick && matchStartTick > (knife?.endTick ?? 0)
+            ? matchStartTick
+            : knife ? knife.endTick : 0
+        const windowDur = r.endTick - windowStart
+        const roundPct = isActive && windowDur > 0
+          ? scrubberPct(windowStart, r.endTick)
           : null
         const startFi = ticks.findIndex(tk => tk >= r.freezeEndTick)
         return (
@@ -1289,6 +1296,7 @@ export default function ReplayPage() {
           frameIdx={frameIdx}
           onJump={jumpToFrame}
           knifeRound={analysis?.knifeRound}
+          matchStartTick={analysis?.meta.matchStartTick}
         />
       )}
 
