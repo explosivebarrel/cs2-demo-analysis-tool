@@ -137,7 +137,7 @@ export default function ReplayScreen() {
   }
 
   function jumpToMoment(dir: 1 | -1) {
-    const curTick = replay?.ticks[frameIdx] ?? 0
+    const curTick = replay?.ticks[Math.floor(frameIdx)] ?? 0
     const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replay?.tickrate ?? 64)
     const m = dir === 1 ? mm.next : mm.prev
     if (m) onMomentSelect(m)
@@ -180,7 +180,7 @@ export default function ReplayScreen() {
       else if (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р') setChromeHidden(v => !v)
       else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') toggleFullscreen()
       else if (e.key === '[' || e.key === ']') {
-        const curTick = replayRef.current?.ticks[frameIdxRef.current] ?? 0
+        const curTick = replayRef.current?.ticks[Math.floor(frameIdxRef.current)] ?? 0
         const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replayRef.current?.tickrate ?? 64)
         const m = e.key === '[' ? mm.prev : mm.next
         if (m && replayRef.current) {
@@ -299,7 +299,7 @@ export default function ReplayScreen() {
           playing={playing} onPlayPause={() => setPlaying(p => !p)}
           onSeekSec={seekSec}
           hasMoments={(analysis.moments?.length ?? 0) > 0} onMoment={jumpToMoment}
-          time={fmtTime(frameIdx)} duration={fmtTime(totalFrames - 1)}
+          time={fmtTime(Math.floor(frameIdx))} duration={fmtTime(totalFrames - 1)}
           speed={speed} onSpeed={setSpeed}
           nadeFilter={nadeOff} onToggleNade={toggleNade}
           trailMode={nadeTrailMode} onTrailMode={setNadeTrailMode}
@@ -320,7 +320,7 @@ export default function ReplayScreen() {
             </div>
           ) : (
             <div style={{ position: 'relative' }}>
-              <input type="range" min={0} max={Math.max(0, totalFrames - 1)} value={frameIdx}
+              <input type="range" min={0} max={Math.max(0, totalFrames - 1)} value={Math.floor(frameIdx)}
                 onChange={e => { setFrameIdx(Number(e.target.value)); setPlaying(false) }}
                 style={{ width: '100%', accentColor: 'var(--accent)' }} />
               {rounds.map(r => {

@@ -1,11 +1,15 @@
 """Tests for duel episode frames: positional velocity + WASD decomposition."""
+import json
+
 import pandas as pd
 
 from app.pipeline.playeranalytics import _build_duel_frames
 
 
 def _df(rows):
-    return pd.DataFrame(rows)
+    # numpy scalars in, like real parse output
+    return pd.DataFrame(rows).astype(
+        {"tick": "int64", "X": "float64", "Y": "float64", "yaw": "float64"})
 
 
 def test_duel_frames_velocity_and_wasd():
@@ -25,6 +29,9 @@ def test_duel_frames_velocity_and_wasd():
                                 round_start_tick=t0 - 100, round_end_tick=t0 + 400,
                                 tickrate=rate)
     assert len(frames) == 14
+    for f in frames:
+        json.dumps(f)  # payload must be plain python (no np.bool_/np.float64)
+        assert f["w"] in (True, False)
     for f in frames[1:10]:
         assert f["vel"] > 240
         assert f["w"] and not f["a"] and not f["s"] and not f["d"]

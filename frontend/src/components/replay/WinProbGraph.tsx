@@ -39,7 +39,7 @@ export default function WinProbGraph({
   }, [highlight])
 
   // compute current round frame bounds — include freeze time + ±10s neighbours
-  const curTick = ticks[frameIdx] ?? 0
+  const curTick = ticks[Math.floor(frameIdx)] ?? 0
   const knife = knifeRound && knifeRound.endTick > 0 ? knifeRound : null
   const inKnife = !!knife && curTick >= knife.startTick && curTick < knife.endTick
   const curRound = inKnife ? null : findRoundForTick(rounds, curTick)
@@ -125,7 +125,7 @@ export default function WinProbGraph({
     curvePts.map(([x, y]) => `L ${x.toFixed(1)},${y.toFixed(1)}`).join(' ') +
     ` L ${lastX.toFixed(1)},${midY} Z`
 
-  const curVal = winprob[frameIdx] ?? 0.5
+  const curVal = winprob[Math.floor(frameIdx)] ?? 0.5
   const ctPct  = Math.round(curVal * 100)
   const tPct   = 100 - ctPct
 

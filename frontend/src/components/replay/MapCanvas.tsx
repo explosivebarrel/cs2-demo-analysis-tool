@@ -54,7 +54,7 @@ export default function MapCanvas({
   const base = Math.min(cw, ch)
 
   const lowerLevels = lowerLevelNames(overview)
-  const curTick = replay.ticks[frameIdx] ?? 0
+  const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
   const knifeRound = analysis?.knifeRound ?? null
   const knife = knifeRound && knifeRound.endTick > 0 ? knifeRound : null
   // restart + freeze of round 1 belongs to R1, knife round ends at its own endTick
@@ -163,7 +163,7 @@ export default function MapCanvas({
       )}
       {winprob.length > 0 && !inKnife && (
         <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,.7)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: '#4a9eda' }}>
-          {t('replay:side.ct')} {Math.round((winprob[frameIdx] ?? 0.5) * 100)}%
+          {t('replay:side.ct')} {Math.round((winprob[Math.floor(frameIdx)] ?? 0.5) * 100)}%
         </div>
       )}
       {lowerLevels.length > 0 && (

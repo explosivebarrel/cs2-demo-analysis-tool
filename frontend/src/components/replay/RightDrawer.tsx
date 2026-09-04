@@ -36,11 +36,12 @@ export default function RightDrawer({
   const lang = getLang()
   const FIELDS = fieldsOf(replay)
   const hasV2 = FIELDS === 13
+  const fi = Math.floor(frameIdx)
 
   const invIndex = useMemo(() => buildInvIndex(replay), [replay])
 
   const teams: { idx: number; label: string; color: string; players: typeof replay.players }[] = [1, 0].map(idx => {
-    const color = teamColorAtFrame(replay, frameIdx, idx)
+    const color = teamColorAtFrame(replay, fi, idx)
     const label = color === TEAM_COLORS[2] ? t('replay:side.t') : t('replay:side.ct')
     return { idx, label, color, players: replay.players.filter(p => p.team === idx) }
   })
@@ -57,7 +58,7 @@ export default function RightDrawer({
             </div>
             {team.players.map((pl, teamLocalIdx) => {
               const globalIdx = replay.players.findIndex(p => p.steamid === pl.steamid)
-              const base = frameIdx * replay.players.length * FIELDS + globalIdx * FIELDS
+              const base = fi * replay.players.length * FIELDS + globalIdx * FIELDS
               const alive = replay.data[base + F_ALIVE] ?? 0
               const hp = replay.data[base + F_HP] ?? 0
               const armor = replay.data[base + F_ARMOR] ?? 0
@@ -69,8 +70,8 @@ export default function RightDrawer({
               const equip = replay.data[base + F_EQUIP] ?? 0
               const weapInfo = replay.weapons[wid]
               const weapName = weapInfo ? (lang === 'ru' ? weapInfo.ru : weapInfo.en) : ''
-              const speed = playerSpeedAt(replay, globalIdx, frameIdx)
-              const ids = invAt(invIndex, globalIdx, frameIdx)
+              const speed = playerSpeedAt(replay, globalIdx, fi)
+              const ids = invAt(invIndex, globalIdx, fi)
               const byId = (id: string) => replay.invWeapons?.[id]?.cls ?? 'other'
               const primary = ids.filter(id => ['rifle', 'sniper', 'smg', 'heavy'].includes(byId(id)))
               const secondary = ids.filter(id => byId(id) === 'pistol')

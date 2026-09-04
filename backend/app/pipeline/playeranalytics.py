@@ -128,14 +128,14 @@ def _build_duel_frames(
 
             frames.append({
                 "t": offset,
-                "vel": vel,
-                "w": fwd > 0.5,
-                "a": right < -0.5,
-                "s": fwd < -0.5,
-                "d": right > 0.5,
-                "jump": jump,
-                "duck": duck,
-                "walk": walk,
+                "vel": float(vel),
+                "w": bool(fwd > 0.5),
+                "a": bool(right < -0.5),
+                "s": bool(fwd < -0.5),
+                "d": bool(right > 0.5),
+                "jump": bool(jump),
+                "duck": bool(duck),
+                "walk": bool(walk),
             })
 
         return frames

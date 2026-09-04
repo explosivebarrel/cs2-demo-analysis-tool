@@ -51,7 +51,7 @@ export default function EventLog({
   const [filter, setFilter] = useState<EventFilter>('all')
   const [focusPidx, setFocusPidx] = useState<number | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const curTick = replay.ticks[frameIdx] ?? 0
+  const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
 
   const curRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
   const roundStart = curRound?.freezeEndTick ?? 0
@@ -96,7 +96,7 @@ export default function EventLog({
       const aTeam = replay.players[ai]?.team ?? -1
       const diag = kc ? diagnosisLines(kc, true) : []
       const highlighted = focusPidx !== null && (ai === focusPidx || vi === focusPidx)
-      const attackerColor = aTeam >= 0 ? teamColorAtFrame(replay, frameIdx, aTeam) : '#fff'
+      const attackerColor = aTeam >= 0 ? teamColorAtFrame(replay, Math.floor(frameIdx), aTeam) : '#fff'
       return (
         <div key={idx}
           style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', background: highlighted ? 'rgba(255,255,255,0.04)' : 'transparent', cursor: 'pointer' }}

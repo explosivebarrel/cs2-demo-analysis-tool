@@ -1,6 +1,6 @@
 {
   "notAnalyzed": "Not analyzed",
-  "dropHere": "Drop .dem file here or",
+  "dropHere": "Drop a .dem / .dem.zst / .gz file here or",
   "chooseFile": "choose file",
   "uploadErrorArchive": "Could not read file. If it's inside an archive — extract it to disk first.",
   "uploadErrorGeneric": "Upload failed",

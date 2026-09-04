@@ -177,7 +177,7 @@ function VelocityGraph({ frames, duel, tMs, onSeek }: {
   }
 
   return (
-    <div>
+    <div style={{ overflow: 'hidden' }}>
       <svg
         ref={svgRef} viewBox={`0 0 ${W} ${H}`}
         style={{ width: '100%', height: 'auto', display: 'block', cursor: 'crosshair', userSelect: 'none' }}
@@ -249,19 +249,23 @@ function KeyTimeline({ frames, tMs, onSeek }: {
               background: active ? color : 'var(--bg3)', borderRadius: 4, padding: '2px 0',
               color: active ? '#101216' : 'var(--text2)', flexShrink: 0, transition: 'background .1s',
             }}>{label}</div>
-            <div style={{ flex: 1, height: 12, background: 'var(--bg3)', borderRadius: 3, position: 'relative', cursor: 'crosshair' }}
+            <div style={{ flex: 1, height: 12, background: 'var(--bg3)', borderRadius: 3, position: 'relative', cursor: 'crosshair', overflow: 'hidden' }}
               onMouseDown={e => {
                 const rect = e.currentTarget.getBoundingClientRect()
                 const p = (e.clientX - rect.left) / rect.width
                 onSeek(tMin + p * tRange)
               }}>
-              {intervals.map(([a, b], i) => (
-                <div key={i} style={{
-                  position: 'absolute', top: 1, bottom: 1,
-                  left: `${pct(a)}%`, width: `${Math.max(0.6, pct(b) - pct(a))}%`,
-                  background: color, borderRadius: 2, opacity: 0.85,
-                }} />
-              ))}
+              {intervals.map(([a, b], i) => {
+                const l = Math.max(0, Math.min(100, pct(a)))
+                const r = Math.max(l, Math.min(100, pct(b)))
+                return (
+                  <div key={i} style={{
+                    position: 'absolute', top: 1, bottom: 1,
+                    left: `${l}%`, width: `${Math.max(0.6, r - l)}%`,
+                    background: color, borderRadius: 2, opacity: 0.85,
+                  }} />
+                )
+              })}
               <div style={{
                 position: 'absolute', top: -2, bottom: -2, left: `${pct(tMs)}%`,
                 width: 1.5, background: 'rgba(255,255,255,0.85)', pointerEvents: 'none',
