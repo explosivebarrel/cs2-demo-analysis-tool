@@ -7,7 +7,7 @@ from collections import defaultdict
 
 
 from .. import config, storage
-from ..weapons import canon, weapon_id_table
+from ..weapons import canon, inventory_table, weapon_id_table
 from .context import DemoContext
 from .rounds import RoundBuilder
 from .replayframes import FrameBuilder
@@ -93,6 +93,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
                     for s in fb.players],
         "ticks": replay["ticks"],
         "data": replay["data"],
+        "inv": replay.get("inv", []),
+        "invWeapons": inventory_table(),
         "bomb": replay["bomb"],
         "events": ev["events"],
         "shots": ev["shots"],

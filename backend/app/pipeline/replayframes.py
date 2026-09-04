@@ -6,7 +6,12 @@ the metrics stage."""
 import numpy as np
 
 from .. import config
-from ..weapons import weapon_id
+from ..weapons import inventory_keys, weapon_id
+from .context import P_MONEY
+
+# per-player fields in replay["data"]:
+# [x, y, z, yaw, hp, armor, alive, weaponId, flags, team, equip, money, ammo]
+FIELDS = 13
 
 # approximate CS2 buy prices for equipment value estimation
 _WEAPON_VALUE = {
@@ -26,38 +31,25 @@ _WEAPON_VALUE = {
 }
 
 
-def _equip_value(inventory, active_weapon: str, has_helmet: bool, has_defuser: bool) -> int:
-    """Estimate total equipment value from inventory list + gear flags."""
+def _equip_value(keys, has_helmet: bool, has_defuser: bool) -> int:
+    """Estimate total equipment value from canonical inventory ids + gear flags."""
     total = 0
     seen_kevlar = False
-    if inventory is not None:
-        try:
-            items = inventory if isinstance(inventory, (list, tuple)) else []
-            for item in items:
-                key = str(item).lower().replace("weapon_", "")
-                v = _WEAPON_VALUE.get(key, 0)
-                if key in ("kevlar", "kevlar_helmet"):
-                    seen_kevlar = True
-                total += v
-        except TypeError:
-            pass
-    if not seen_kevlar:
-        if has_helmet:
-            total += 1000
-        elif active_weapon:
-            pass  # no armor info available
+    for key in keys:
+        total += _WEAPON_VALUE.get(key, 0)
+        if key in ("kevlar", "kevlar_helmet"):
+            seen_kevlar = True
+    if not seen_kevlar and has_helmet:
+        total += 1000
     if has_defuser:
         total += 400
     return total
 
 
-def _flags(row, inventory) -> int:
+def _flags(row, keys) -> int:
     f = 0
-    try:
-        if inventory is not None and "c4" in inventory:
-            f |= 1
-    except TypeError:
-        pass
+    if "c4" in keys:
+        f |= 1
     if row["has_defuser"]:
         f |= 2
     if row["flash_duration"] and row["flash_duration"] > 0.3:
@@ -168,6 +160,8 @@ class FrameBuilder:
         self.last_pos = [(0.0, 0.0, 0.0)] * self.n
         self.prev_pos = [(0.0, 0.0, 0.0)] * self.n
         self.hold_state = [None] * self.n
+        self.last_inv = [None] * self.n
+        self.inv_journal = []
         self.cur_tick = 0
         self.cur_round = None
         self.started_alive = {}
@@ -203,6 +197,7 @@ class FrameBuilder:
         for tick, group in df.groupby("tick", sort=True):
             tick = int(tick)
             self.cur_tick = tick
+            fi = len(frame_ticks)
             r = round_at(tick)
             if r is not None and r["n"] != last_round_n:
                 last_round_n = r["n"]
@@ -225,20 +220,22 @@ class FrameBuilder:
                 except (TypeError, ValueError):
                     team = 0
                 wid = weapon_id(row["active_weapon_name"])
-                inventory = row.get("inventory")
-                flags = _flags(row, inventory)
-                equip = _equip_value(inventory, row.get("active_weapon_name", ""),
-                                     bool(row.get("has_helmet")), bool(row.get("has_defuser")))
+                keys = inventory_keys(row.get("inventory"))
+                flags = _flags(row, keys)
+                equip = _equip_value(keys, bool(row.get("has_helmet")), bool(row.get("has_defuser")))
                 per_player[idx] = [round(pos[0]), round(pos[1]), round(pos[2]),
                                    _safe_int(_norm_yaw(row["yaw"])), _safe_int(row["health"]),
                                    _safe_int(row["armor_value"]), 1 if alive else 0, wid, flags, team,
-                                   equip]
+                                   equip, _safe_int(row.get(P_MONEY)),
+                                   _safe_int(row.get("active_weapon_ammo"))]
+                if alive:
+                    self._inv_feed(idx, keys, fi)
                 self._update_player_stats(sid, idx, pos, alive, row, r, dt)
 
             for i in range(self.n):
                 if per_player[i] is None:
                     p = self.last_pos[i]
-                    per_player[i] = [round(p[0]), round(p[1]), round(p[2]), 0, 0, 0, 0, 0, 0, 0, 0]
+                    per_player[i] = [round(p[0]), round(p[1]), round(p[2]), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
             frame_ticks.append(tick)
             frame_data.extend(v for pp in per_player for v in pp)
@@ -249,7 +246,13 @@ class FrameBuilder:
             self.stats[s]["roundsSurvived"] = sorted(self.stats[s]["roundsSurvived"])
             self.stats[s]["aliveAtEnd"] = {str(k): bool(v) for k, v in self.stats[s]["aliveAtEnd"].items()}
 
-        return {"ticks": frame_ticks, "data": frame_data}
+        return {"ticks": frame_ticks, "data": frame_data, "inv": self.inv_journal}
+
+    def _inv_feed(self, idx, keys, fi):
+        s = ",".join(keys)
+        if s != self.last_inv[idx]:
+            self.last_inv[idx] = s
+            self.inv_journal.append([fi, idx, s])
 
     # ------------------------------------------------------------- round
     def _on_round_start(self, r):
@@ -342,9 +345,9 @@ class FrameBuilder:
                 elif ty in ("bx", "bf"):
                     state, carrier = 4, -1
             if state in (0, 2):
-                base = fi * self.n * 11
+                base = fi * self.n * FIELDS
                 for idx in range(self.n):
-                    if data[base + idx * 11 + 8] & 1:
+                    if data[base + idx * FIELDS + 8] & 1:
                         cx, cy = self._pos_of(data, fi, idx)
                         state, carrier = 1, idx
                         break
@@ -355,5 +358,5 @@ class FrameBuilder:
         return replay
 
     def _pos_of(self, data, fi, idx):
-        base = fi * self.n * 11
-        return data[base + idx * 11], data[base + idx * 11 + 1]
+        base = fi * self.n * FIELDS
+        return data[base + idx * FIELDS], data[base + idx * FIELDS + 1]

@@ -1,4 +1,4 @@
-from app.weapons import canon, weapon_id, weapon_id_table
+from app.weapons import canon, inventory_keys, weapon_id, weapon_id_table
 
 
 def test_canon_known_weapons():
@@ -31,3 +31,20 @@ def test_weapon_id_stable():
     assert a == b
     table = weapon_id_table()
     assert table[a]["cls"] == "rifle"
+
+
+def test_inventory_keys_display_names():
+    # real display names from demoparser2 inventory prop
+    assert inventory_keys(["AK-47", "USP-S", "Smoke Grenade"]) == ["ak47", "smokegrenade", "usp_s"]
+    assert inventory_keys(["Gut Knife", "Glock-18", "C4 Explosive"]) == ["c4", "glock", "knife"]
+    assert inventory_keys(["knife", "Dual Berettas", "Incendiary Grenade"]) == ["elite", "incgrenade", "knife"]
+    assert inventory_keys(["Galil AR", "HE Grenade", "Kevlar Vest + Helmet"]) == ["galilar", "hegrenade", "kevlar_helmet"]
+    assert inventory_keys(["Bayonet", "Flashbang", "Zeus x27"]) == ["bayonet", "flashbang", "taser"]
+
+
+def test_inventory_keys_edge_cases():
+    assert inventory_keys(None) == []
+    assert inventory_keys([]) == []
+    assert inventory_keys(["world", "", "totally_unknown_skin"]) == []
+    assert inventory_keys(["Desert Eagle", "Five-SeveN", "R8 Revolver"]) == ["deagle", "fiveseven", "revolver"]
+    assert inventory_keys(["M4A1-S", "SG 553", "PP-Bizon", "MAC-10"]) == ["bizon", "m4a1_silencer", "mac10", "sg556"]

@@ -16,7 +16,7 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
 
     ticks = replay["ticks"]
     data = replay["data"]
-    FIELDS = 11   # [x, y, z, yaw, hp, armor, alive, wid, flags, team_num, equip_value]
+    FIELDS = 13   # [x, y, z, yaw, hp, armor, alive, wid, flags, team_num, equip, money, ammo]
     F_HP    = 4
     F_ALIVE = 6
     F_TEAM  = 9   # team_num: 2=T, 3=CT
