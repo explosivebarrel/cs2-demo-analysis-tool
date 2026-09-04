@@ -149,7 +149,7 @@ function StatBar({ label, value, max, color }: { label: string; value: number; m
 
 // ------------------------------------------------------------------ EpisodeList
 
-// episode list + drilldown column fill the viewport instead of a fixed 400px box
+// cap for the episode list scroll area (shrinks with content, scrolls at the cap)
 const EPISODE_VIEW_H = 'calc(100vh - 250px)'
 
 function EpisodeList({ duels, playerNames, lang }: {
@@ -163,8 +163,11 @@ function EpisodeList({ duels, playerNames, lang }: {
     </div>
   )
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, height: EPISODE_VIEW_H, minHeight: 320, overflowY: 'auto' }}>
+    <div>
+      <div style={{ color: 'var(--text2)', fontSize: 11, margin: '2px 0 6px' }}>
+        {t('metrics:shared.clickRow')}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: EPISODE_VIEW_H, overflowY: 'auto' }}>
         {duels.map((d, i) => (
           <DuelRow
             key={i} duel={d} playerNames={playerNames} idx={i} lang={lang}
@@ -173,14 +176,9 @@ function EpisodeList({ duels, playerNames, lang }: {
           />
         ))}
       </div>
-      <div style={{ height: EPISODE_VIEW_H, minHeight: 320, overflowY: 'auto' }}>
-        {drill
-          ? <EpisodeDrillDown duel={duels[sel]} playerNames={playerNames} lang={lang} onClose={() => setDrill(false)} />
-          : <div style={{ color: 'var(--text2)', fontSize: 12, paddingTop: 8 }}>
-              {t('metrics:shared.clickRow')}
-            </div>
-        }
-      </div>
+      {drill && (
+        <EpisodeDrillDown duel={duels[sel]} playerNames={playerNames} lang={lang} onClose={() => setDrill(false)} />
+      )}
     </div>
   )
 }
@@ -197,7 +195,7 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
   }
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(34px, 1fr))', gap: 6, maxWidth: 760 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(34px, 1fr))', gap: 6 }}>
         {Array.from({ length: totalRounds }, (_, i) => i + 1).map(n => {
           const outcome = roundOutcomes[n] ?? 'none'
           const color = DOT_COLORS[outcome]

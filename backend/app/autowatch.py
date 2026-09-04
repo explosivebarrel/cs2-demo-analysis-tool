@@ -191,3 +191,22 @@ def start(on_imported) -> int:
         asyncio.create_task(_faceit_loop(on_imported))
         n += 1
     return n
+
+
+def status() -> dict:
+    """Current auto-import configuration for the UI; never exposes the API key."""
+    pid = config.FACEIT_PLAYER_ID
+    masked = (pid[:6] + "…" + pid[-4:]) if len(pid) > 12 else ("…" if pid else "")
+    return {
+        "watch": {
+            "enabled": bool(config.WATCH_DIRS),
+            "dirs": list(config.WATCH_DIRS),
+            "pollSec": config.WATCH_POLL_SEC,
+        },
+        "faceit": {
+            "enabled": bool(config.FACEIT_API_KEY and config.FACEIT_PLAYER_ID),
+            "playerId": masked,
+            "pollSec": config.FACEIT_POLL_SEC,
+            "knownMatches": len(_faceit_state()["seen"]),
+        },
+    }

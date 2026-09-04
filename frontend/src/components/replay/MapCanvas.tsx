@@ -3,7 +3,7 @@ import { api, AnalysisData, MapOverview, ReplayData, RoundData } from '../../api
 import { lowerLevelNames } from '../../lib/coords'
 import { findRoundForTick, Transform } from '../../lib/replay'
 import { t } from '../../i18n'
-import drawFrame, { NadeTrailMode } from './drawFrame'
+import drawFrame, { NadeTrailMode, preloadWeaponIcons } from './drawFrame'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 10
@@ -81,12 +81,27 @@ export default function MapCanvas({
     drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, tx, nadeTrailMode, level, nadeFilter)
   }, [frameIdx, replay, overview, tx, cw, ch, nadeTrailMode, nadeFilter, level])
 
+  // weapon icon svgs decode asynchronously — redraw once they are all ready,
+  // otherwise the first frame keeps the text fallback labels
+  useEffect(() => {
+    let alive = true
+    preloadWeaponIcons(replay).then(() => {
+      if (alive && canvasRef.current && cw >= 2 && ch >= 2) {
+        drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current, nadeTrailMode, level, nadeFilter)
+      }
+    })
+    return () => { alive = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replay])
+
   // re-clamp zoom when the canvas is resized
   useEffect(() => { if (base > 1) setTx(clamp(txRef.current)) }, [cw, ch])
 
   useEffect(() => {
     const el = canvasRef.current
     if (!el) return
+    // re-register on resize: clamp/squarePoint close over the live base, a stale
+    // one (base=1 before first measure) crushes pan offsets and misanchors zoom
     function onWheel(e: WheelEvent) {
       e.preventDefault()
       const cv = el!
@@ -101,7 +116,7 @@ export default function MapCanvas({
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [cw, ch])
 
   function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
     if (e.button !== 0) return

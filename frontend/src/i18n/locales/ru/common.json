@@ -118,5 +118,8 @@
     "good": "Хорошие: {{range}}",
     "elite": "Элита: {{range}}",
     "yours": "У тебя: {{value}}"
+  },
+  "footer": {
+    "note": "CS2 Demo Analyzer · селф-хостед аналитика демок Counter-Strike 2 · MIT"
   }
 }

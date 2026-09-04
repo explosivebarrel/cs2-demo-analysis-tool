@@ -220,7 +220,9 @@ export default function HeatmapsPage() {
   const loading = !analysis || !heatmap || !overview
 
   return (
-    <div style={{ height: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column', padding: '10px 14px', gap: 8, overflow: 'hidden', boxSizing: 'border-box' }}>
+    // same horizontal bounds and top padding as .page so switching screens
+    // doesn't shift the layout; the content itself stays viewport-fit
+    <div style={{ height: 'calc(100vh - 48px)', maxWidth: 1400, margin: '0 auto', display: 'flex', flexDirection: 'column', padding: '24px 20px', gap: 8, overflow: 'hidden', boxSizing: 'border-box' }}>
       <div style={{ flexShrink: 0 }}>
         {!loading && <MatchNav id={id!} players={analysis?.players} />}
       </div>

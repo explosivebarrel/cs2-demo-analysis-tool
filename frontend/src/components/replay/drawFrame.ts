@@ -19,6 +19,47 @@ export const TRAIL_LABELS = ['sm', 'he', 'flash', 'molotov', 'decoy']
 
 export type NadeTrailMode = 'trail' | 'path'
 
+// canvas can't use the React WeaponIcon component, so load the same
+// /icons/weapons/{key}.svg set directly and cache the decoded images
+const WEAPON_ICON_ALIAS: Record<string, string> = {
+  m4a4: 'm4a1', glock18: 'glock', usp: 'usp_silencer', usp_s: 'usp_silencer',
+  p2000: 'hkp2000', molotov_fire: 'molotov', knife_default: 'knife',
+  elite_knife: 'elite', dual_berettas: 'elite', kevlar_helmet: 'armor_helmet',
+}
+const weaponIconCache = new Map<string, HTMLImageElement>()
+
+function weaponIcon(key: string): HTMLImageElement | null {
+  const id = WEAPON_ICON_ALIAS[key] ?? key
+  let img = weaponIconCache.get(id)
+  if (!img) {
+    img = new Image()
+    img.src = `/icons/weapons/${id}.svg`
+    weaponIconCache.set(id, img)
+  }
+  return img.complete && img.naturalWidth > 0 ? img : null
+}
+
+/** Decode every weapon icon the match uses; resolve when all are ready so the
+ *  next drawFrame pass renders icons instead of the text fallback. */
+export function preloadWeaponIcons(replay: ReplayData): Promise<unknown> {
+  const keys = new Set<string>()
+  for (const w of Object.values(replay.weapons ?? {})) {
+    const k = w?.key ?? (w?.raw ?? '').replace(/^weapon_/, '').toLowerCase()
+    if (k) keys.add(WEAPON_ICON_ALIAS[k] ?? k)
+  }
+  return Promise.all([...keys].map(k => new Promise(res => {
+    let img = weaponIconCache.get(k)
+    if (img?.complete) return res(null)
+    if (!img) {
+      img = new Image()
+      img.src = `/icons/weapons/${k}.svg`
+      weaponIconCache.set(k, img)
+    }
+    img.onload = () => res(null)
+    img.onerror = () => res(null)
+  })))
+}
+
 export default function drawFrame(
   canvas: HTMLCanvasElement,
   frameIdx: number,
@@ -57,12 +98,14 @@ export default function drawFrame(
 
   const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
 
-  // find current round start tick
+  // find current round boundaries (round markers carry freezeEndTick)
   const roundEvents = replay.events.filter(ev => (ev as Record<string, unknown>).ty === 'r')
   let roundStartT = 0
+  let roundEndT = Infinity
   for (const rev of roundEvents) {
     const rt = (rev as Record<string, unknown>).t as number
     if (rt <= curTick) roundStartT = rt
+    else if (rt < roundEndT) roundEndT = rt
   }
 
   // active smoke/fire zones
@@ -180,7 +223,8 @@ export default function drawFrame(
 
   // grenade trails
   // Each trail event: { ty:"g", t: throwTick, g: nadeType(0-4), p: pidx, tr: [x,y,z, x,y,z,...] }
-  // tr is downsampled at ~4 pts/sec, so each segment ≈ tickrate/4 ticks
+  // tr is downsampled at ~4 pts/sec (segment ≈ tickrate/4 ticks) and KEEPS
+  // SAMPLING after landing, so the drawn arc is clamped to the flight window
   const TRAIL_FADE_TICKS = replay.tickrate * 2.5
   for (const ev of replay.events) {
     const e = ev as Record<string, unknown>
@@ -190,7 +234,8 @@ export default function drawFrame(
 
     const tr = e.tr as number[]
     const gtype = (e.g as number) ?? 4
-    if (nadeFilter && !nadeFilter.has(gtype)) continue
+    // nadeFilter holds the HIDDEN types (empty set = everything visible)
+    if (nadeFilter?.has(gtype)) continue
     const color = TRAIL_COLORS[gtype] ?? '#aaaaaa'
     if (!tr || tr.length < 6) continue
 
@@ -216,17 +261,25 @@ export default function drawFrame(
       }
     }
 
-    if (curTick < throwTick || curTick > detonateTick + replay.tickrate * 0.5) continue
+    // tr keeps sampling after landing (static tail), so clamp the drawn arc
+    // to the actual flight; progress maps onto flight points only
+    const flightPts = Math.min(nPts, Math.max(2, Math.ceil((detonateTick - throwTick) / ticksPerSeg) + 1))
+    // 'path' keeps the full flight arc until the round ends; 'trail' shows a
+    // moving tail during flight and fades out after detonation
+    const aliveUntil = nadeTrailMode === 'path' ? roundEndT : detonateTick + TRAIL_FADE_TICKS
+    if (curTick < throwTick || curTick > aliveUntil) continue
 
     const flightDur = Math.max(1, detonateTick - throwTick)
     const progressTick = Math.min(curTick, detonateTick) - throwTick
     const progress = progressTick / flightDur
-    const visiblePts = Math.max(2, Math.ceil(progress * nPts + 1))
+    const visiblePts = Math.max(2, Math.min(flightPts, Math.ceil(progress * flightPts + 1)))
+    const detFade = nadeTrailMode === 'trail' && curTick > detonateTick
+      ? Math.max(0, 1 - (curTick - detonateTick) / TRAIL_FADE_TICKS)
+      : 1
 
     const trailSegs = Math.ceil(TRAIL_FADE_TICKS / ticksPerSeg)
     const startPt = nadeTrailMode === 'trail' ? Math.max(0, visiblePts - trailSegs) : 0
     const endPt = Math.min(nPts, visiblePts)
-
     if (endPt - startPt < 2) continue
 
     ctx.save()
@@ -236,7 +289,7 @@ export default function drawFrame(
       const [cx0, cy0] = worldToCanvas(x0, y0, ov, SZ, SZ)
       const [cx1, cy1] = worldToCanvas(x1, y1, ov, SZ, SZ)
       const segFrac = (pi - startPt) / Math.max(1, endPt - startPt - 1)
-      const alpha = nadeTrailMode === 'trail' ? 0.2 + segFrac * 0.7 : 0.5
+      const alpha = (nadeTrailMode === 'trail' ? 0.2 + segFrac * 0.7 : 0.5) * detFade
       ctx.beginPath()
       ctx.moveTo(cx0, cy0)
       ctx.lineTo(cx1, cy1)
@@ -249,8 +302,10 @@ export default function drawFrame(
     const [hcx, hcy] = worldToCanvas(hx, hy, ov, SZ, SZ)
     ctx.beginPath()
     ctx.arc(hcx, hcy, 4 * dotScale, 0, Math.PI * 2)
+    ctx.globalAlpha = detFade
     ctx.fillStyle = color
     ctx.fill()
+    ctx.globalAlpha = 1
     ctx.restore()
   }
 
@@ -289,10 +344,6 @@ export default function drawFrame(
   const prevFrac = frameIdx - 1 - prevFi
   const velScale = replay.tickrate / Math.max(1, replay.frameStep)
 
-  const NADE_ICONS: Record<string, string> = {
-    smokegrenade: '💨', hegrenade: '💥', flashbang: '⚡',
-    molotov: '🔥', incgrenade: '🔥', decoy: '🔊', c4: '💣',
-  }
   const WEAP_SHORT: Record<string, string> = {
     ak47: 'AK', m4a1_silencer: 'M4S', m4a4: 'M4A4', m4a1: 'M4',
     awp: 'AWP', ssg08: 'Scout', deagle: 'DEagle', revolver: 'R8',
@@ -336,18 +387,22 @@ export default function drawFrame(
     ctx.fillText(String(playerNum[i]), cx, cy)
     ctx.textBaseline = 'alphabetic'
 
-    // weapon label above dot
+    // equipped weapon icon above dot (text fallback while the svg loads)
     const wid = replay.data[base + F_WID] ?? 0
-    const weapRaw = replay.weapons[wid]?.raw ?? ''
-    const weapKey = weapRaw.replace(/^weapon_/, '').toLowerCase()
-    const nadIcon = NADE_ICONS[weapKey]
-    const weapShort = nadIcon ?? WEAP_SHORT[weapKey] ?? weapKey.slice(0, 6)
-    const isEmoji = !!nadIcon
-    ctx.font = isEmoji
-      ? `${Math.round(11 * dotScale)}px sans-serif`
-      : `${Math.round(10 * dotScale)}px monospace`
-    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'
-    ctx.fillText(weapShort, cx, cy - r - 2 * dotScale)
+    const winfo = replay.weapons[wid]
+    const weapKey = winfo?.key ?? (winfo?.raw ?? '').replace(/^weapon_/, '').toLowerCase()
+    const icon = weapKey ? weaponIcon(weapKey) : null
+    if (icon) {
+      // fixed height, width follows the icon's own aspect ratio
+      const h = 13 * dotScale
+      const w = h * (icon.naturalWidth / icon.naturalHeight)
+      ctx.drawImage(icon, cx - w / 2, cy - r - 2 * dotScale - h, w, h)
+    } else {
+      const weapShort = WEAP_SHORT[weapKey] ?? weapKey.slice(0, 6)
+      ctx.font = `${Math.round(10 * dotScale)}px monospace`
+      ctx.fillStyle = '#fff'; ctx.textAlign = 'center'
+      ctx.fillText(weapShort, cx, cy - r - 2 * dotScale)
+    }
 
     // velocity: units/sec from the previous displayed (interpolated) position
     const prevBase = prevFi * n * FIELDS + i * FIELDS
@@ -357,10 +412,35 @@ export default function drawFrame(
       const dx = x - px, dy = y - py
       const vel = Math.round(Math.sqrt(dx * dx + dy * dy) * velScale)
       if (vel > 5) {
-        ctx.font = `${Math.round(9 * dotScale)}px monospace`
+        const vx = cx + r + 3 * dotScale
         ctx.fillStyle = 'rgba(255,255,255,0.7)'
         ctx.textAlign = 'left'
-        ctx.fillText(`${vel}`, cx + r + 3 * dotScale, cy + 4 * dotScale)
+        ctx.font = `${Math.round(9 * dotScale)}px monospace`
+        const label = `${vel}`
+        const numW = ctx.measureText(label).width
+        ctx.fillText(label, vx, cy + 4 * dotScale)
+        // "u/s" unit hint + a small movement-vector arrow above it
+        ctx.font = `${Math.round(6 * dotScale)}px monospace`
+        const ux = vx + numW + 2 * dotScale
+        const uw = ctx.measureText('u/s').width
+        ctx.fillText('u/s', ux, cy + 4 * dotScale)
+        // atan2(dy, dx): the tip formula below already applies the canvas
+        // y-inversion (-sin), inverting dy here too would mirror the arrow
+        const ang = Math.atan2(dy, dx)
+        const acx = ux + uw / 2, acy = cy - 3 * dotScale
+        const alen = 5 * dotScale
+        const tipX = acx + Math.cos(ang) * alen / 2, tipY = acy - Math.sin(ang) * alen / 2
+        const backX = acx - Math.cos(ang) * alen / 2, backY = acy + Math.sin(ang) * alen / 2
+        const hl = 2.5 * dotScale, ha = Math.PI / 6
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+        ctx.lineWidth = 1 * dotScale
+        ctx.beginPath(); ctx.moveTo(backX, backY); ctx.lineTo(tipX, tipY); ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - hl * Math.cos(ang - ha), tipY + hl * Math.sin(ang - ha))
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - hl * Math.cos(ang + ha), tipY + hl * Math.sin(ang + ha))
+        ctx.stroke()
       }
     }
 

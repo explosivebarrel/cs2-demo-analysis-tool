@@ -218,6 +218,11 @@ def benchmarks():
     return config.BENCHMARKS
 
 
+@app.get("/api/autoimport")
+def autoimport():
+    return autowatch.status()
+
+
 @app.get("/api/demos")
 def demos():
     return storage.list_demos()

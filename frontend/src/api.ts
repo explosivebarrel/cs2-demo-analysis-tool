@@ -341,9 +341,15 @@ export interface Moment {
   durSec?: number
 }
 
+export interface AutoimportStatus {
+  watch: { enabled: boolean; dirs: string[]; pollSec: number }
+  faceit: { enabled: boolean; playerId: string; pollSec: number; knownMatches: number }
+}
+
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
   benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
+  autoimport: (): Promise<AutoimportStatus> => req('/autoimport'),
   upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
     const fd = new FormData(); fd.append('file', file)
     return req('/demos/upload', { method: 'POST', body: fd })

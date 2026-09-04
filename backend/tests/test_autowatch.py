@@ -60,3 +60,24 @@ def test_import_failure_not_retried(tmp_path, monkeypatch):
     seen: set[str] = set()
     assert autowatch._scan_once(seen) == []
     assert autowatch._scan_once(seen) == []  # marked seen despite failure
+
+
+def test_status_masks_key_and_reports(monkeypatch):
+    monkeypatch.setattr(config, "WATCH_DIRS", ["/data/watch"])
+    monkeypatch.setattr(config, "WATCH_POLL_SEC", 20)
+    monkeypatch.setattr(config, "FACEIT_API_KEY", "secret-key")
+    monkeypatch.setattr(config, "FACEIT_PLAYER_ID", "f0e1d2c3-1111-2222-3333-444455556666")
+
+    st = autowatch.status()
+    assert st["watch"] == {"enabled": True, "dirs": ["/data/watch"], "pollSec": 20}
+    assert st["faceit"]["enabled"] is True
+    assert st["faceit"]["playerId"].startswith("f0e1d2")
+    assert "secret-key" not in json.dumps(st)
+
+    monkeypatch.setattr(config, "WATCH_DIRS", [])
+    monkeypatch.setattr(config, "FACEIT_API_KEY", "")
+    monkeypatch.setattr(config, "FACEIT_PLAYER_ID", "")
+    st = autowatch.status()
+    assert st["watch"]["enabled"] is False
+    assert st["faceit"]["enabled"] is False
+    assert st["faceit"]["knownMatches"] >= 0

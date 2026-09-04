@@ -15,13 +15,24 @@
   "aboutKastNote": "70%+ is professional-level.",
   "aboutImpDesc": "IMP is a simplified substitute for HLTV's Swing metric. Swing requires internal HLTV data unavailable from demos, so we compute our own IMP from demo events.",
   "aboutImpFormula": "Per-round formula:",
-  "aboutImpFormulaBody": "opening kill + won:   +2.0\\nopening kill + lost:  +0.5\\nopening death + won:  −0.5\\nopening death + lost: −1.0\\neach extra kill:      +0.5\\nclutch won:           +1.5\\nsave (survived/lost): +0.2",
+  "aboutImpFormulaBody": "opening kill + won:   +2.0\nopening kill + lost:  +0.5\nopening death + won:  −0.5\nopening death + lost: −1.0\neach extra kill:      +0.5\nclutch won:           +1.5\nsave (survived/lost): +0.2",
   "aboutImpNote1": "Overall IMP is the mean per-round IMP for the match. Positive IMP = player consistently made round-impacting plays.",
   "aboutImpNote2": "In the round table, IMP has a sign: +2.0 = opening kill in a won round; −1.0 = opening death in a lost round.",
+  "aboutAutoDesc": "The analyzer can pick up new demos on its own: watch a folder and poll your FACEIT match history. Settings are env vars of the backend container (docker-compose.yml) and apply on its restart — this UI only shows the current status.",
+  "aboutAutoWatch": "• Watch folder: CS2_WATCH_DIRS — a ':'-separated list of paths inside the container (mount the folders as volumes), CS2_WATCH_POLL_SEC — poll interval (default 20 s).",
+  "aboutAutoFaceit": "• FACEIT: CS2_FACEIT_API_KEY — free key from the FACEIT Developer Portal (App Studio → your app → API Keys); CS2_FACEIT_PLAYER_ID — your profile GUID (visible in the address bar of your FACEIT profile page); CS2_FACEIT_POLL_SEC — poll interval (default 300 s).",
+  "aboutAutoNote": "The first scan only remembers existing files and matches (seed) — anything appearing later gets imported. Configuration and network errors go to the backend log: docker compose logs backend.",
+  "aboutAutoStatus": "Current status:",
+  "aboutAutoOn": "enabled",
+  "aboutAutoOff": "disabled",
+  "aboutAutoWatchLabel": "Watch folder",
+  "aboutAutoPollSec": "polling every {{sec}} s",
+  "aboutAutoKnown": "{{count}} matches in history",
   "sections": {
     "rating": "Rating 2.0",
     "rws": "RWS (Round Win Share)",
     "kast": "KAST",
-    "imp": "IMP (Impact)"
+    "imp": "IMP (Impact)",
+    "autoimport": "Demo auto-import"
   }
 }
