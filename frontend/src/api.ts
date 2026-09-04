@@ -54,7 +54,7 @@ export interface AnalysisData {
   players: PlayerData[]
   rounds: RoundData[]
   halves: HalfData[]
-  knifeRound?: { startTick: number; endTick: number; winner: string } | null
+  knifeRound?: { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string } | null
   weapons: Record<number, string>
   moments?: Moment[]
 }

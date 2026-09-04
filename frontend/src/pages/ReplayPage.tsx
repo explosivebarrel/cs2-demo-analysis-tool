@@ -326,17 +326,27 @@ function RoundSwitcher({
   knifeRound?: { startTick: number; endTick: number; winner: string } | null
 }) {
   const curTick = ticks[frameIdx] ?? 0
+  const tick0 = ticks[0] ?? 0
 
   // pre-match window: warmup, then (if detected) the knife round
   const firstRoundStart = rounds.length > 0 ? rounds[0].freezeEndTick : 0
   const knife = knifeRound && knifeRound.endTick > 0 ? knifeRound : null
   // if the demo starts right at the knife round, KR takes the whole window
-  const knifeStart = knife ? Math.max(ticks[0] ?? 0, Math.min(knife.startTick, firstRoundStart)) : 0
-  const hasWarmup = !knife || knifeStart > (ticks[0] ?? 0)
-  const isWarmup = curTick < knifeStart && (!knife || hasWarmup)
-  const isKnife = !!knife && curTick >= knifeStart && curTick < firstRoundStart
+  const knifeStart = knife ? Math.max(tick0, Math.min(knife.startTick, firstRoundStart)) : 0
+  const hasWarmup = !knife || knifeStart > tick0
+  // restart + freeze time of round 1 (between knife end and its freeze end)
+  // belongs to round 1, not to the knife round
+  const isWarmup = hasWarmup && curTick < knifeStart
+  const isKnife = !!knife && curTick >= knifeStart && curTick < knife.endTick
   // no numbered round is active while in the pre-match window
   const activeRound = isKnife || isWarmup ? null : findRoundForTick(rounds, curTick)
+
+  function scrubberPct(lo: number, hi: number): number | null {
+    if (hi <= lo) return null
+    return Math.min(1, Math.max(0, (curTick - lo) / (hi - lo)))
+  }
+  const wuPct = isWarmup ? scrubberPct(tick0, knifeStart) : null
+  const knifePct = isKnife ? scrubberPct(knifeStart, knife.endTick) : null
 
   function jumpToTick(tick: number) {
     const fi = ticks.findIndex(tk => tk >= tick)
@@ -346,9 +356,9 @@ function RoundSwitcher({
   return (
     <div style={{ display: 'flex', width: '100%', marginBottom: 10, border: '1px solid var(--border)', borderRadius: 0, overflow: 'visible' }}>
       {/* warmup button (hidden when the demo starts right at the knife round) */}
-      {(isWarmup || !knife || knifeStart > 0) && (
+      {(isWarmup || !knife || knifeStart > tick0) && (
         <button
-          onClick={() => jumpToTick(1)}
+          onClick={() => jumpToTick(tick0)}
           title={t('replay:rounds.warmup')}
           style={{
             position: 'relative', flexShrink: 0,
@@ -359,6 +369,14 @@ function RoundSwitcher({
             cursor: 'pointer', textAlign: 'center', minWidth: 0, whiteSpace: 'nowrap',
           }}
         >
+          {wuPct !== null && (
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0,
+              left: `${wuPct * 100}%`,
+              width: 2, background: 'rgba(255,255,255,0.7)', transform: 'translateX(-50%)',
+              pointerEvents: 'none', zIndex: 1,
+            }} />
+          )}
           WU
         </button>
       )}
@@ -377,10 +395,10 @@ function RoundSwitcher({
             cursor: 'pointer', textAlign: 'center', minWidth: 0, whiteSpace: 'nowrap',
           }}
         >
-          {isKnife && firstRoundStart > knifeStart && (
+          {knifePct !== null && (
             <div style={{
               position: 'absolute', top: 0, bottom: 0,
-              left: `${Math.min(1, Math.max(0, (curTick - knifeStart) / (firstRoundStart - knifeStart))) * 100}%`,
+              left: `${knifePct * 100}%`,
               width: 2, background: 'rgba(255,255,255,0.7)', transform: 'translateX(-50%)',
               pointerEvents: 'none', zIndex: 1,
             }} />
@@ -389,16 +407,14 @@ function RoundSwitcher({
         </button>
       )}
 
-      {rounds.map((r, ri) => {
+      {rounds.map((r) => {
         const isActive = activeRound?.n === r.n
-        // scrubber spans full round including freeze: from freezeStartTick to endTick
-        const prevRound = ri > 0 ? rounds[ri - 1] : null
-        const roundFreezeStart = prevRound ? prevRound.endTick : 0
-        const roundTotalDur = r.endTick - roundFreezeStart
-        let scrubberPct = -1
-        if (isActive && roundTotalDur > 0) {
-          scrubberPct = Math.min(1, Math.max(0, (curTick - roundFreezeStart) / roundTotalDur))
-        }
+        // scrubber spans the live part of the round only: freeze time sits
+        // at 0% so a round button always starts at its left edge
+        const liveDur = r.endTick - r.freezeEndTick
+        const roundPct = isActive && liveDur > 0
+          ? scrubberPct(r.freezeEndTick, r.endTick)
+          : null
         const startFi = ticks.findIndex(tk => tk >= r.freezeEndTick)
         return (
           <button
@@ -417,10 +433,10 @@ function RoundSwitcher({
             }}
           >
             {/* vertical scrubber line — full height, no clipping */}
-            {isActive && scrubberPct >= 0 && (
+            {roundPct !== null && (
               <div style={{
                 position: 'absolute', top: 0, bottom: 0,
-                left: `${scrubberPct * 100}%`,
+                left: `${roundPct * 100}%`,
                 width: 2,
                 background: 'rgba(255,255,255,0.7)',
                 transform: 'translateX(-50%)',
@@ -438,7 +454,7 @@ function RoundSwitcher({
 
 /** SVG balance-of-power graph that acts as a timeline scrubber for the current round. */
 function WinProbGraph({
-  winprob, ticks, rounds, frameIdx, onScrub, height = 60,
+  winprob, ticks, rounds, frameIdx, onScrub, height = 60, knifeRound, matchStartTick,
 }: {
   winprob: number[]
   ticks: number[]
@@ -446,6 +462,8 @@ function WinProbGraph({
   frameIdx: number
   onScrub: (fi: number) => void
   height?: number
+  knifeRound?: { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string } | null
+  matchStartTick?: number
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const dragging = useRef(false)
@@ -454,22 +472,36 @@ function WinProbGraph({
 
   // compute current round frame bounds — include freeze time + ±10s neighbours
   const curTick = ticks[frameIdx] ?? 0
-  const curRound = findRoundForTick(rounds, curTick)
+  const knife = knifeRound && knifeRound.endTick > 0 ? knifeRound : null
+  const inKnife = !!knife && curTick >= knife.startTick && curTick < knife.endTick
+  const curRound = inKnife ? null : findRoundForTick(rounds, curTick)
 
   const curRoundIdx = curRound ? rounds.findIndex(r => r.n === curRound.n) : -1
   const prevRound = curRoundIdx > 0 ? rounds[curRoundIdx - 1] : null
 
   const NEIGHBOUR_TICKS = 10 * 64  // ~10s at 64tick
 
-  // core window: freeze start → round end
-  const freezeStartTick = curRound
-    ? (prevRound ? prevRound.endTick + 1 : Math.max(0, curRound.freezeEndTick - 960))
-    : 0
-  const roundEndTick = curRound?.endTick ?? 0
+  // core window:
+  //  - knife round: from its start to its end (freeze marker via freezeEndTick)
+  //  - round 1: from match start (after the knife-round restart) to its end,
+  //    so the knife-round tail stays in the left neighbour hatch
+  //  - later rounds: from the previous round's end (their freeze time)
+  const windowStart = inKnife
+    ? knife.startTick
+    : curRound
+      ? (prevRound ? prevRound.endTick + 1
+                    : matchStartTick && matchStartTick > (knife?.endTick ?? 0)
+                      ? matchStartTick
+                      : knife ? knife.endTick : Math.max(0, curRound.freezeEndTick - 960))
+      : 0
+  const windowEnd = inKnife ? knife.endTick : curRound?.endTick ?? 0
 
-  // extended window with neighbours
-  const extStartTick = Math.max(0, freezeStartTick - NEIGHBOUR_TICKS)
-  const extEndTick   = roundEndTick + NEIGHBOUR_TICKS
+  // extended window with neighbours; hatch on the left shows the tail of
+  // whatever came before (the knife-round tail for round 1)
+  const extStartTick = inKnife
+    ? windowStart
+    : Math.max(0, windowStart - NEIGHBOUR_TICKS)
+  const extEndTick   = windowEnd + NEIGHBOUR_TICKS
 
   function tickToFi(tick: number): number {
     const i = ticks.findIndex(tk => tk >= tick)
@@ -477,16 +509,18 @@ function WinProbGraph({
   }
 
   const rStartFi     = tickToFi(extStartTick)
-  const rCoreStartFi = tickToFi(freezeStartTick)
-  const rFreezeEndFi = curRound ? tickToFi(curRound.freezeEndTick) : 0
-  const rCoreEndFi   = curRound ? tickToFi(roundEndTick) : total - 1
+  const rCoreStartFi = tickToFi(windowStart)
+  const freezeFi = inKnife
+    ? (knife.freezeEndTick ? tickToFi(knife.freezeEndTick) : -1)
+    : curRound ? tickToFi(curRound.freezeEndTick) : -1
+  const rCoreEndFi   = tickToFi(windowEnd)
   const rEndFi       = Math.min(total - 1, tickToFi(extEndTick))
   const rLen         = Math.max(1, rEndFi - rStartFi)
 
   // map frame index → SVG x coordinate
   function fi2x(fi: number): number { return ((fi - rStartFi) / rLen) * W }
 
-  const freezeMarkerX = fi2x(rFreezeEndFi)
+  const freezeMarkerX = freezeFi >= 0 ? fi2x(freezeFi) : -1
   const coreStartX    = fi2x(rCoreStartFi)
   const coreEndX      = fi2x(rCoreEndFi)
 
@@ -599,11 +633,13 @@ function WinProbGraph({
       )}
 
       {/* freeze end marker */}
-      <line
-        x1={freezeMarkerX.toFixed(1)} y1="0"
-        x2={freezeMarkerX.toFixed(1)} y2={H}
-        stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="3,3"
-      />
+      {freezeMarkerX >= 0 && (
+        <line
+          x1={freezeMarkerX.toFixed(1)} y1="0"
+          x2={freezeMarkerX.toFixed(1)} y2={H}
+          stroke="rgba(255,255,255,0.3)" strokeWidth="1" strokeDasharray="3,3"
+        />
+      )}
 
       {/* neighbour boundary markers */}
       {coreStartX > 0 && (
@@ -1232,8 +1268,9 @@ export default function ReplayPage() {
   const rounds = analysis?.rounds ?? []
   const winprob = replay.winprob ?? []
   const knifeRound = analysis?.knifeRound ?? null
-  const firstRoundStart = rounds.length ? rounds[0].freezeEndTick : 0
-  const inKnife = !!knifeRound && curTick >= knifeRound.startTick && curTick < firstRoundStart
+  // restart + freeze of round 1 belongs to R1, knife round ends at its own endTick
+  const inKnife = !!knifeRound && knifeRound.endTick > 0
+    && curTick >= knifeRound.startTick && curTick < knifeRound.endTick
   const currentRound = inKnife ? null : analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
 
   // 3-column layout: map | event log | scoreboard
@@ -1371,6 +1408,8 @@ export default function ReplayPage() {
                   frameIdx={frameIdx}
                   onScrub={fi => { setFrameIdx(fi); setPlaying(false) }}
                   height={56}
+                  knifeRound={knifeRound}
+                  matchStartTick={analysis?.meta.matchStartTick}
                 />
               </div>
             ) : (

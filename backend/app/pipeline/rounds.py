@@ -142,7 +142,10 @@ class RoundBuilder:
         # incl. cosmetic names like "Bayonet" without the "knife" substring)
         fe = self.ctx.ev("round_freeze_end")
         pre_fe = [int(t) for t in fe["tick"] if start_tick < t < ms]
-        probe_tick = pre_fe[-1] if pre_fe else max(start_tick, (start_tick + end_tick) // 2)
+        # the knife round's own freeze end — restarts after round_end also
+        # emit freeze_end events, keep only ones inside the round window
+        knife_fe = next((t for t in pre_fe if t <= end_tick), None)
+        probe_tick = knife_fe or max(start_tick, (start_tick + end_tick) // 2)
         ticks = self.ctx.ticks
         win = ticks[(ticks["tick"] >= probe_tick) & (ticks["tick"] <= end_tick)]
         if "is_alive" in win.columns:
@@ -151,7 +154,8 @@ class RoundBuilder:
             gun_classes = ("rifle", "sniper", "smg", "heavy", "pistol", "grenade")
             if any(canon(w)[2] in gun_classes for w in win["active_weapon_name"].unique()):
                 return None
-        return {"startTick": start_tick, "endTick": end_tick, "winner": winner}
+        return {"startTick": start_tick, "freezeEndTick": knife_fe,
+                "endTick": end_tick, "winner": winner}
 
     # ------------------------------------------------------------- sides
     def _assign_sides(self, rounds):

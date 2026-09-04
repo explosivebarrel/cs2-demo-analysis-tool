@@ -178,7 +178,8 @@ def _start_job(demo: dict) -> str:
         _reap_locked()
         if did in _jobs and _jobs[did].poll() is None:
             return "already"
-        if len(_analyze_dids) >= config.MAX_CONCURRENT_ANALYZES:
+        # MAX_CONCURRENT_ANALYZES=0 (default) means unlimited — local tool
+        if config.MAX_CONCURRENT_ANALYZES > 0 and len(_analyze_dids) >= config.MAX_CONCURRENT_ANALYZES:
             return "busy"
         proc = subprocess.Popen(
             [sys.executable, "-m", "app.worker", _demo_fs_path(demo), did],

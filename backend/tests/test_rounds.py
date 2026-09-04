@@ -60,7 +60,7 @@ def test_knife_round_detected():
     }
     weapons = [(2000, "knife", True), (2000, "Bayonet", True), (3000, "knife_t", True)]
     kr = _knife_rb(events, weapons)._knife_round()
-    assert kr == {"startTick": 1, "endTick": 4940, "winner": "T"}
+    assert kr == {"startTick": 1, "freezeEndTick": 1280, "endTick": 4940, "winner": "T"}
 
 
 def test_knife_round_rejected_when_guns_seen():

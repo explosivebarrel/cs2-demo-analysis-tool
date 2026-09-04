@@ -14,7 +14,8 @@ for _d in (BASE_DIR, STORE_DIR, UPLOADS_DIR, ANALYSES_DIR, STATUS_DIR, RADARS_DI
     os.makedirs(_d, exist_ok=True)
 
 MAX_UPLOAD_BYTES = int(os.environ.get("CS2_MAX_UPLOAD_MB", "1200")) * 1024 * 1024
-MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "1"))
+# 0 = unlimited (default): local tool — parallel analyses are allowed
+MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "0"))
 
 # ------------------------------------------------------- radar sources
 RADAR_REPO = "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main"
