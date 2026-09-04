@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import { t } from '../i18n'
 import { useLang } from '../App'
 import { api, AutoimportStatus } from '../api'
@@ -38,6 +39,7 @@ function AutoImportSection() {
   return (
     <Section title={t('about:sections.autoimport')}>
       <P>{t('about:aboutAutoDesc')}</P>
+      <P><NavLink to="/settings" style={{ color: 'var(--accent)' }}>{t('about:aboutAutoOpenSettings')} →</NavLink></P>
       <P>{t('about:aboutAutoWatch')}</P>
       <P>{t('about:aboutAutoFaceit')}</P>
       <P>{t('about:aboutAutoNote')}</P>

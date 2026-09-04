@@ -346,10 +346,27 @@ export interface AutoimportStatus {
   faceit: { enabled: boolean; playerId: string; pollSec: number; knownMatches: number }
 }
 
+export interface Settings {
+  watch: { dirs: string[]; pollSec: number }
+  faceit: { apiKeySet: boolean; playerId: string; pollSec: number }
+}
+
+export interface SettingsPatch {
+  watch?: { dirs?: string[]; pollSec?: number }
+  faceit?: { apiKey?: string | null; playerId?: string; pollSec?: number }
+}
+
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
   benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
   autoimport: (): Promise<AutoimportStatus> => req('/autoimport'),
+  getSettings: (): Promise<Settings> => req('/settings'),
+  saveSettings: (patch: SettingsPatch): Promise<AutoimportStatus> =>
+    req('/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
   upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
     const fd = new FormData(); fd.append('file', file)
     return req('/demos/upload', { method: 'POST', body: fd })

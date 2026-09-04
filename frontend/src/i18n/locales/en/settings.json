@@ -1,0 +1,17 @@
+{
+  "title": "Settings",
+  "subtitle": "Demo auto-import applies right after saving — no container restart needed. Values are stored in the data volume and take priority over environment variables.",
+  "watchTitle": "Watch folders",
+  "watchDirs": "Paths inside the container (one folder per line)",
+  "watchDirsHint": "The folders themselves must be mounted as volumes in docker-compose.yml (see the example there). The first scan only remembers existing files — anything new gets imported.",
+  "watchPoll": "Scan interval, sec",
+  "faceitTitle": "FACEIT",
+  "faceitKey": "API key",
+  "faceitKeySaved": "key is saved — leave the field empty to keep it",
+  "faceitKeyHint": "Free key: FACEIT Developer Portal → App Studio → your app → API Keys",
+  "faceitId": "Player ID (GUID from your FACEIT profile page)",
+  "faceitPoll": "Polling interval, sec",
+  "save": "Save",
+  "saved": "Saved — auto-import reconfigured",
+  "envNote": "Variables from .env / docker-compose act as defaults: anything not saved here falls back to them."
+}

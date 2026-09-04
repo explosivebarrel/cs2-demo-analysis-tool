@@ -9,6 +9,7 @@ import MetricsPage from './pages/MetricsPage'
 import HeatmapsPage from './pages/HeatmapsPage'
 import ReplayScreen from './pages/ReplayScreen'
 import AboutPage from './pages/AboutPage'
+import SettingsPage from './pages/SettingsPage'
 
 export const LangCtx = createContext<{ lang: Lang; toggle: () => void }>({
   lang: 'ru', toggle: () => {},
@@ -25,6 +26,7 @@ function AppNav() {
       <span style={{ fontWeight: 800, fontSize: 16, color: 'var(--accent)', letterSpacing: '.05em' }}>CS2·ANA</span>
       <NavLink to="/" end style={navStyle}>{t('demos')}</NavLink>
       <NavLink to="/about" style={navStyle}>{t('about')}</NavLink>
+      <NavLink to="/settings" style={navStyle}>{t('settings')}</NavLink>
       <div style={{ marginLeft: 'auto' }}>
         <button className="btn-ghost" style={{ fontSize: 12, padding: '4px 10px' }} onClick={toggle}>
           {lang === 'ru' ? 'EN' : 'RU'}
@@ -74,6 +76,7 @@ export default function App() {
                 <Route path="/match/:id/heatmaps" element={<HeatmapsPage />} />
                 <Route path="/match/:id/replay" element={<ReplayScreen />} />
                 <Route path="/about" element={<AboutPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
               </Routes>
             </div>
             <Footer />

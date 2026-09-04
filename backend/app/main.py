@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
-from . import autowatch, config, storage, ingest
+from . import autowatch, config, settings, storage, ingest
 from .overviews import overview_for_client, radar_png_path
 
 app = FastAPI(title="CS2 Demo Analyzer")
@@ -95,6 +95,18 @@ async def _status_watcher():
             pass
 
 
+def _auto_imported(did: str) -> None:
+    """Probe + analyze a demo that just landed via auto-import."""
+    demo = next((d for d in storage.list_demos() if d["id"] == did), None)
+    if not demo:
+        return
+    st = storage.read_status(did) or {}
+    if st.get("status") in ("new", None):
+        _start_probe(demo)
+    if not os.path.exists(os.path.join(storage.analysis_dir(did), "analysis.json.gz")):
+        _start_job(demo)
+
+
 @app.on_event("startup")
 async def _startup():
     _sweep_orphaned_statuses()
@@ -107,16 +119,6 @@ async def _startup():
             if st.get("status") in ("new", None) and not st.get("map"):
                 _start_probe(demo)
     threading.Thread(target=_probe_new, daemon=True).start()
-
-    def _auto_imported(did: str) -> None:
-        demo = next((d for d in storage.list_demos() if d["id"] == did), None)
-        if not demo:
-            return
-        st = storage.read_status(did) or {}
-        if st.get("status") in ("new", None):
-            _start_probe(demo)
-        if not os.path.exists(os.path.join(storage.analysis_dir(did), "analysis.json.gz")):
-            _start_job(demo)
     n = autowatch.start(_auto_imported)
     if n:
         logging.getLogger("main").info("auto-import: %d source(s) enabled", n)
@@ -220,6 +222,24 @@ def benchmarks():
 
 @app.get("/api/autoimport")
 def autoimport():
+    return autowatch.status()
+
+
+@app.get("/api/settings")
+def get_settings():
+    eff = settings.effective()
+    eff["faceit"]["apiKeySet"] = bool(eff["faceit"]["apiKey"])
+    eff["faceit"]["apiKey"] = ""  # never expose the key
+    return eff
+
+
+@app.put("/api/settings")
+async def put_settings(patch: dict):
+    try:
+        settings.write(patch)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    autowatch.reload(_auto_imported)
     return autowatch.status()
 
 
