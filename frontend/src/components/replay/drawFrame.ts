@@ -101,14 +101,20 @@ export default function drawFrame(
 
   const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
 
-  // find current round boundaries (round markers carry freezeEndTick)
+  // find current round boundaries (round markers carry freezeEndTick + endTick)
   const roundEvents = replay.events.filter(ev => (ev as Record<string, unknown>).ty === 'r')
   let roundStartT = 0
   let roundEndT = Infinity
+  let roundEndActual = Infinity
   for (const rev of roundEvents) {
-    const rt = (rev as Record<string, unknown>).t as number
-    if (rt <= curTick) roundStartT = rt
-    else if (rt < roundEndT) roundEndT = rt
+    const rv = rev as Record<string, unknown>
+    const rt = rv.t as number
+    if (rt <= curTick) {
+      roundStartT = rt
+      roundEndActual = (rv.e as number) ?? Infinity
+    } else if (rt < roundEndT) {
+      roundEndT = rt
+    }
   }
 
   // active smoke/fire zones
@@ -329,7 +335,7 @@ export default function drawFrame(
       if (ev.ty === 'bp') { planted = { x: ev.x, y: ev.y }; plantedTick = ev.t }
       else { planted = null; plantedTick = 0 }
     }
-    if (planted && plantedTick < roundStartT) planted = null
+    if (planted && (plantedTick < roundStartT || curTick > roundEndActual)) planted = null
   }
 
   // players
@@ -380,6 +386,19 @@ export default function drawFrame(
     knife: '🔪', knife_t: '🔪', knife_karambit: '🔪',
   }
 
+  // last player_blind event per player index (t = blind tick, d = blind seconds)
+  const lastBlind: { t: number; d: number }[] = []
+  for (const ev of replay.events) {
+    const e = ev as Record<string, unknown>
+    if (e.ty !== 'fl') continue
+    const t = e.t as number
+    if (t > curTick) continue
+    const p = (e.p as number) ?? -1
+    if (p < 0 || p >= n) continue
+    const cur = lastBlind[p]
+    if (!cur || t >= cur.t) lastBlind[p] = { t, d: (e.d as number) ?? 3 }
+  }
+
   for (let i = 0; i < n; i++) {
     const base = frameBase + i * FIELDS
     const alive = replay.data[base + F_ALIVE]
@@ -402,29 +421,28 @@ export default function drawFrame(
     ctx.strokeStyle = hasBomb ? '#fff' : color
     ctx.lineWidth = (hasBomb ? 2.5 : 1.5) * dotScale; ctx.stroke()
 
-    // blind timer: shrinking yellow pie while the player is flashed
-    if ((flags & FLAG_FLASHED) !== 0) {      const backFrames = Math.ceil(replay.tickrate * 6 / Math.max(1, replay.frameStep))
-      const minFi = Math.max(0, fi - backFrames)
-      let flashStart = fi
-      for (let f = fi; f >= minFi; f--) {
-        const b = f * n * FIELDS + i * FIELDS
-        if ((replay.data[b + F_FLAGS] & FLAG_FLASHED) === 0) break
-        flashStart = f
-      }
-      const blindSec = (fi - flashStart) * replay.frameStep / Math.max(1, replay.tickrate)
-      const frac = Math.max(0, 1 - blindSec / 3)
-      if (frac > 0) {
+    // blind: yellow pie sized by severity (blind seconds / 5s full flash),
+    // shrinking with the remaining blind time; ring while flag is still set
+    const blind = lastBlind[i]
+    const stillFlashed = (flags & FLAG_FLASHED) !== 0
+    if (blind || stillFlashed) {
+      const remainSec = blind ? (blind.t + blind.d * replay.tickrate - curTick) / replay.tickrate : 0
+      const severity = blind ? Math.min(1, blind.d / 5) : 0.25
+      const frac = blind ? Math.max(0, Math.min(1, remainSec / Math.max(0.1, blind.d))) : 0
+      const sweep = severity * frac
+      if (sweep > 0.02) {
         ctx.beginPath()
         ctx.moveTo(cx, cy)
-        ctx.arc(cx, cy, r * 0.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac)
+        ctx.arc(cx, cy, r * 0.9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * sweep)
         ctx.closePath()
         ctx.fillStyle = 'rgba(255,214,64,0.5)'
         ctx.fill()
       }
-      // thin ring: still blinded even after the visual countdown ran out
-      ctx.beginPath(); ctx.arc(cx, cy, r * 0.95 + 1.5 * dotScale, 0, Math.PI * 2)
-      ctx.strokeStyle = 'rgba(255,214,64,0.85)'
-      ctx.lineWidth = 1.5 * dotScale; ctx.stroke()
+      if (stillFlashed) {
+        ctx.beginPath(); ctx.arc(cx, cy, r * 0.95 + 1.5 * dotScale, 0, Math.PI * 2)
+        ctx.strokeStyle = 'rgba(255,214,64,0.85)'
+        ctx.lineWidth = 1.5 * dotScale; ctx.stroke()
+      }
     }
 
     const numFontSize = Math.round(r * 1.5)

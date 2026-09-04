@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import threading
 import time
 
 from . import config
@@ -38,7 +39,9 @@ def write_status(did: str, **fields):
     st = read_status(did) or {}
     st.update(fields)
     st["updated"] = time.time()
-    tmp = status_path(did) + ".tmp"
+    # unique tmp per writer: the worker heartbeat thread and the progress
+    # callback write the same file concurrently from different threads
+    tmp = status_path(did) + f".tmp.{os.getpid()}.{threading.get_ident()}"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f)
     os.replace(tmp, status_path(did))

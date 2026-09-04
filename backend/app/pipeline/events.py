@@ -317,6 +317,11 @@ def build_events(ctx, rb, fb):
         events.append({"t": int(e["tick"]), "ty": "fr", "x": _f(e.get("x")),
                        "y": _f(e.get("y")), "p": idx(e.get("user_steamid"))})
 
+    # player blinds: per-victim events with blind duration in seconds ------
+    for _, e in ctx.ev("player_blind").iterrows():
+        events.append({"t": int(e["tick"]), "ty": "fl", "p": idx(e.get("user_steamid")),
+                       "d": _f(e.get("blind_duration"))})
+
     # bomb -----------------------------------------------------------------
     for _, e in ctx.ev("bomb_dropped").iterrows():
         events.append({"t": int(e["tick"]), "ty": "bo"})
