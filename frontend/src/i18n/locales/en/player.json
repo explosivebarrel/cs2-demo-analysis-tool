@@ -125,7 +125,7 @@
   },
   "drilldown": {
     "velocityTitle": "Velocity (u/s)",
-    "keyPresses": "Key presses (% of window)",
+    "keyPresses": "Key presses",
     "diagFullIsolation": "Played in full isolation — no alive allies",
     "diagNearestAlly": "Nearest ally was {{dist}}u away",
     "diagEnemyFlashed": "Enemy was flashed {{dur}}s",
@@ -146,7 +146,8 @@
     "nearestAlly": "Nearest ally",
     "alliesAlive": "Allies alive",
     "enemiesAlive": "Enemies alive",
-    "watchRound": "→ Watch R{{round}} in replay"
+    "watchRound": "→ Watch R{{round}} in replay",
+    "log": "Episode log"
   },
   "map": {
     "kills": "KILLS",

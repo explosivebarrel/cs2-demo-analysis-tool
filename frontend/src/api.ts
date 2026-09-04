@@ -105,7 +105,7 @@ export interface SideSummary {
 
 export interface SeriesPoint { n: number; k: number; d: number; a: number; dmg: number; sv: number; kast: number; opening: string | null; mk: boolean; pistol: number; mvp: number; won: number; imp: number; nades: number }
 
-export interface ClutchEntry { round: number; enemies: number; won: boolean; kills: number }
+export interface ClutchEntry { round: number; enemies: number; won: boolean; kills: number; t0?: number }
 
 export interface RoundData {
   n: number; freezeEndTick: number; endTick: number; durSec: number
@@ -131,7 +131,7 @@ export interface HeatPoint {
   weapon?: string; hs?: boolean; phase?: string
 }
 
-export interface WeaponInfo { raw: string; en: string; ru: string; cls: string }
+export interface WeaponInfo { raw: string; key?: string; en: string; ru: string; cls: string }
 
 export interface InvWeaponInfo { en: string; ru: string; cls: string }
 
@@ -196,10 +196,20 @@ export interface PlayerAnalyticsData {
 
 export interface DuelFrame {
   t: number      // ms offset from kill tick (negative = before)
-  vel: number    // speed in u/s
+  vel: number    // speed in u/s (from positional deltas — velocity props lie on downsampled ticks)
+  w: boolean     // moving forward (velocity direction vs yaw)
+  a: boolean     // strafing left
+  s: boolean     // moving back
+  d: boolean     // strafing right
   jump: boolean  // player_jump event in this tick window
   duck: boolean  // duck_amount > 0.3
   walk: boolean  // is_walking (Shift)
+}
+
+export interface DuelShot {
+  t: number      // ms offset from kill tick
+  sid: string | null  // shooter (duel attacker or victim)
+  hit: boolean   // player_hurt from this shooter within 0.15s
 }
 
 export interface DuelEpisode {
@@ -226,6 +236,7 @@ export interface DuelEpisode {
     attackerWalking: boolean
   }
   frames: DuelFrame[]
+  shots?: DuelShot[]
 }
 
 export interface PlayerMetrics {
@@ -325,6 +336,9 @@ export interface Moment {
   won?: boolean
   count?: number
   detail?: string
+  // highlight window on the timeline: [tick - preSec, tick + durSec]
+  preSec?: number
+  durSec?: number
 }
 
 export const api = {

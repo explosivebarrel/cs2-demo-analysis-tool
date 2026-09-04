@@ -32,12 +32,15 @@ export default function drawFrame(
 ) {
   const FIELDS = fieldsOf(replay)
   const ctx = canvas.getContext('2d')!
-  const SZ = canvas.width
-  ctx.clearRect(0, 0, SZ, SZ)
+  // letterbox: the map lives in a centered square, so scale=1 always fits the block
+  const W = canvas.width, H = canvas.height
+  const SZ = Math.min(W, H)
+  const boxX = (W - SZ) / 2, boxY = (H - SZ) / 2
+  ctx.clearRect(0, 0, W, H)
   const dotScale = 1 / Math.sqrt(tx.scale)
 
   ctx.save()
-  ctx.translate(tx.ox, tx.oy)
+  ctx.translate(boxX + tx.ox, boxY + tx.oy)
   ctx.scale(tx.scale, tx.scale)
 
   if (radarImg?.complete && radarImg.naturalWidth > 0) {
@@ -52,7 +55,7 @@ export default function drawFrame(
     }
   }
 
-  const curTick = replay.ticks[frameIdx] ?? 0
+  const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
 
   // find current round start tick
   const roundEvents = replay.events.filter(ev => (ev as Record<string, unknown>).ty === 'r')
@@ -120,7 +123,7 @@ export default function drawFrame(
     const [scx, scy] = worldToCanvas(sx, sy, ov, SZ, SZ)
     const rad = (syaw * Math.PI) / 180
     const fade = 1 - (curTick - stTick) / tracerWindow
-    const playerColor = TEAM_COLORS[replay.data[frameIdx * replay.players.length * FIELDS + pidx * FIELDS + F_TEAM] ?? 0] ?? '#fff'
+    const playerColor = TEAM_COLORS[replay.data[Math.floor(frameIdx) * replay.players.length * FIELDS + pidx * FIELDS + F_TEAM] ?? 0] ?? '#fff'
     const alphaFull = Math.round(fade * 0xcc)
     const alphaHex  = alphaFull.toString(16).padStart(2, '0')
     const alphaHalf = Math.round(fade * 0x66).toString(16).padStart(2, '0')
@@ -253,8 +256,25 @@ export default function drawFrame(
 
   // players
   const n = replay.players.length
-  const frameBase = frameIdx * n * FIELDS
+  const fi = Math.floor(frameIdx)
+  const frac = frameIdx - fi
+  const frameBase = fi * n * FIELDS
   if (frameBase + n * FIELDS > replay.data.length) { ctx.restore(); return }
+  const nextBaseAll = frac > 0 && fi + 1 < replay.ticks.length ? (fi + 1) * n * FIELDS : -1
+
+  // interpolated position between frame fi and fi+1; no lerp across
+  // death/respawn transitions or teleport-sized jumps
+  const aliveAt = (base: number) => replay.data[base + F_ALIVE]
+  function framePos(base: number, baseNext: number): [number, number, number] {
+    const x0 = replay.data[base], y0 = replay.data[base + 1], z0 = replay.data[base + 2]
+    if (baseNext < 0) return [x0, y0, z0]
+    const x1 = replay.data[baseNext], y1 = replay.data[baseNext + 1], z1 = replay.data[baseNext + 2]
+    if (Math.abs(x1 - x0) + Math.abs(y1 - y0) > 500 || aliveAt(base) !== aliveAt(baseNext)) return [x0, y0, z0]
+    return [x0 + (x1 - x0) * frac, y0 + (y1 - y0) * frac, z0 + (z1 - z0) * frac]
+  }
+  function lerpYaw(a: number, b: number): number {
+    return a + (((b - a + 540) % 360) - 180) * frac
+  }
 
   // per-team numbers 1..5 by index order within each team
   const teamCount: Record<number, number> = {}
@@ -265,7 +285,8 @@ export default function drawFrame(
     playerNum[i] = teamCount[team]
   }
 
-  const prevFrameBase = Math.max(0, frameIdx - 1) * n * FIELDS
+  const prevFi = Math.floor(Math.max(0, frameIdx - 1))
+  const prevFrac = frameIdx - 1 - prevFi
   const velScale = replay.tickrate / Math.max(1, replay.frameStep)
 
   const NADE_ICONS: Record<string, string> = {
@@ -289,8 +310,8 @@ export default function drawFrame(
     const base = frameBase + i * FIELDS
     const alive = replay.data[base + F_ALIVE]
     if (!alive) continue
-    const x = replay.data[base + F_X], y = replay.data[base + F_Y]
-    const z = replay.data[base + 2]
+    const nb = nextBaseAll >= 0 ? nextBaseAll + i * FIELDS : -1
+    const [x, y, z] = framePos(base, nb)
     const hp = replay.data[base + F_HP]
     const team = replay.data[base + F_TEAM]
     const flags = replay.data[base + F_FLAGS]
@@ -328,11 +349,11 @@ export default function drawFrame(
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center'
     ctx.fillText(weapShort, cx, cy - r - 2 * dotScale)
 
-    // velocity: units/sec from prev frame
-    const prevBase = prevFrameBase + i * FIELDS
-    const prevAlive = replay.data[prevBase + F_ALIVE] ?? 0
-    if (prevAlive) {
-      const px = replay.data[prevBase + F_X], py = replay.data[prevBase + F_Y]
+    // velocity: units/sec from the previous displayed (interpolated) position
+    const prevBase = prevFi * n * FIELDS + i * FIELDS
+    const prevNb = prevFrac > 0 && prevFi + 1 < replay.ticks.length ? (prevFi + 1) * n * FIELDS + i * FIELDS : -1
+    if (aliveAt(prevBase)) {
+      const [px, py] = framePos(prevBase, prevNb)
       const dx = x - px, dy = y - py
       const vel = Math.round(Math.sqrt(dx * dx + dy * dy) * velScale)
       if (vel > 5) {
@@ -343,7 +364,7 @@ export default function drawFrame(
       }
     }
 
-    const yaw = replay.data[base + F_YAW]
+    const yaw = nb >= 0 && aliveAt(nb) ? lerpYaw(replay.data[base + F_YAW], replay.data[nb + F_YAW]) : replay.data[base + F_YAW]
     const rad = (yaw * Math.PI) / 180
     const arrowLen = 6 * dotScale
     const arrowStartX = cx + Math.cos(rad) * r

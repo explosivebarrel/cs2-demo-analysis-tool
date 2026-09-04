@@ -96,6 +96,9 @@ function drawHeatmap(
   }
 }
 
+const LIST_WIDTH = 280
+
+/** Full-viewport heatmaps screen: map cell flexes, layer list scrolls independently. */
 export default function HeatmapsPage() {
   const { id } = useParams<{ id: string }>()
   useLang()
@@ -117,22 +120,15 @@ export default function HeatmapsPage() {
   const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
-  // resizer
-  const [leftWidth, setLeftWidth] = useState(600)
-  const resizerRef = useRef<{ startX: number; startW: number } | null>(null)
-  function onResizerMouseDown(e: React.MouseEvent) {
-    e.preventDefault()
-    resizerRef.current = { startX: e.clientX, startW: leftWidth }
-  }
+  // map cell measurement → square canvas fits the cell (letterboxed)
+  const [cell, setCell] = useState({ w: 0, h: 0 })
   useEffect(() => {
-    function onMove(e: MouseEvent) {
-      if (!resizerRef.current) return
-      setLeftWidth(Math.max(300, Math.min(900, resizerRef.current.startW + e.clientX - resizerRef.current.startX)))
-    }
-    function onUp() { resizerRef.current = null }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup', onUp)
-    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
+    const el = containerRef.current
+    if (!el) return
+    const ro = new ResizeObserver(() => setCell({ w: el.clientWidth, h: el.clientHeight }))
+    ro.observe(el)
+    setCell({ w: el.clientWidth, h: el.clientHeight })
+    return () => ro.disconnect()
   }, [])
 
   useEffect(() => { scaleRef.current = scale }, [scale])
@@ -149,21 +145,23 @@ export default function HeatmapsPage() {
       .catch(e => setError(String(e)))
   }, [id])
 
+  const SIZE = Math.max(1, Math.floor(Math.min(cell.w, cell.h)))
+
   useEffect(() => {
     const cv = bgRef.current
-    if (!cv || !analysis || !overview) return
+    if (!cv || !analysis || !overview || SIZE < 2) return
     const img = new Image()
     img.onload = () => { cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height) }
     img.src = api.radarUrl(analysis.meta.map, level)
-  }, [analysis, overview, leftWidth, level])
+  }, [analysis, overview, SIZE, level])
 
   useEffect(() => {
     const cv = canvasRef.current
-    if (!cv || !heatmap || !overview) return
+    if (!cv || !heatmap || !overview || SIZE < 2) return
     const raw = (heatmap.layers[layer] ?? []) as unknown as number[][]
     const playerFilter = selectedPlayers.size > 0 ? selectedPlayers : null
     drawHeatmap(cv, raw, layer, overview, playerFilter, pointAlpha, level)
-  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, leftWidth, level])
+  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, SIZE, level])
 
   const togglePlayer = useCallback((idx: number) => {
     setSelectedPlayers(prev => {
@@ -180,27 +178,29 @@ export default function HeatmapsPage() {
     return { scale: sc, ox: Math.max(-maxOff, Math.min(0, ox)), oy: Math.max(-maxOff, Math.min(0, oy)) }
   }
 
-  // passive:false required to preventDefault() on wheel
+  // passive:false required to preventDefault() on wheel; zoom anchors on the cursor
+  // relative to the centered map square
   useEffect(() => {
     const el = containerRef.current
     if (!el) return
     function onWheel(e: WheelEvent) {
       e.preventDefault()
       const rect = el!.getBoundingClientRect()
-      const size = rect.width
-      const mx = e.clientX - rect.left, my = e.clientY - rect.top
+      const b = Math.min(rect.width, rect.height)
+      const mx = e.clientX - rect.left - (rect.width - b) / 2
+      const my = e.clientY - rect.top - (rect.height - b) / 2
       const factor = e.deltaY < 0 ? 1.1 : 0.9
       const cur = scaleRef.current
       const sc = Math.max(1, Math.min(8, cur * factor))
       const ox = mx - (mx - offsetRef.current.x) * (sc / cur)
       const oy = my - (my - offsetRef.current.y) * (sc / cur)
-      const maxOff = size * (sc - 1)
+      const maxOff = b * (sc - 1)
       setScale(sc)
       setOffset({ x: Math.max(-maxOff, Math.min(0, ox)), y: Math.max(-maxOff, Math.min(0, oy)) })
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [containerRef.current])
+  }, [])
 
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
     if (e.button !== 0) return
@@ -209,134 +209,135 @@ export default function HeatmapsPage() {
   function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
     if (!dragRef.current) return
     const rect = containerRef.current!.getBoundingClientRect()
-    const c = clamp(scaleRef.current, dragRef.current.ox + e.clientX - dragRef.current.sx, dragRef.current.oy + e.clientY - dragRef.current.sy, rect.width)
+    const b = Math.min(rect.width, rect.height)
+    const c = clamp(scaleRef.current, dragRef.current.ox + e.clientX - dragRef.current.sx, dragRef.current.oy + e.clientY - dragRef.current.sy, b)
     setOffset({ x: c.ox, y: c.oy })
   }
   function onMouseUp() { dragRef.current = null }
 
   if (error) return <div className="page"><div className="text-muted">{error}</div></div>
-  if (!analysis || !heatmap || !overview) return (
-    <div className="page">
-      <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 20 }} />
-      <div style={{ display: 'grid', gridTemplateColumns: '600px 8px 1fr', gap: 0, alignItems: 'start' }}>
-        <div className="skeleton" style={{ height: 600, borderRadius: 8 }} />
-        <div />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-          {Array.from({ length: 14 }).map((_, i) => (
-            <div key={i} className="skeleton" style={{ height: 32, borderRadius: 6 }} />
-          ))}
-        </div>
-      </div>
-    </div>
-  )
 
-  const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
-  const lowerLevels = lowerLevelNames(overview)
-  const hasLevels = lowerLevels.length > 0
-  const SIZE = leftWidth
-  const cur = scale > 1 ? 'grab' : 'default'
+  const loading = !analysis || !heatmap || !overview
 
   return (
-    <div className="page">
-      <MatchNav id={id!} players={analysis?.players} />
-      <div style={{ display: 'grid', gridTemplateColumns: `${leftWidth}px 8px 1fr`, gap: 0, alignItems: 'start' }}>
-        <div className="card" style={{ padding: 8, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', width: '100%' }}>
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', padding: '10px 14px', gap: 8, overflow: 'hidden', boxSizing: 'border-box' }}>
+      <div style={{ flexShrink: 0 }}>
+        {!loading && <MatchNav id={id!} players={analysis?.players} />}
+      </div>
+      <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `1fr ${LIST_WIDTH}px`, gap: 8, minHeight: 0 }}>
+        <div className="card" style={{ padding: 8, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', minHeight: 0 }}>
           <div
             ref={containerRef}
-            style={{ position: 'relative', width: SIZE, height: SIZE, cursor: cur, userSelect: 'none', margin: '0 auto' }}
+            style={{ position: 'absolute', inset: 8, cursor: scale > 1 ? 'grab' : 'default', userSelect: 'none' }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
           >
-            <div style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: '0 0', width: SIZE, height: SIZE }}>
-              <canvas ref={bgRef} width={SIZE} height={SIZE}
-                style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
-              <canvas ref={canvasRef} width={SIZE} height={SIZE}
-                style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
-            </div>
-          </div>
-          <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
-            {scale > 1
-              ? `${scale.toFixed(1)}× · ${t('zoomReset')}`
-              : t('zoomHint')}
-          </div>
-        </div>
-
-        {/* resizer */}
-        <div
-          onMouseDown={onResizerMouseDown}
-          style={{ cursor: 'col-resize', display: 'flex', alignItems: 'center', justifyContent: 'center', alignSelf: 'stretch', minHeight: 400, userSelect: 'none', padding: '0 2px' }}
-        >
-          <div style={{ width: 4, height: '100%', background: 'var(--border)', borderRadius: 2, transition: 'background 0.15s' }}
-            onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'var(--border)')}
-          />
-        </div>
-
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 220, padding: 16 }}>
-          {hasLevels && (
-            <div>
-              <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('mapLevel')}</div>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => setLevel('default')} style={{
-                  flex: 1,
-                  background: level === 'default' ? 'var(--accent)' : 'var(--bg3)',
-                  color: level === 'default' ? '#fff' : 'var(--text)',
-                  border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
-                }}>{t('levelUpper')}</button>
-                {lowerLevels.map(sec => (
-                  <button key={sec} onClick={() => setLevel(sec)} style={{
-                    flex: 1,
-                    background: level === sec ? 'var(--accent)' : 'var(--bg3)',
-                    color: level === sec ? '#fff' : 'var(--text)',
-                    border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
-                  }}>{t('levelLower')}</button>
-                ))}
+            {!loading && (
+              <div style={{
+                transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: '0 0',
+                position: 'absolute', width: SIZE, height: SIZE,
+                left: (cell.w - SIZE) / 2, top: (cell.h - SIZE) / 2,
+              }}>
+                <canvas ref={bgRef} width={SIZE} height={SIZE}
+                  style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
+                <canvas ref={canvasRef} width={SIZE} height={SIZE}
+                  style={{ position: 'absolute', top: 0, left: 0, borderRadius: 4 }} />
               </div>
+            )}
+          </div>
+          {!loading && (
+            <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
+              {scale > 1
+                ? `${scale.toFixed(1)}× · ${t('zoomReset')}`
+                : t('zoomHint')}
             </div>
           )}
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {layers.map(l => (
-                <button key={l} onClick={() => setLayer(l)} style={{
-                  background: layer === l ? 'var(--accent)' : 'var(--bg3)',
-                  color: layer === l ? '#fff' : 'var(--text)',
-                  border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
-                }}>
-                  {layerLabel(l)}
-                  <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
-                </button>
+        </div>
+
+        <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, minHeight: 0, overflowY: 'auto' }}>
+          {loading ? (
+            <>
+              {Array.from({ length: 14 }).map((_, i) => (
+                <div key={i} className="skeleton" style={{ height: 32, borderRadius: 6 }} />
               ))}
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
-              {t('opacity')}
-              <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pointAlpha * 100)}%</span>
-            </div>
-            <input type="range" min={5} max={100} step={5}
-              value={Math.round(pointAlpha * 100)}
-              onChange={e => setPointAlpha(Number(e.target.value) / 100)}
-              style={{ width: '100%', accentColor: 'var(--accent)' }} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('allPlayers')}</div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-              {analysis.players.map((p, idx) => {
-                const active = selectedPlayers.has(idx)
+            </>
+          ) : (
+            <>
+              {(() => {
+                const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
+                const lowerLevels = lowerLevelNames(overview)
+                const hasLevels = lowerLevels.length > 0
                 return (
-                  <button key={p.steamid} onClick={() => togglePlayer(idx)} style={{
-                    background: active ? 'var(--accent)' : 'var(--bg3)',
-                    color: active ? '#fff' : 'var(--text)',
-                    border: 'none', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
-                  }}>
-                    {p.name}
-                  </button>
+                  <>
+                    {hasLevels && (
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('mapLevel')}</div>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button onClick={() => setLevel('default')} style={{
+                            flex: 1,
+                            background: level === 'default' ? 'var(--accent)' : 'var(--bg3)',
+                            color: level === 'default' ? '#fff' : 'var(--text)',
+                            border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
+                          }}>{t('levelUpper')}</button>
+                          {lowerLevels.map(sec => (
+                            <button key={sec} onClick={() => setLevel(sec)} style={{
+                              flex: 1,
+                              background: level === sec ? 'var(--accent)' : 'var(--bg3)',
+                              color: level === sec ? '#fff' : 'var(--text)',
+                              border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
+                            }}>{t('levelLower')}</button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {layers.map(l => (
+                          <button key={l} onClick={() => setLayer(l)} style={{
+                            background: layer === l ? 'var(--accent)' : 'var(--bg3)',
+                            color: layer === l ? '#fff' : 'var(--text)',
+                            border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                          }}>
+                            {layerLabel(l)}
+                            <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
+                        {t('opacity')}
+                        <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(pointAlpha * 100)}%</span>
+                      </div>
+                      <input type="range" min={5} max={100} step={5}
+                        value={Math.round(pointAlpha * 100)}
+                        onChange={e => setPointAlpha(Number(e.target.value) / 100)}
+                        style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                    </div>
+
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('allPlayers')}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {analysis.players.map((p, idx) => {
+                          const active = selectedPlayers.has(idx)
+                          return (
+                            <button key={p.steamid} onClick={() => togglePlayer(idx)} style={{
+                              background: active ? 'var(--accent)' : 'var(--bg3)',
+                              color: active ? '#fff' : 'var(--text)',
+                              border: 'none', borderRadius: 4, padding: '4px 8px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                            }}>
+                              {p.name}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </>
                 )
-              })}
-            </div>
-          </div>
+              })()}
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnalysisData, ReplayData, RoundData } from '../../api'
 import { findRoundForTick, teamColorAtFrame } from '../../lib/replay'
 import { t, getLang } from '../../i18n'
+import WeaponIcon from '../WeaponIcon'
 
 // ── kill diagnosis rules ──────────────────────────────────────────────────────
 interface KillContext {
@@ -103,11 +104,17 @@ export default function EventLog({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
-            <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>{t('replay:eventLog.kill')}{hs ? ` ${t('replay:eventLog.hs')}` : ''}</span>
+            <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '2px 5px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              {t('replay:eventLog.kill')}
+              {hs && <img src="/icons/weapons/icon_headshot.svg" alt="HS" width={11} height={11} />}
+            </span>
             <span style={{ fontSize: 12, color: attackerColor, fontWeight: 600 }}>{attacker}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)' }}>→</span>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>{victim}</span>
-            <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>{weapName}</span>
+            <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <WeaponIcon id={weapInfo?.key} name={weapName || null} size={13} />
+              {weapName}
+            </span>
           </div>
           {diag.map((d, di) => (
             <div key={di} style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2, paddingLeft: 36 }}>{d}</div>

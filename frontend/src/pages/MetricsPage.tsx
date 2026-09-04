@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api, PlayerAnalyticsData, DuelEpisode, AnalysisData, FirstBulletShot } from '../api'
 import { useLang, useBenchmarks } from '../App'
 import { t } from '../i18n'
 import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../benchmarkUtils'
 import EpisodeDrillDown from '../components/player/EpisodeDrillDown'
+import WeaponIcon from '../components/WeaponIcon'
 import MatchNav from '../components/MatchNav'
 
 type RoundOutcome = 'kill' | 'death' | 'draw' | 'none'
@@ -116,8 +117,11 @@ function DuelRow({ duel, playerNames, idx, selected, onClick, lang }: {
       <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {attName} → {vicName}
       </span>
-      <span style={{ fontSize: 11, color: 'var(--text2)' }}>{prettyWeapon(duel.weapon)}</span>
-      {duel.headshot && <span style={{ fontSize: 10, color: 'var(--accent2)', fontWeight: 700 }}>HS</span>}
+      <span style={{ fontSize: 11, color: 'var(--text2)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <WeaponIcon id={duel.weapon.replace(/^weapon_/, '')} name={prettyWeapon(duel.weapon)} size={13} />
+        {prettyWeapon(duel.weapon)}
+      </span>
+      {duel.headshot && <img src="/icons/weapons/icon_headshot.svg" alt="HS" title="HS" width={13} height={13} />}
       {duel.errors.filter(e => e !== 'strong_duel').map(e => (
         <span key={e} style={{ fontSize: 10, color: 'var(--red)', background: 'rgba(220,80,80,.15)', borderRadius: 3, padding: '1px 5px' }}>
           {t('metrics:error.' + e, { defaultValue: e })}
@@ -145,6 +149,9 @@ function StatBar({ label, value, max, color }: { label: string; value: number; m
 
 // ------------------------------------------------------------------ EpisodeList
 
+// episode list + drilldown column fill the viewport instead of a fixed 400px box
+const EPISODE_VIEW_H = 'calc(100vh - 250px)'
+
 function EpisodeList({ duels, playerNames, lang }: {
   duels: DuelEpisode[]; playerNames: Record<string, string>; lang: 'ru' | 'en'
 }) {
@@ -156,8 +163,8 @@ function EpisodeList({ duels, playerNames, lang }: {
     </div>
   )
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 400, overflowY: 'auto' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, height: EPISODE_VIEW_H, minHeight: 320, overflowY: 'auto' }}>
         {duels.map((d, i) => (
           <DuelRow
             key={i} duel={d} playerNames={playerNames} idx={i} lang={lang}
@@ -166,7 +173,7 @@ function EpisodeList({ duels, playerNames, lang }: {
           />
         ))}
       </div>
-      <div>
+      <div style={{ height: EPISODE_VIEW_H, minHeight: 320, overflowY: 'auto' }}>
         {drill
           ? <EpisodeDrillDown duel={duels[sel]} playerNames={playerNames} lang={lang} onClose={() => setDrill(false)} />
           : <div style={{ color: 'var(--text2)', fontSize: 12, paddingTop: 8 }}>
@@ -190,17 +197,17 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
   }
   return (
     <div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(34px, 1fr))', gap: 6, maxWidth: 760 }}>
         {Array.from({ length: totalRounds }, (_, i) => i + 1).map(n => {
           const outcome = roundOutcomes[n] ?? 'none'
           const color = DOT_COLORS[outcome]
           return (
             <div key={n} title={`R${n}: ${t('metrics:outcome.' + outcome)}`} style={{
-              width: 26, height: 26, borderRadius: 4,
+              aspectRatio: '1', borderRadius: 4,
               background: outcome === 'none' ? 'var(--bg3)' : `${color}33`,
               border: `1px solid ${color}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, color: outcome === 'none' ? 'var(--text3)' : color,
+              fontSize: 11, color: outcome === 'none' ? 'var(--text3)' : color,
               fontWeight: 600, cursor: 'default',
             }}>{n}</div>
           )
@@ -829,6 +836,9 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
   const m = analytics.metrics
   const clutches = playerData.clutches
   const [filter, setFilter] = useState<'all' | 'won' | 'lost'>('all')
+  const { id } = useParams<{ id: string }>()
+  const nav = useNavigate()
+  const location = useLocation()
 
   const list = clutches.list ?? []
   const wonList = list.filter(c => c.won)
@@ -906,29 +916,36 @@ function ClutchWinPctPage({ analytics, playerData, playerNames, lang, totalRound
             active={filter} onChange={setFilter}
           />
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 16 }}>
-            {shown.map(c => (
-              <div key={c.round} style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                background: 'var(--bg2)', borderRadius: 6, padding: '8px 12px',
-                borderLeft: `3px solid ${c.won ? 'var(--green)' : 'var(--red)'}`
-              }}>
-                <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 60 }}>
-                  {t('metrics:clutch.round', { n: c.round })}
-                </span>
-                <span style={{ fontSize: 13, fontWeight: 600 }}>
-                  {t('metrics:clutch.vs', { n: c.enemies })}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-                  {c.kills > 0 ? `${c.kills} kill${c.kills > 1 ? 's' : ''}` : ''}
-                </span>
-                <span style={{
-                  marginLeft: 'auto', fontSize: 11, fontWeight: 700,
-                  color: c.won ? 'var(--green)' : 'var(--red)'
+            {shown.map(c => {
+              const clickable = !!c.t0
+              return (
+                <div key={c.round} onClick={() => {
+                  if (clickable) nav(`/match/${id}/replay`, { state: { from: location.pathname, seekTick: c.t0 } })
+                }} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'var(--bg2)', borderRadius: 6, padding: '8px 12px',
+                  border: `1px solid ${c.won ? 'var(--green)' : 'var(--red)'}`,
+                  cursor: clickable ? 'pointer' : 'default', transition: 'background .1s',
                 }}>
-                  {c.won ? t('metrics:clutch.won') : t('metrics:clutch.lost')}
-                </span>
-              </div>
-            ))}
+                  <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 60 }}>
+                    {t('metrics:clutch.round', { n: c.round })}
+                  </span>
+                  <span style={{ fontSize: 13, fontWeight: 600 }}>
+                    {t('metrics:clutch.vs', { n: c.enemies })}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text2)' }}>
+                    {c.kills > 0 ? `${c.kills} kill${c.kills > 1 ? 's' : ''}` : ''}
+                  </span>
+                  <span style={{
+                    marginLeft: 'auto', fontSize: 11, fontWeight: 700,
+                    color: c.won ? 'var(--green)' : 'var(--red)'
+                  }}>
+                    {c.won ? t('metrics:clutch.won') : t('metrics:clutch.lost')}
+                  </span>
+                  {clickable && <span style={{ fontSize: 11, color: 'var(--text2)' }}>▶</span>}
+                </div>
+              )
+            })}
           </div>
           <SectionHeading label={t('metrics:shared.byRound')} />
           <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />

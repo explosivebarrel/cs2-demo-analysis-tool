@@ -1,4 +1,4 @@
-import { AnalysisData, ReplayData } from '../../api'
+import { AnalysisData, Moment, ReplayData } from '../../api'
 import { t } from '../../i18n'
 import EventLog from './EventLog'
 import MomentsPanel from './MomentsPanel'
@@ -7,7 +7,7 @@ export type DrawerTab = 'events' | 'moments'
 
 /** Left drawer: event feed / curated moments tabs. */
 export default function LeftDrawer({
-  replay, analysis, frameIdx, tab, setTab, onEventSeek, onMomentSeek, width,
+  replay, analysis, frameIdx, tab, setTab, onEventSeek, onMomentSelect, width,
 }: {
   replay: ReplayData
   analysis: AnalysisData | null
@@ -15,7 +15,7 @@ export default function LeftDrawer({
   tab: DrawerTab
   setTab: (t: DrawerTab) => void
   onEventSeek: (tick: number) => void
-  onMomentSeek: (tick: number) => void
+  onMomentSelect: (m: Moment) => void
   width: number
 }) {
   const moments = analysis?.moments ?? []
@@ -39,7 +39,7 @@ export default function LeftDrawer({
         {tab === 'events' ? (
           <EventLog replay={replay} analysis={analysis} frameIdx={frameIdx} onSeek={onEventSeek} />
         ) : moments.length > 0 ? (
-          <MomentsPanel moments={moments} replay={replay} onJump={onMomentSeek} />
+          <MomentsPanel moments={moments} replay={replay} onJump={onMomentSelect} />
         ) : (
           <div style={{ padding: 16, color: 'var(--text2)', fontSize: 12, textAlign: 'center' }}>{t('replay:moments.empty')}</div>
         )}
