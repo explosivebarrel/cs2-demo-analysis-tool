@@ -162,6 +162,11 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
 15. **Иконки оружий**: имена файлов в `frontend/public/icons/weapons/` =
     canon-ключи `weapons.py`; исключения — через ALIAS в `WeaponIcon.tsx`.
     Новые иконки — скриптом `scripts/fetch_weapon_icons.py`.
+16. **frameIdx дробный при playback**: RAF-луп отдаёт дробный индекс (интерполяция
+    в drawFrame/MapCanvas сами делают floor/lerp). Любое дискретное чтение
+    (`replay.ticks[frameIdx]`, `replay.data[frameIdx * ...]`, `winprob[frameIdx]`)
+    вне drawFrame обязано делать `Math.floor(frameIdx)` — иначе undefined → 0:00 /
+    сбитые раунды / NaN в драверах.
 
 ## Стиль работы
 
