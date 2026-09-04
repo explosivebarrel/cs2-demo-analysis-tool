@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { api, SettingsPatch } from '../api'
+import { api, Settings, SettingsPatch } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
 
@@ -22,6 +22,7 @@ export default function SettingsPage() {
   const [faceitPoll, setFaceitPoll] = useState(300)
   const [apiKey, setApiKey] = useState('')
   const [apiKeySet, setApiKeySet] = useState(false)
+  const [progress, setProgress] = useState<Settings['progress']>()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [err, setErr] = useState('')
@@ -33,6 +34,7 @@ export default function SettingsPage() {
       setPlayerId(s.faceit.playerId)
       setFaceitPoll(s.faceit.pollSec)
       setApiKeySet(s.faceit.apiKeySet)
+      setProgress(s.progress)
     }).catch(e => setErr(e.message))
   }, [])
 
@@ -116,6 +118,36 @@ export default function SettingsPage() {
       </div>
 
       <p style={{ color: 'var(--text3)', fontSize: 11, marginTop: 14 }}>{t('settings:envNote')}</p>
+
+      {progress && progress.stages.length > 0 && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{t('settings:progressTitle')}</div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginBottom: 10 }}>
+            {t(`settings:progressSource.${progress.source}`)}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {progress.stages.map(st => (
+              <div key={st.stage} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <span style={{ width: 90, flexShrink: 0, color: 'var(--text2)' }}>{st.phase}</span>
+                <div style={{ flex: 1, height: 6, background: 'var(--bg3)', borderRadius: 3, position: 'relative' }}>
+                  <div style={{
+                    position: 'absolute', left: `${st.pct[0]}%`,
+                    width: `${Math.max(1, st.pct[1] - st.pct[0])}%`,
+                    top: 0, bottom: 0, background: 'var(--accent)', borderRadius: 3, opacity: 0.85,
+                  }} />
+                </div>
+                <span style={{
+                  width: 96, flexShrink: 0, textAlign: 'right',
+                  fontVariantNumeric: 'tabular-nums', color: 'var(--text2)',
+                }}>
+                  {st.pct[0]}–{st.pct[1]}% · {st.sec >= 10 ? Math.round(st.sec) : st.sec.toFixed(1)}s
+                </span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 8 }}>{t('settings:progressHint')}</div>
+        </div>
+      )}
     </div>
   )
 }

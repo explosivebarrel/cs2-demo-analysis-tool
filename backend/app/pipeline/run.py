@@ -43,55 +43,56 @@ def _team_name(rb, team, players):
 
 
 def analyze_demo(demo_path: str, did: str, progress=None):
+    from .progress import StageTracker, effective_weights
     prog = progress or (lambda phase, pct, detail="": None)
+    trk = StageTracker(effective_weights(), prog)
     t0 = time.time()
 
-    prog("loading", 2)
-    ctx = DemoContext(demo_path, progress=lambda phase, pct: prog(phase, pct))
+    ctx = DemoContext(demo_path, on_stage=trk.enter)
     ctx.load()
 
-    prog("rounds", 62)
+    trk.enter("rounds")
     rb = RoundBuilder(ctx)
     rb.rounds = rb.build()
     n_rounds = len(rb.rounds)
-    prog("rounds", 65, f"{n_rounds} rounds")
+    trk.update("rounds", 1.0, f"{n_rounds} rounds")
 
-    prog("frames", 70)
-    # the frame builder is the longest stage — feed sub-progress into 70..78
-    fb = FrameBuilder(ctx, rb, progress=lambda frac: prog("frames", 70 + int(frac * 8)))
+    trk.enter("frames")
+    # the frame builder is the longest stage — feed sub-progress
+    fb = FrameBuilder(ctx, rb, progress=lambda frac: trk.update("frames", frac))
     replay = fb.build()
 
-    prog("players", 78)
+    trk.enter("players")
     players = compute_players(ctx, rb, fb)
     n_players = len(players)
     compute_ratings(players)
-    prog("players", 82, f"{n_players} players")
+    trk.update("players", 1.0, f"{n_players} players")
 
-    prog("events", 84)
+    trk.enter("replay_events")
     ev = build_events(ctx, rb, fb)
     fb.finalize_bomb(replay, ev["events"])
 
-    prog("winprob", 88)
+    trk.enter("winprob")
     winprob = compute_winprob(fb, rb, replay)
 
-    prog("heatmaps", 90)
+    trk.enter("heatmaps")
     hm = build_heatmap(ctx, rb, players, fb, replay)
 
-    prog("analytics", 92)
+    trk.enter("analytics")
     from .playeranalytics import build_player_analytics, build_moments
     # per-player sub-progress: the analytics stage is another long one
     pa = build_player_analytics(
         ctx, rb, fb, players,
         winprob=winprob, replay_ticks=replay["ticks"],
-        progress=lambda f: prog("analytics", 92 + int(f * 4)),
+        progress=lambda f: trk.update("analytics", f * 0.9),
     )
-    prog("analytics", 96, "moments")
+    trk.update("analytics", 0.95, "moments")
     moments = build_moments(ctx, rb, fb, players, pa, winprob, replay["ticks"])
 
-    prog("chat", 97)
+    trk.enter("chat")
     chat_messages = build_chat(ctx, rb)
 
-    prog("writing", 98)
+    trk.enter("writing")
     analysis = _build_analysis(ctx, rb, fb, players, moments=moments)
     replay_payload = {
         "tickrate": ctx.tickrate,
@@ -148,11 +149,21 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     except Exception as hist_err:  # never fail the analysis on history
         print(f"[{did}] history entry failed: {hist_err}", flush=True)
 
+    trk.update("writing", 1.0)
+    trk.close_all()
+
+    # auto-calibration: remember real stage durations for the next mapping
+    try:
+        storage.save_stage_record(did, ctx.header.get("map_name", ""), trk.seconds)
+    except Exception as bench_err:
+        print(f"[{did}] stage record failed: {bench_err}", flush=True)
+
     prog("done", 100)
     return {
         "rounds": len(rb.rounds),
         "players": len(players),
         "seconds": round(time.time() - t0, 1),
+        "stages": dict(trk.seconds),
         "map": ctx.header.get("map_name", ""),
         "score": list(rb.final_score),
         "teamNames": [_team_name(rb, 0, list(players.values())),

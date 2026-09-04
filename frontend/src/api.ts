@@ -348,9 +348,17 @@ export interface AutoimportStatus {
   faceit: { enabled: boolean; playerId: string; pollSec: number; knownMatches: number }
 }
 
+export interface ProgressStageInfo {
+  stage: string
+  phase: string
+  pct: [number, number]
+  sec: number
+}
+
 export interface Settings {
   watch: { dirs: string[]; pollSec: number }
   faceit: { apiKeySet: boolean; playerId: string; pollSec: number }
+  progress?: { source: 'default' | 'measured' | 'pinned'; stages: ProgressStageInfo[] }
 }
 
 export interface SettingsPatch {

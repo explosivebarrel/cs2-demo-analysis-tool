@@ -233,6 +233,7 @@ export default function HeatmapsPage() {
             style={{ position: 'absolute', inset: 8, cursor: scale > 1 ? 'grab' : 'default', userSelect: 'none' }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
           >
+            {loading && <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 4 }} />}
             {!loading && (
               <div style={{
                 transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: '0 0',
@@ -258,9 +259,28 @@ export default function HeatmapsPage() {
         <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: 16, minHeight: 0, overflowY: 'auto' }}>
           {loading ? (
             <>
-              {Array.from({ length: 14 }).map((_, i) => (
-                <div key={i} className="skeleton" style={{ height: 32, borderRadius: 6 }} />
-              ))}
+              {/* mirrors the real controls: level toggle, layer list, opacity slider, players */}
+              <div className="skeleton" style={{ height: 27, borderRadius: 4 }} />
+              <div>
+                <div className="skeleton" style={{ height: 10, width: 90, borderRadius: 4, marginBottom: 8 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <div key={i} className="skeleton" style={{ height: 27, borderRadius: 4 }} />
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="skeleton" style={{ height: 10, width: 70, borderRadius: 4, marginBottom: 8 }} />
+                <div className="skeleton" style={{ height: 14, borderRadius: 4 }} />
+              </div>
+              <div>
+                <div className="skeleton" style={{ height: 10, width: 110, borderRadius: 4, marginBottom: 8 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="skeleton" style={{ height: 25, borderRadius: 4 }} />
+                  ))}
+                </div>
+              </div>
             </>
           ) : (
             <>

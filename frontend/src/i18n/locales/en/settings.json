@@ -13,5 +13,10 @@
   "faceitPoll": "Polling interval, sec",
   "save": "Save",
   "saved": "Saved — auto-import reconfigured",
-  "envNote": "Variables from .env / docker-compose act as defaults: anything not saved here falls back to them."
+  "envNote": "Variables from .env / docker-compose act as defaults: anything not saved here falls back to them.",
+  "progressTitle": "Analysis progress distribution",
+  "progressSource.default": "No measurements yet — default estimate in use",
+  "progressSource.measured": "From median stage durations of recent analyses on this machine",
+  "progressSource.pinned": "Pinned via the CS2_PROGRESS_WEIGHTS variable",
+  "progressHint": "Every analysis automatically refines the distribution from real stage durations. Pin it manually with CS2_PROGRESS_WEIGHTS (JSON: stage → relative seconds)."
 }

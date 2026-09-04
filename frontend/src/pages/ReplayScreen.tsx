@@ -216,16 +216,37 @@ export default function ReplayScreen() {
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
   if (!replay || !overview || !analysis) {
     return (
-      <div style={{ height: 'calc(100vh - 48px)', padding: 20 }}>
-        <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 12 }} />
-        <div style={{ display: 'flex', gap: 12 }}>
-          <div className="skeleton" style={{ flex: 1, height: '70vh', borderRadius: 8 }} />
-          <div style={{ width: RIGHT_WIDTH, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[...Array(10)].map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: 44, borderRadius: 6 }} />
+      <div style={{
+        height: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column',
+        padding: '10px 14px', gap: 8, overflow: 'hidden',
+      }}>
+        {/* TopBar: back button, round strip, 3 icon buttons */}
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+          <div className="skeleton" style={{ width: 70, height: 28, borderRadius: 4 }} />
+          <div className="skeleton" style={{ flex: 1, height: 28, borderRadius: 4 }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} className="skeleton" style={{ width: 34, height: 28, borderRadius: 4 }} />
             ))}
           </div>
         </div>
+        {/* main row: left drawer, map canvas, right drawer */}
+        <div style={{ flex: 1, display: 'flex', gap: 8, minHeight: 0 }}>
+          <div style={{ width: LEFT_WIDTH, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <div className="skeleton" style={{ flex: 1, height: 24, borderRadius: 4 }} />
+              <div className="skeleton" style={{ flex: 1, height: 24, borderRadius: 4 }} />
+            </div>
+            <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+          </div>
+          <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+          <div style={{ width: RIGHT_WIDTH, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+            <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+          </div>
+        </div>
+        {/* BottomBar: playback controls + winprob strip */}
+        <div className="skeleton" style={{ height: 104, flexShrink: 0, borderRadius: 8 }} />
       </div>
     )
   }

@@ -230,7 +230,26 @@ def get_settings():
     eff = settings.effective()
     eff["faceit"]["apiKeySet"] = bool(eff["faceit"]["apiKey"])
     eff["faceit"]["apiKey"] = ""  # never expose the key
+    eff["progress"] = _progress_info()
     return eff
+
+
+def _progress_info() -> dict:
+    from .pipeline.progress import DISPLAY_PHASE, STAGE_ORDER, effective_weights, spans
+    weights = effective_weights()
+    sp = spans(weights)
+    if os.environ.get("CS2_PROGRESS_WEIGHTS", "").strip():
+        source = "pinned"
+    elif storage.stage_weights():
+        source = "measured"
+    else:
+        source = "default"
+    return {
+        "source": source,
+        "stages": [{"stage": s, "phase": DISPLAY_PHASE.get(s, s),
+                    "pct": list(sp[s]), "sec": round(weights[s], 1)}
+                   for s in STAGE_ORDER],
+    }
 
 
 @app.put("/api/settings")
