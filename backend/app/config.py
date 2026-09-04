@@ -24,8 +24,9 @@ RADAR_IMG_URL = RADAR_REPO + "/images/radars/{map}_radar_psd.png"
 RADAR_FETCH_TIMEOUT = 20  # seconds
 
 # ------------------------------------------------------- analysis constants
-# Frame step for the replay timeline: keep ~8 samples per second.
-FRAME_SECONDS = 0.125
+# Frame step for the replay timeline: keep ~8 samples per second
+# (CS2_FRAME_SECONDS to override — denser frames = smoother but heavier payload).
+FRAME_SECONDS = float(os.environ.get("CS2_FRAME_SECONDS", "0.125"))
 POSITION_DENSITY_STEP = 4      # take every Nth replay frame for position heatmap
 HOLD_MIN_SECONDS = 5.0         # player counted as "holding" after this long
 HOLD_RADIUS_UNITS = 90.0       # max displacement while holding an angle

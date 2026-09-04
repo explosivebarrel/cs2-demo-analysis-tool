@@ -5,6 +5,7 @@ Produces player_analytics.json.gz — a dict keyed by steamid.
 """
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from typing import Any
 
@@ -62,10 +63,12 @@ def _build_duel_frames(
     window_ticks: int | None = None,  # None = 3s at the demo's tickrate
 ) -> list[dict]:
     """
-    Extract per-tick snapshots for the player in a ±window around kill_tick.
-    Returns list of {t, vel, jump, duck, walk} dicts.
-    Uses velocity_X/Y columns when available, falls back to positional diff.
-    jump_ticks: set of ticks where player_jump fired for this player.
+    Extract per-frame snapshots for the player in a ±window around kill_tick.
+    Returns list of {t, vel, w, a, s, d, jump, duck, walk} dicts.
+
+    velocity_* props are unreliable on downsampled ticks (demoparser2 stores
+    per-tick displacement there — reads ~8x too high), so both the speed and
+    the WASD breakdown always come from positional deltas vs yaw.
     """
     if ticks_df is None or not len(ticks_df):
         return []
@@ -86,36 +89,36 @@ def _build_duel_frames(
         if sub.empty:
             return []
 
-        has_vel_cols = all(c in sub.columns for c in ("velocity_X", "velocity_Y"))
         has_walk = "is_walking" in sub.columns
         has_duck = "duck_amount" in sub.columns
+        has_yaw = "yaw" in sub.columns
+        xs = sub["X"].to_numpy(dtype="float64")
+        ys = sub["Y"].to_numpy(dtype="float64")
+        tks = sub["tick"].to_numpy(dtype="int64")
+        yaws = sub["yaw"].to_numpy(dtype="float64") if has_yaw else None
+        walk_col = sub["is_walking"].fillna(False).astype(bool).to_numpy() if has_walk else None
+        duck_col = sub["duck_amount"].to_numpy(dtype="float64") if has_duck else None
 
         frames: list[dict] = []
-        prev_x = prev_y = None
-        prev_tick = None
+        for k in range(len(sub)):
+            tick = int(tks[k])
+            vel = 0.0
+            fwd = right = 0.0
+            if k:
+                dx = xs[k] - xs[k - 1]
+                dy = ys[k] - ys[k - 1]
+                dt = max(1, tick - int(tks[k - 1]))
+                dist = (dx * dx + dy * dy) ** 0.5
+                vel = round(dist / dt * tickrate, 1)
+                if yaws is not None and vel > 30:
+                    # world forward = (cos yaw, sin yaw), right = (sin yaw, -cos yaw)
+                    y = math.radians(yaws[k])
+                    inv = 1.0 / dist
+                    fwd = (dx * math.cos(y) + dy * math.sin(y)) * inv
+                    right = (dx * math.sin(y) - dy * math.cos(y)) * inv
 
-        for _, row in sub.iterrows():
-            tick = int(row["tick"])
-
-            # velocity
-            if has_vel_cols:
-                vx = _f(row.get("velocity_X", 0))
-                vy = _f(row.get("velocity_Y", 0))
-                vel = round((vx * vx + vy * vy) ** 0.5, 1)
-            elif prev_x is not None and prev_tick is not None:
-                dx = _f(row["X"]) - prev_x
-                dy = _f(row["Y"]) - prev_y
-                dt = max(1, tick - prev_tick)
-                vel = round((dx * dx + dy * dy) ** 0.5 / dt * tickrate, 1)
-            else:
-                vel = 0.0
-
-            prev_x = _f(row["X"])
-            prev_y = _f(row["Y"])
-            prev_tick = tick
-
-            walk = bool(row.get("is_walking", False)) if has_walk else False
-            duck = (_f(row.get("duck_amount", 0)) > 0.3) if has_duck else False
+            walk = bool(walk_col[k]) if has_walk else False
+            duck = (duck_col[k] > 0.3) if has_duck else False
             # jump: any player_jump event within ±1 frame_step ticks
             frame_step = max(1, int(tickrate / 8))
             jump = any(abs(jt - tick) <= frame_step for jt in jump_set)
@@ -126,6 +129,10 @@ def _build_duel_frames(
             frames.append({
                 "t": offset,
                 "vel": vel,
+                "w": fwd > 0.5,
+                "a": right < -0.5,
+                "s": fwd < -0.5,
+                "d": right > 0.5,
                 "jump": jump,
                 "duck": duck,
                 "walk": walk,
@@ -389,6 +396,43 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
         for t in adf["tick"]:
             enemy_hurt_ticks.add(int(t))
 
+    # all weapon_fire / hurt rows (sorted tick arrays) for episode shot layers
+    import numpy as _np2
+
+    def _sid_tick_arrays(df, sid_col: str):
+        if not len(df):
+            return _np2.empty(0, dtype="int64"), []
+        d2 = df.copy()
+        d2["sid"] = d2[sid_col].map(_sid)
+        d2 = d2[d2["sid"].notna()].sort_values("tick")
+        return d2["tick"].to_numpy(dtype="int64"), d2["sid"].tolist()
+
+    wf_tick_arr, wf_sid_arr = _sid_tick_arrays(wf_df, "user_steamid")
+    hurt_tick_arr, hurt_sid_arr = _sid_tick_arrays(hurt_df, "attacker_steamid")
+
+    def _episode_shots(t_lo: int, t_hi: int, tick: int, sids: set) -> list[dict]:
+        """weapon_fire shots of the duel participants in the window, hit-marked."""
+        shots: list[dict] = []
+        if not len(wf_tick_arr):
+            return shots
+        lo = int(_np2.searchsorted(wf_tick_arr, t_lo))
+        hi = int(_np2.searchsorted(wf_tick_arr, t_hi, side="right"))
+        hit_window = int(ctx.tickrate * 0.15)
+        for i in range(lo, hi):
+            sid = wf_sid_arr[i]
+            if sid not in sids:
+                continue
+            st = int(wf_tick_arr[i])
+            hit = False
+            j = int(_np2.searchsorted(hurt_tick_arr, st)) if len(hurt_tick_arr) else 0
+            while j < len(hurt_tick_arr) and hurt_tick_arr[j] <= st + hit_window:
+                if hurt_sid_arr[j] == sid:
+                    hit = True
+                    break
+                j += 1
+            shots.append({"t": round((st - tick) / ctx.tickrate * 1000), "sid": sid, "hit": hit})
+        return shots
+
     # jump ticks for this player (player_jump event)
     jump_ticks: set[int] = set()
     jmp_df = ctx.ev("player_jump")
@@ -566,8 +610,16 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                 ctx.tickrate,
                 jump_ticks=jump_ticks,
             )
+            window = int(3.0 * ctx.tickrate)
+            shots = _episode_shots(
+                max(r_info["freezeEndTick"], tick - window // 2),
+                min(r_info["endTick"], tick + window // 2),
+                tick,
+                {a_sid, v_sid} - {None},
+            )
         else:
             frames = []
+            shots = []
 
         duels.append({
             "round": rn,
@@ -582,6 +634,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             "errors": errors,
             "context": context,
             "frames": frames,
+            "shots": shots,
         })
 
     return duels
@@ -1093,6 +1146,7 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
     import numpy as _np
 
     moments: list[dict] = []
+    rate = max(1.0, float(rb.ctx.tickrate))
 
     # tick -> round number via round freeze ticks (duel payloads may carry 0)
     fe = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
@@ -1103,10 +1157,13 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
 
     # clutches (attempt start tick is when the 1vX situation formed)
     for c in getattr(fb.clutch, "attempts", []):
-        moments.append({"type": "clutch", "tick": int(c["t0"]),
-                        "round": _round_n(int(c["t0"])) or c["round"],
+        t0 = int(c["t0"])
+        moments.append({"type": "clutch", "tick": t0,
+                        "round": _round_n(t0) or c["round"],
                         "steamid": c["player"], "won": bool(c.get("won")),
-                        "count": int(c.get("maxEnemies", 0))})
+                        "count": int(c.get("maxEnemies", 0)),
+                        "preSec": 3.0,
+                        "durSec": max(3.0, (int(c.get("t1", t0)) - t0) / rate)})
 
     # multikills: >=3 kills by one player in one round, moment at first kill
     kills = ctx.ev("player_death")
@@ -1123,14 +1180,17 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
         for (a, rn), ticks in per.items():
             if len(ticks) >= 3 and a in players:
                 moments.append({"type": "multikill", "tick": min(ticks), "round": rn,
-                                "steamid": a, "count": len(ticks)})
+                                "steamid": a, "count": len(ticks),
+                                "preSec": 3.0,
+                                "durSec": max(5.0, (max(ticks) - min(ticks)) / rate)})
 
     # opening deaths
     for r in rb.rounds:
         ok = r.get("openingKill")
         if ok and ok.get("victim") in players:
             moments.append({"type": "openingDeath", "tick": int(ok["tick"]),
-                            "round": r["n"], "steamid": ok["victim"]})
+                            "round": r["n"], "steamid": ok["victim"],
+                            "preSec": 3.0, "durSec": 3.0})
 
     # mistakes: deaths with error tags (flashed / isolated / moving_shot / missed_first)
     for sid, block in pa.items():
@@ -1142,7 +1202,8 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
             if errs and _round_n(tick):
                 moments.append({"type": "mistake", "tick": tick,
                                 "round": _round_n(tick), "steamid": sid,
-                                "detail": ",".join(sorted(errs))})
+                                "detail": ",".join(sorted(errs)),
+                                "preSec": 1.5, "durSec": 1.5})
 
     # winprob swings: largest single-step shift inside a round
     if winprob and replay_ticks:
@@ -1159,7 +1220,8 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
             if d[j] >= 0.2:
                 moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + 1]),
                                 "round": r["n"], "steamid": None,
-                                "detail": f"{d[j] * 100:.0f}%"})
+                                "detail": f"{d[j] * 100:.0f}%",
+                                "preSec": 2.5, "durSec": 2.5})
 
     moments.sort(key=lambda m: m["tick"])
     return moments[:300]

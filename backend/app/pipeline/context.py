@@ -4,6 +4,8 @@ import pandas as pd
 
 from demoparser2 import DemoParser
 
+from .. import config
+
 # Full-path props (resolve reliably across demo sources)
 P_MONEY = "CCSPlayerController.CCSPlayerController_InGameMoneyServices.m_iAccount"
 P_START_MONEY = "CCSPlayerController.CCSPlayerController_InGameMoneyServices.m_iStartAccount"
@@ -68,7 +70,7 @@ class DemoContext:
         dt = dt[dt > 0]
         per_tick = np.median(dt) if len(dt) else 1.0 / 64.0
         self.tickrate = float(max(16.0, min(256.0, round(1.0 / per_tick))))
-        self.frame_step = max(4, int(round(self.tickrate * 0.125)))
+        self.frame_step = max(4, int(round(self.tickrate * config.FRAME_SECONDS)))
 
         self._progress("events", 12)
         ev = self.parser.parse_events(EVENTS_WITH_PLAYERS, player=PLAYER_PROPS)

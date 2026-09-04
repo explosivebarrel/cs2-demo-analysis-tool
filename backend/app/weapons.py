@@ -118,27 +118,37 @@ def inventory_keys(names) -> list[str]:
     return sorted(out)
 
 
-def canon(raw: str):
-    """Return (en, ru, cls) for a raw weapon name; fallback -> (raw, raw, 'other')."""
+def _canon_key(raw: str) -> str:
+    """Canon table key for a raw weapon name ('AK-47'/'weapon_ak47' -> 'ak47')."""
     if not raw:
-        return ("?", "?", "other")
+        return "?"
     key = str(raw).strip()
     if key.startswith("weapon_"):
         key = key[7:]
     low = key.lower()
     if low in _WEAPON_TABLE:
-        return _WEAPON_TABLE[low]
+        return low
     slug = _slug(key)
     if slug in _SLUG_ALIASES:
         low = _SLUG_ALIASES[slug]
         if low in _WEAPON_TABLE:
-            return _WEAPON_TABLE[low]
+            return low
     if slug in _WEAPON_TABLE:
-        return _WEAPON_TABLE[slug]
+        return slug
     if "knife" in low:
-        return ("Knife", "Нож", "knife")
+        return "knife"
     if low.endswith("_t") and low[:-2] in _WEAPON_TABLE:
-        return _WEAPON_TABLE[low[:-2]]
+        return low[:-2]
+    return low
+
+
+def canon(raw: str):
+    """Return (en, ru, cls) for a raw weapon name; fallback -> (raw, raw, 'other')."""
+    key = _canon_key(raw)
+    if key in _WEAPON_TABLE:
+        return _WEAPON_TABLE[key]
+    if not raw:
+        return ("?", "?", "other")
     return (raw, raw, "other")
 
 
@@ -155,7 +165,7 @@ def weapon_id_table():
     out = {}
     for raw, wid in _WEAPON_ID.items():
         en, ru, cls = canon(raw)
-        out[wid] = {"raw": raw, "en": en, "ru": ru, "cls": cls}
+        out[wid] = {"raw": raw, "key": _canon_key(raw), "en": en, "ru": ru, "cls": cls}
     return out
 
 
