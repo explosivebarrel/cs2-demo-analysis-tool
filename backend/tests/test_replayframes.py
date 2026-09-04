@@ -10,9 +10,9 @@ def _row(hp, alive, team, equip=0, money=0, ammo=0):
     return [0, 0, 0, 0, hp, 0, alive, 0, 0, team, equip, money, ammo]
 
 
-def _replay(rows):
+def _replay(rows, ticks=None):
     data = [v for fr in rows for r in fr for v in r]
-    return {"ticks": [100] * len(rows), "data": data}
+    return {"ticks": ticks if ticks is not None else [100] * len(rows), "data": data}
 
 
 class _FB:
@@ -44,3 +44,19 @@ def test_frame_pos_stride13():
     data = [v for fr in (fr0, fr1) for r in fr for v in r]
     assert len(data) == 2 * 2 * 13
     assert heatmaps.frame_pos(fb, {"ticks": [100, 200], "data": data}, 0, 200) == (111, 222)
+
+
+def test_winprob_post_plant_overrides():
+    fb = _FB()
+    rb = SimpleNamespace(rounds=[{"n": 1, "freezeEndTick": 0, "plantTick": 50, "endTick": 300}])
+    ct, t = _row(100, 1, 3, 4000), _row(100, 1, 2, 4000)
+
+    # planted, all T dead -> free defuse -> CT win
+    rows = [ct, ct, _row(0, 0, 2), _row(0, 0, 2)]
+    probs = compute_winprob(fb, rb, _replay([rows], ticks=[100]))
+    assert probs[0] == 0.95
+
+    # planted, all CT dead -> bomb explodes -> T win
+    rows = [_row(0, 0, 3), _row(0, 0, 3), t, t]
+    probs = compute_winprob(fb, rb, _replay([rows], ticks=[100]))
+    assert probs[0] == 0.05

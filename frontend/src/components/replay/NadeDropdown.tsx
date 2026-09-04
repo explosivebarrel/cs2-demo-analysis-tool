@@ -43,7 +43,7 @@ export default function NadeDropdown({
       </button>
       {open && (
         <div style={{
-          position: 'absolute', top: '110%', left: 0, zIndex: 300,
+          position: 'absolute', bottom: '110%', left: 0, zIndex: 300,
           background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 7,
           boxShadow: '0 4px 16px rgba(0,0,0,.45)', minWidth: 170, padding: '4px 0',
         }}>

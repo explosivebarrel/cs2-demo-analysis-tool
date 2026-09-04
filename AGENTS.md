@@ -54,17 +54,19 @@ Leaflet) не установлен и не используется. Не имп
 |---|---|
 | `api.ts` | **единственный источник типов** + fetch-клиент; WS в DemosPage |
 | `App.tsx` | роутинг + 2 контекста: `useLang`, `useBenchmarks` |
-| `i18n.ts` | i18next-инициализация + фасад `t()/getLang()/setLang()`; словари в `i18n/locales/{ru,en}/*.json` по namespace (common/demos/match/player/metrics/replay/heatmaps/chat/about), правила — `i18n/README.md` |
+| `i18n.ts` | i18next-инициализация + фасад `t()/getLang()/setLang()`; словари в `i18n/locales/{ru,en}/*.json` по namespace (common/demos/match/player/metrics/replay/heatmaps/about), правила — `i18n/README.md` |
 | `pages/DemosPage.tsx` | список/загрузка/статусы демок (WS + fallback-поллинг) |
 | `pages/OverviewPage.tsx` | счёт, скорборд, раунды |
 | `pages/PlayerPage.tsx` | 6 вкладок игрока (компоненты в `components/player/`) |
 | `pages/MetricsPage.tsx` | 21 подстраница aim/duel-метрик (switch по `:key`) |
 | `pages/HeatmapsPage.tsx` | canvas-хитмапы, `decodePoint()` послойно |
-| `pages/ReplayPage.tsx` | реплей-плеер: F_X..F_TEAM индексы, winprob, диагнозы |
+| `pages/ReplayScreen.tsx` | полноэкранный реплей-плеер: layout TopBar/драверы/MapCanvas/BottomBar, playback, хоткеи, fullscreen; компоненты в `components/replay/` (drawFrame, MapCanvas, RoundSwitcher, WinProbGraph, EventLog, LeftDrawer, RightDrawer, NadeDropdown, HotkeysModal), константы кадров и helpers — `lib/replay.ts` |
 | `benchmarkUtils.ts` | тиры метрик из `/api/benchmarks` |
 
 Маршруты: `/`, `/match/:id`, `/match/:id/player/:steamid[/metrics/:key]`,
-`/match/:id/heatmaps`, `/match/:id/replay`, `/match/:id/chat`, `/about`.
+`/match/:id/heatmaps`, `/match/:id/replay`, `/about`. Реплей — отдельный экран, вход —
+кнопка «Реплей» справа в MatchNav (передаёт `state.from` для кнопки «Назад»); вкладка
+чата удалена (backend продолжает писать `chat.json.gz`).
 
 ## Команды
 
@@ -103,10 +105,14 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
 
 ## Критические инварианты (проверять при любых правках)
 
-1. **Формат кадров реплея**: плоский `number[]`, 10 полей на игрока (x,y,z,yaw,hp,armor,alive,weaponId,flags,team),
-   индекс `frameIdx * nPlayers * 10 + playerIdx * 10 + field`. Меняешь на бэке
-   (`replayframes.py`) — синхронно правь `FIELDS`/индексы в `ReplayPage.tsx`.
-2. **`worldToCanvas` скопирована в 3 файла** (ReplayPage, HeatmapsPage, PlayerMap) — править
+1. **Формат кадров реплея (payload v2)**: плоский `number[]`, 13 полей на игрока
+   (x,y,z,yaw,hp,armor,alive,weaponId,flags,team,equip,money,ammo) плюс спарсный журнал
+   `inv: [[frameIdx, playerIdx, "id,id,..."]]` и таблица `invWeapons`; индекс
+   `frameIdx * nPlayers * 13 + playerIdx * 13 + field`. Легаси-payload'ы без `inv` —
+   11 полей (фронт различает через `fieldsOf(replay)` в `lib/replay.ts`). Меняешь stride
+   на бэке (`replayframes.py`) — синхронно правь `winprob.py` (FIELDS), `heatmaps.py`
+   (`frame_pos`) и фронт (`lib/replay.ts` F_*/fieldsOf).
+2. **`worldToCanvas` скопирована в 3 файла** (components/replay/drawFrame.ts, HeatmapsPage, PlayerMap) — править
    все три синхронно. Ось Y канваса инвертирована: для направлений (взгляд, трейлеры)
    `dy = -sin(yaw)`, позиция `py = (ov.pos_y - wy) / ov.scale`. См. memory/feedback_canvas_coords.md.
 3. **`weapon_fire` не содержит yaw** — джойнить `ctx.ticks` через `merge_asof` (nearest tick),

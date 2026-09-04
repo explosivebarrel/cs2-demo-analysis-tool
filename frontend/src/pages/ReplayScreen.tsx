@@ -81,6 +81,9 @@ export default function ReplayScreen() {
   }, [replay, analysis, searchParams])
 
   // ── canvas sizing ───────────────────────────────────────────────────────────
+  // the mid container mounts only after all three payloads arrive (overview last),
+  // so re-run the observer subscription on the real mount condition
+  const mounted = !!replay && !!overview && !!analysis
   useEffect(() => {
     const el = midRef.current
     if (!el) return
@@ -90,7 +93,7 @@ export default function ReplayScreen() {
     ro.observe(el)
     setMidSize({ w: el.clientWidth, h: el.clientHeight })
     return () => ro.disconnect()
-  }, [])
+  }, [mounted])
   const side = Math.max(200, Math.floor(Math.min(midSize.w, midSize.h)))
 
   // ── playback ────────────────────────────────────────────────────────────────

@@ -3,8 +3,8 @@
 Uses alive + HP + per-frame equipment value heuristic. Normalised to [0.05, 0.95].
 Post-plant: *1.5 boost toward T side (while the bomb is alive).
 
-Post-plant override: once the bomb is planted, a dead T side means the bomb
-will explode (CT win chance ~0.05), regardless of remaining CT firepower.
+Post-plant override: a planted bomb with no CT alive is already a T win (0.05);
+with no T alive the CTs get a free defuse (0.95) — regardless of HP/equipment.
 """
 
 
@@ -73,12 +73,12 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
             if info and info[0] <= tick <= info[1]:
                 planted = True
 
-        # post-plant: with the bomb down, dead T side cannot stop the explosion
-        if planted and alive_t == 0:
-            probs.append(0.05)
-            continue
+        # post-plant overrides: the surviving side already has the round
         if planted and alive_ct == 0:
-            probs.append(0.95)
+            probs.append(0.05)   # nobody left to defuse -> T win
+            continue
+        if planted and alive_t == 0:
+            probs.append(0.95)   # free defuse -> CT win
             continue
 
         # HP contribution: two terms — team size and average HP — so that
