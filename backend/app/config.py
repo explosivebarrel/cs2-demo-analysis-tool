@@ -17,6 +17,16 @@ MAX_UPLOAD_BYTES = int(os.environ.get("CS2_MAX_UPLOAD_MB", "1200")) * 1024 * 102
 # 0 = unlimited (default): local tool — parallel analyses are allowed
 MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "0"))
 
+# --------------------------------------------------------------- auto-import
+# Watch folders: os.pathsep-separated list of dirs scanned for new demos
+# (.dem/.zst/.gz). Empty = disabled. First scan only remembers existing files.
+WATCH_DIRS = [p for p in os.environ.get("CS2_WATCH_DIRS", "").split(os.pathsep) if p.strip()]
+WATCH_POLL_SEC = int(os.environ.get("CS2_WATCH_POLL_SEC", "20"))
+# FACEIT auto-import: poll match history of a player and download new demos.
+FACEIT_API_KEY = os.environ.get("CS2_FACEIT_API_KEY", "")
+FACEIT_PLAYER_ID = os.environ.get("CS2_FACEIT_PLAYER_ID", "")
+FACEIT_POLL_SEC = int(os.environ.get("CS2_FACEIT_POLL_SEC", "300"))
+
 # ------------------------------------------------------- radar sources
 RADAR_REPO = "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main"
 RADAR_INFO_URL = RADAR_REPO + "/data/radar_info/{map}.txt"

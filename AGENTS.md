@@ -33,17 +33,19 @@ Leaflet) не установлен и не используется. Не имп
 |---|---|
 | `main.py` | FastAPI: demos CRUD, probe/analyze/status/analysis/heatmap/replay/chat, player analytics, maps, WS `/ws/demos`; job-manager (лимит параллельных анализов, reaper мёртвых воркеров, startup-зачистка осиротевших parsing-статусов) |
 | `worker.py` | CLI-воркер (`python -m app.worker <path> <id> [--probe]`), запускается subprocess'ом из API |
-| `config.py` | пути, константы таймингов, `BENCHMARKS` (тиры weak/avg/good/elite) |
+| `ingest.py` | приём демок: распаковка `.zst`/`.gz` (потоковая, с лимитом), demo_id по имени_без_архивного_суффикса:размеру_распакованного → дедуп с plain `.dem`; атомарная запись |
+| `autowatch.py` | фоновый автоимпорт: watch-папки (`CS2_WATCH_DIRS`) + FACEIT-поллер (`CS2_FACEIT_API_KEY`/`CS2_FACEIT_PLAYER_ID`); первый скан только запоминает файлы, новые импортирует; колбэк в main.py → probe + авто-анализ |
+| `config.py` | пути, константы таймингов (`FRAME_SECONDS` ← `CS2_FRAME_SECONDS`), автоимпорт-env, `BENCHMARKS` (тиры weak/avg/good/elite) |
 | `storage.py` | реестр демок, status.json (атомарная запись), пути артефактов |
 | `overviews.py` | радары карт с GitHub (MurkyYT/cs2-map-icons), кэш, world→pixel |
-| `weapons.py` | канонизация названий оружия (en/ru/class) |
+| `weapons.py` | канонизация названий оружия (en/ru/class); `canon_key` — ключи совпадают с именами svg в `frontend/public/icons/weapons/` |
 | `pipeline/run.py` | оркестратор: собирает все стадии, пишет 5 артефактов |
-| `pipeline/context.py` | однократная загрузка демо (events, тики с даунсемплом 8 тиков, гранаты) |
+| `pipeline/context.py` | однократная загрузка демо (events, тики с даунсемплом `config.FRAME_SECONDS` ~0.125 с, гранаты) |
 | `pipeline/rounds.py` | сегментация раундов, стороны, победители (эвристика!), закупы, opening kills |
 | `pipeline/replayframes.py` | кадры реплея + holds/клатчи/выживание |
 | `pipeline/players.py` | K/D/A, урон, трейды, утилити, KAST |
 | `pipeline/rating.py` | Rating 2.1 (approx), RWS, IMP |
-| `pipeline/playeranalytics.py` | дуэли с тегами ошибок, per-player impact, mapEvents |
+| `pipeline/playeranalytics.py` | дуэли с тегами ошибок, per-player impact, mapEvents; покадровые эпизоды (позиционная скорость, WASD-вывод, shots), «моменты» с preSec/durSec |
 | `pipeline/aim_mechanics.py` | reaction time, TTK, strafe, crosshair placement, reload/overshoot |
 | `pipeline/winprob.py` | кривая вероятности победы по кадрам |
 | `pipeline/heatmaps.py` | 16 слоёв хитмапов (схемы точек — в докстринге файла) |
@@ -54,6 +56,7 @@ Leaflet) не установлен и не используется. Не имп
 |---|---|
 | `api.ts` | **единственный источник типов** + fetch-клиент; WS в DemosPage |
 | `App.tsx` | роутинг + 2 контекста: `useLang`, `useBenchmarks` |
+| `components/WeaponIcon.tsx` | иконка оружия/гранаты/ножа из `public/icons/weapons/*.svg` (resolveKey с алиасами; нет файла → текст). Иконки — Valve-ассеты из [Juknum/counter-strike-icons](https://github.com/Juknum/counter-strike-icons) |
 | `i18n.ts` | i18next-инициализация + фасад `t()/getLang()/setLang()`; словари в `i18n/locales/{ru,en}/*.json` по namespace (common/demos/match/player/metrics/replay/heatmaps/about), правила — `i18n/README.md` |
 | `pages/DemosPage.tsx` | список/загрузка/статусы демок (WS + fallback-поллинг) |
 | `pages/OverviewPage.tsx` | счёт, скорборд, раунды |
@@ -144,6 +147,21 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
     фильтр точек по z — `zOnLevel()`; радар нижнего уровня — `radarUrl(map, 'lower')` →
     `GET /api/maps/{map}/radar?level=lower` (fallback на default-радар, если
     отдельной картинки нет).
+13. **Letterbox-принцип канвасов** (реплей + хитмапы): канвас занимает блок любого
+    размера/аспекта, карта рисуется в центрированный квадрат `base=min(w,h)`;
+    `tx.scale=1` ⇔ «гарантированно вмещается» (dblclick/клавиша 0 — сброс),
+    `tx.ox/oy` относительны квадрата. Координаты курсора перед рисованием
+    конвертируются с учётом центрирующего сдвига (`(w-base)/2`). В `drawFrame`
+    это `translate(boxX+tx.ox, boxY+tx.oy)`.
+14. **Скорость из позиций, не из props**: `velocity_*` demoparser2 на прореженных
+    тиках (даунсемпл) умножены на коэффициент прореживания (на полном тикрейте
+    корректны) — скорость в эпизодах дуэлей считается позиционными дельтами
+    × tickrate (`playeranalytics._build_duel_frames`, `lib/replay.ts playerSpeedAt`).
+    `button_states` в FACEIT-демках недоступен — WASD выводится из вектора
+    движения vs yaw (forward=(cos yaw, sin yaw), right=(sin yaw, −cos yaw)).
+15. **Иконки оружий**: имена файлов в `frontend/public/icons/weapons/` =
+    canon-ключи `weapons.py`; исключения — через ALIAS в `WeaponIcon.tsx`.
+    Новые иконки — скриптом `scripts/fetch_weapon_icons.py`.
 
 ## Стиль работы
 

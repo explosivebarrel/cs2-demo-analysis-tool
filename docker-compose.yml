@@ -5,11 +5,22 @@ services:
     volumes:
       - ./demo-examples:/data/inbox:ro
       - cs2_store:/data/store
+      # auto-import watch dir: mount your folder and set CS2_WATCH_DIRS=/watch
+      # - C:/Users/you/cs2-demos:/watch:ro
     expose:
       - "8000"
     environment:
       - CS2_DATA_DIR=/data/store
       - CS2_INBOX_DIR=/data/inbox
+      # auto-import (all optional): CS2_WATCH_DIRS is a pathsep-separated list
+      # of dirs *inside* the container (mount host folders as volumes above);
+      # FACEIT needs a free API key (faceit.com -> settings -> PERSONAL API KEY)
+      # and your player id (FACEIT profile URL /players/{id})
+      - CS2_WATCH_DIRS=${CS2_WATCH_DIRS:-}
+      - CS2_WATCH_POLL_SEC=${CS2_WATCH_POLL_SEC:-20}
+      - CS2_FACEIT_API_KEY=${CS2_FACEIT_API_KEY:-}
+      - CS2_FACEIT_PLAYER_ID=${CS2_FACEIT_PLAYER_ID:-}
+      - CS2_FACEIT_POLL_SEC=${CS2_FACEIT_POLL_SEC:-300}
 
   frontend:
     build: ./frontend
