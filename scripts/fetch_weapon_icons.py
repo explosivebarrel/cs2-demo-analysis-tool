@@ -2,7 +2,7 @@
 
 Source: https://github.com/Juknum/counter-strike-icons (auto-extracted from the
 game files; Valve IP — community/educational use, matches this project's
-non-commercial MIT scope). Icon file names match weapons.py canon keys.
+non-commercial scope). Icon file names match weapons.py canon keys.
 
 Usage: .venv/Scripts/python scripts/fetch_weapon_icons.py
 """

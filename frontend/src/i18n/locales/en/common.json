@@ -120,6 +120,6 @@
     "yours": "Yours: {{value}}"
   },
   "footer": {
-    "note": "CS2 Demo Analyzer · self-hosted Counter-Strike 2 demo analytics · MIT"
+    "note": "CS2 Demo Analyzer · self-hosted Counter-Strike 2 demo analytics · AGPL-3.0"
   }
 }

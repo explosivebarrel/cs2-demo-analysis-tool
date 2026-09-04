@@ -120,6 +120,6 @@
     "yours": "У тебя: {{value}}"
   },
   "footer": {
-    "note": "CS2 Demo Analyzer · селф-хостед аналитика демок Counter-Strike 2 · MIT"
+    "note": "CS2 Demo Analyzer · селф-хостед аналитика демок Counter-Strike 2 · AGPL-3.0"
   }
 }
