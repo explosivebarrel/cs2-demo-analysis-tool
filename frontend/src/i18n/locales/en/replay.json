@@ -18,7 +18,8 @@
   },
   "rounds": {
     "warmup": "Warmup",
-    "pistol": "(pistol)"
+    "pistol": "(pistol)",
+    "knife": "Knife round"
   },
   "filter": {
     "all": "All",

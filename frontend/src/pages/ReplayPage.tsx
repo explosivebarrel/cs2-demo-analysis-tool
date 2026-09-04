@@ -317,42 +317,77 @@ function findRoundForTick(rounds: RoundData[], tick: number): RoundData | null {
 
 /** Numbered round buttons with a vertical scrubber line sliding across the active round. */
 function RoundSwitcher({
-  rounds, ticks, frameIdx, onJump,
+  rounds, ticks, frameIdx, onJump, knifeRound,
 }: {
   rounds: RoundData[]
   ticks: number[]
   frameIdx: number
   onJump: (fi: number) => void
+  knifeRound?: { startTick: number; endTick: number; winner: string } | null
 }) {
   const curTick = ticks[frameIdx] ?? 0
-  const activeRound = findRoundForTick(rounds, curTick)
 
-  // warmup: ticks before first round freezeEndTick
+  // pre-match window: warmup, then (if detected) the knife round
   const firstRoundStart = rounds.length > 0 ? rounds[0].freezeEndTick : 0
-  const isWarmup = curTick < firstRoundStart
+  const knife = knifeRound && knifeRound.endTick > 0 ? knifeRound : null
+  // if the demo starts right at the knife round, KR takes the whole window
+  const knifeStart = knife ? Math.max(ticks[0] ?? 0, Math.min(knife.startTick, firstRoundStart)) : 0
+  const hasWarmup = !knife || knifeStart > (ticks[0] ?? 0)
+  const isWarmup = curTick < knifeStart && (!knife || hasWarmup)
+  const isKnife = !!knife && curTick >= knifeStart && curTick < firstRoundStart
+  // no numbered round is active while in the pre-match window
+  const activeRound = isKnife || isWarmup ? null : findRoundForTick(rounds, curTick)
 
-  function jumpWarmup() {
-    const fi = ticks.findIndex(tk => tk > 0)
+  function jumpToTick(tick: number) {
+    const fi = ticks.findIndex(tk => tk >= tick)
     if (fi >= 0) onJump(fi)
   }
 
   return (
     <div style={{ display: 'flex', width: '100%', marginBottom: 10, border: '1px solid var(--border)', borderRadius: 0, overflow: 'visible' }}>
-      {/* warmup button */}
-      <button
-        onClick={jumpWarmup}
-        title={t('replay:rounds.warmup')}
-        style={{
-          position: 'relative', flexShrink: 0,
-          padding: '5px 8px', fontSize: 10, fontWeight: isWarmup ? 700 : 400,
-          background: isWarmup ? 'rgba(100,100,200,0.25)' : 'var(--bg2)',
-          color: isWarmup ? '#aac' : 'var(--text2)',
-          border: 'none', borderRight: '1px solid var(--border)',
-          cursor: 'pointer', textAlign: 'center', minWidth: 0, whiteSpace: 'nowrap',
-        }}
-      >
-        WU
-      </button>
+      {/* warmup button (hidden when the demo starts right at the knife round) */}
+      {(isWarmup || !knife || knifeStart > 0) && (
+        <button
+          onClick={() => jumpToTick(1)}
+          title={t('replay:rounds.warmup')}
+          style={{
+            position: 'relative', flexShrink: 0,
+            padding: '5px 8px', fontSize: 10, fontWeight: isWarmup ? 700 : 400,
+            background: isWarmup ? 'rgba(100,100,200,0.25)' : 'var(--bg2)',
+            color: isWarmup ? '#aac' : 'var(--text2)',
+            border: 'none', borderRight: '1px solid var(--border)',
+            cursor: 'pointer', textAlign: 'center', minWidth: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          WU
+        </button>
+      )}
+
+      {/* knife round button */}
+      {knife && (
+        <button
+          onClick={() => jumpToTick(knifeStart)}
+          title={t('replay:rounds.knife')}
+          style={{
+            position: 'relative', flexShrink: 0,
+            padding: '5px 8px', fontSize: 10, fontWeight: isKnife ? 700 : 400,
+            background: isKnife ? 'rgba(255,180,50,0.14)' : 'var(--bg2)',
+            color: isKnife ? 'var(--accent2)' : 'var(--text2)',
+            border: 'none', borderRight: '1px solid var(--border)',
+            cursor: 'pointer', textAlign: 'center', minWidth: 0, whiteSpace: 'nowrap',
+          }}
+        >
+          {isKnife && firstRoundStart > knifeStart && (
+            <div style={{
+              position: 'absolute', top: 0, bottom: 0,
+              left: `${Math.min(1, Math.max(0, (curTick - knifeStart) / (firstRoundStart - knifeStart))) * 100}%`,
+              width: 2, background: 'rgba(255,255,255,0.7)', transform: 'translateX(-50%)',
+              pointerEvents: 'none', zIndex: 1,
+            }} />
+          )}
+          KR
+        </button>
+      )}
 
       {rounds.map((r, ri) => {
         const isActive = activeRound?.n === r.n
@@ -1176,7 +1211,6 @@ export default function ReplayPage() {
   }
 
   const curTick = replay?.ticks[frameIdx] ?? 0
-  const currentRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
 
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
   if (!replay || !overview) return (
@@ -1197,6 +1231,10 @@ export default function ReplayPage() {
   const cursor = dragRef.current ? 'grabbing' : tx.scale > 1 ? 'grab' : 'default'
   const rounds = analysis?.rounds ?? []
   const winprob = replay.winprob ?? []
+  const knifeRound = analysis?.knifeRound ?? null
+  const firstRoundStart = rounds.length ? rounds[0].freezeEndTick : 0
+  const inKnife = !!knifeRound && curTick >= knifeRound.startTick && curTick < firstRoundStart
+  const currentRound = inKnife ? null : analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
 
   // 3-column layout: map | event log | scoreboard
   const logWidth = showEventLog ? 280 : 0
@@ -1213,6 +1251,7 @@ export default function ReplayPage() {
           ticks={replay.ticks}
           frameIdx={frameIdx}
           onJump={jumpToFrame}
+          knifeRound={analysis?.knifeRound}
         />
       )}
 
@@ -1247,13 +1286,13 @@ export default function ReplayPage() {
               onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
               onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
             />
-            {currentRound && (
+            {(currentRound || inKnife) && (
               <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,.7)', padding: '3px 10px', borderRadius: 4, fontSize: 12 }}>
-                {t('replay:roundShort')}{currentRound.n} · {currentRound.scoreTeam0}:{currentRound.scoreTeam1}
-                {currentRound.bombPlanted && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>💣</span>}
+                {inKnife ? t('replay:rounds.knife') : <>{t('replay:roundShort')}{currentRound!.n} · {currentRound!.scoreTeam0}:{currentRound!.scoreTeam1}
+                  {currentRound!.bombPlanted && <span style={{ color: 'var(--accent)', marginLeft: 8 }}>💣</span>}</>}
               </div>
             )}
-            {winprob.length > 0 && (
+            {winprob.length > 0 && !inKnife && (
               <div style={{ position: 'absolute', top: 12, right: 12, background: 'rgba(0,0,0,.7)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: '#4a9eda' }}>
                 {t('replay:side.ct')} {Math.round((winprob[frameIdx] ?? 0.5) * 100)}%
               </div>

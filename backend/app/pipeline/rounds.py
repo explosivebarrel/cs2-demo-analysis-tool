@@ -5,6 +5,7 @@ from bomb events + alive counts at the end of each round window."""
 import numpy as np
 
 from .. import config
+from ..weapons import canon
 from .ticksview import TicksView
 
 REASONS = {"elimination": "elimination", "bomb": "bomb", "defuse": "defuse", "time": "time"}
@@ -62,6 +63,7 @@ class RoundBuilder:
 
     # ------------------------------------------------------------- main
     def build(self) -> dict:
+        self.knife_round = self._knife_round()
         fe = self.ctx.ev("round_freeze_end")
         freeze_ends = [int(t) for t in fe["tick"] if self.match_start < t <= self.match_end]
         prestarts = sorted(int(t) for t in self.ctx.ev("round_prestart")["tick"])
@@ -117,6 +119,39 @@ class RoundBuilder:
         self._pistol_rounds(rounds)
         self._finalize_teams(rounds)
         return rounds
+
+    # ------------------------------------------------------------- knife
+    def _knife_round(self) -> dict | None:
+        """Pre-match knife round (FACEIT): a decisive round_end before
+        begin_new_match, validated by knives-only loadout in that window."""
+        ms = self.match_start
+        if ms <= 0:
+            return None
+        re_ev = self.ctx.ev("round_end")
+        if not len(re_ev) or "winner" not in re_ev.columns:
+            return None
+        cand = re_ev[(re_ev["tick"] < ms) & re_ev["winner"].isin(["CT", "T"])]
+        if not len(cand):
+            return None
+        end_tick = int(cand["tick"].max())
+        winner = str(cand.sort_values("tick").iloc[-1]["winner"])
+        rs = self.ctx.ev("round_start")
+        start_tick = int(rs["tick"].min()) if len(rs) else 0
+        # confirm via loadout: from the window's freeze end on, no alive
+        # player carries a gun or grenade (warmup does; knives pass —
+        # incl. cosmetic names like "Bayonet" without the "knife" substring)
+        fe = self.ctx.ev("round_freeze_end")
+        pre_fe = [int(t) for t in fe["tick"] if start_tick < t < ms]
+        probe_tick = pre_fe[-1] if pre_fe else max(start_tick, (start_tick + end_tick) // 2)
+        ticks = self.ctx.ticks
+        win = ticks[(ticks["tick"] >= probe_tick) & (ticks["tick"] <= end_tick)]
+        if "is_alive" in win.columns:
+            win = win[win["is_alive"] == True]  # noqa: E712
+        if len(win):
+            gun_classes = ("rifle", "sniper", "smg", "heavy", "pistol", "grenade")
+            if any(canon(w)[2] in gun_classes for w in win["active_weapon_name"].unique()):
+                return None
+        return {"startTick": start_tick, "endTick": end_tick, "winner": winner}
 
     # ------------------------------------------------------------- sides
     def _assign_sides(self, rounds):

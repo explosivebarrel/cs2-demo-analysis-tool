@@ -426,6 +426,7 @@ def _build_analysis(ctx, rb, fb, players, moments=None):
         "players": players_payload,
         "rounds": rounds_payload,
         "halves": halves,
+        "knifeRound": getattr(rb, "knife_round", None),
         "moments": moments,
         "weapons": weapon_id_table(),
     }
