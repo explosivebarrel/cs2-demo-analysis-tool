@@ -8,7 +8,7 @@
   "faceitTitle": "FACEIT",
   "faceitKey": "API key",
   "faceitKeySaved": "key is saved — leave the field empty to keep it",
-  "faceitKeyHint": "Free key: FACEIT Developer Portal → App Studio → your app → API Keys",
+  "faceitKeyHint": "Free key: FACEIT Developer Portal → App Studio → your app → API Keys. Note: downloading the demo files themselves requires the separate Downloads API scope (apply at fce.gg/downloads-api-application, ~30 days review) — until approved, matches appear as suggestions and demo files must be downloaded manually into a watch folder.",
   "faceitId": "Player ID (GUID from your FACEIT profile page)",
   "faceitPoll": "Polling interval, sec",
   "importTitle": "Import window",

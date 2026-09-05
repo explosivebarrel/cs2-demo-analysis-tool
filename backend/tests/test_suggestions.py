@@ -132,19 +132,18 @@ def test_faceit_state_roundtrip(tmp_path, monkeypatch):
     assert autowatch._faceit_state()["seen"] == {"m1": "abc123", "m2": ""}
 
 
-def test_faceit_suggestion_and_meta():
-    s = autowatch._faceit_suggestion({"id": "m1", "started_at": 1700000000})
+def test_faceit_suggestion_enriched_from_history():
+    item = {"id": "m1", "started_at": 1700000000,
+            "teams": {"faction1": {"nickname": "NaVi"},
+                      "faction2": {"nickname": "FaZe"}},
+            "results": {"winner": "faction1",
+                        "score": {"faction1": 16, "faction2": 14}}}
+    s = autowatch._faceit_suggestion(item)
     assert s["key"] == "faceit:m1"
-    assert s["name"] == "faceit-m1.dem"
+    assert s["teamNames"] == ["NaVi", "FaZe"]
+    assert s["score"] == [16, 14]
+    assert s["meta"] is True
     assert s["mtime"] == 1700000000
-    meta = autowatch._faceit_match_meta("m1", {
-        "teams": {"faction1": {"name": "NaVi"}, "faction2": {"name": "FaZe"}},
-        "results": {"score1": 13, "score2": 9},
-        "gameDetails": {"map": {"name": "de_inferno"}},
-        "demos": [{"name": "1-abc-0-1.dem.gz", "download_url": "http://x"}],
-    })
-    assert meta == {"teamNames": ["NaVi", "FaZe"], "score": [13, 9],
-                    "map": "de_inferno", "name": "1-abc-0-1.dem"}
 
 
 # ---------------------------------------------------------------------- fetch

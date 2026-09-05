@@ -8,7 +8,7 @@
   "faceitTitle": "FACEIT",
   "faceitKey": "API-ключ",
   "faceitKeySaved": "ключ сохранён — оставь поле пустым, чтобы не менять",
-  "faceitKeyHint": "Бесплатный ключ: FACEIT Developer Portal → App Studio → твоё приложение → API Keys",
+  "faceitKeyHint": "Бесплатный ключ: FACEIT Developer Portal → App Studio → твоё приложение → API Keys. Внимание: скачивание самих файлов демок требует отдельного скоупа Downloads API (заявка fce.gg/downloads-api-application, рассмотрение ~30 дней) — до одобрения матчи видны как предложения, а файлы качаются вручную в watch-папку.",
   "faceitId": "Player ID (GUID профиля FACEIT)",
   "faceitPoll": "Интервал опроса, сек",
   "importTitle": "Окно автоимпорта",

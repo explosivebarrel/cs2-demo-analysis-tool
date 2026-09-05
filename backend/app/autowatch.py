@@ -29,6 +29,8 @@ log = logging.getLogger("autowatch")
 FRESH_SEC = 10  # younger mtime = file is probably still being written/copied
 FACEIT_STATE_FILE = "faceit_state.json"
 FACEIT_SEEN_CAP = 500
+FACEIT_OPEN_API = "https://open.faceit.com/data/v4"
+FACEIT_DOWNLOADS_API = "https://open.faceit.com/download/v2"
 FACEIT_HISTORY_PAGE = 50
 FACEIT_HISTORY_PAGES = 3  # up to 150 matches of history per poll
 MATCH_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
@@ -153,14 +155,19 @@ def _faceit_request(url: str, key: str) -> bytes:
 
 
 def _faceit_history(eff: dict) -> list[dict]:
-    """Recent matches covering the import window: [{id, started_at}]."""
+    """Recent matches (newest first): [{id, started_at, teams, results}].
+
+    No `from` filter: the first-scan seed needs matches older than the window
+    too — they become suggestions. Window decisions are made client-side.
+    """
     key = eff["faceit"]["apiKey"]
-    cutoff = _window_cutoff(eff)
+    pid = eff["faceit"]["playerId"]
+    cutoff = int(_window_cutoff(eff))
     out: list[dict] = []
     for page in range(FACEIT_HISTORY_PAGES):
-        url = (f"https://api.faceit.com/data-api/v4/players/"
-               f"{eff['faceit']['playerId']}/history"
-               f"?limit={FACEIT_HISTORY_PAGE}&offset={page * FACEIT_HISTORY_PAGE}&game=cs2")
+        url = (f"{FACEIT_OPEN_API}/players/{pid}/history"
+               f"?limit={FACEIT_HISTORY_PAGE}&offset={page * FACEIT_HISTORY_PAGE}"
+               f"&game=cs2")
         items = json.loads(_faceit_request(url, key)).get("items") or []
         for it in items:
             mid = it.get("match_id") or it.get("id")
@@ -170,7 +177,9 @@ def _faceit_history(eff: dict) -> list[dict]:
                 started = int(it.get("started_at") or 0)
             except (TypeError, ValueError):
                 started = 0
-            out.append({"id": str(mid), "started_at": started})
+            out.append({"id": str(mid), "started_at": started,
+                        "teams": it.get("teams") or {},
+                        "results": it.get("results") or {}})
         if len(items) < FACEIT_HISTORY_PAGE:
             break
         oldest = min((m["started_at"] for m in out if m["started_at"]), default=0)
@@ -179,52 +188,45 @@ def _faceit_history(eff: dict) -> list[dict]:
     return out
 
 
-def _faceit_demo_url(match_id: str, key: str) -> tuple[str, str] | None:
-    url = f"https://api.faceit.com/matches/v1/match/{match_id}"
-    payload = json.loads(_faceit_request(url, key)).get("payload") or {}
-    for d in payload.get("demos") or []:
-        dl = d.get("download_url") or d.get("url")
-        if dl:
-            return dl, d.get("name") or f"faceit-{match_id}.dem.gz"
+def _faceit_demo_url(match_id: str, key: str) -> str | None:
+    """Cloud demo resource URL from the Data API match object."""
+    url = f"{FACEIT_OPEN_API}/matches/{match_id}"
+    m = json.loads(_faceit_request(url, key))
+    for dl in m.get("demo_url") or []:
+        return dl
     return None
 
 
-def _faceit_match_meta(match_id: str, payload: dict) -> dict:
-    """Map/teams/score/demo name from the matches/v1 payload (best effort)."""
-    out: dict = {}
-    teams = payload.get("teams") or {}
-    f1 = teams.get("faction1") or {}
-    f2 = teams.get("faction2") or {}
-    if isinstance(f1, dict) and isinstance(f2, dict) and (f1.get("name") or f2.get("name")):
-        out["teamNames"] = [f1.get("name") or "?", f2.get("name") or "?"]
-    res = payload.get("results") or {}
-    s1, s2 = res.get("score1"), res.get("score2")
-    if isinstance(s1, int) and isinstance(s2, int):
-        out["score"] = [s1, s2]
-    gd = payload.get("gameDetails") or {}
-    m = gd.get("map")
-    if isinstance(m, dict):
-        m = m.get("name")
-    if isinstance(m, str) and m:
-        out["map"] = m
-    for d in payload.get("demos") or []:
-        nm = d.get("name")
-        if nm:
-            out["name"] = ingest.strip_archive_suffix(nm)
-            break
-    return out
+def _faceit_signed_url(resource: str, key: str) -> tuple[str, dict]:
+    """Exchange a cloud resource URL for a signed link via the Downloads API.
+
+    The Downloads API scope is not part of regular API keys (separate application),
+    so on failure the direct resource URL is returned with the key as auth.
+    """
+    body = json.dumps({"resource_url": resource}).encode("utf-8")
+    req = urllib.request.Request(
+        FACEIT_DOWNLOADS_API + "/demos/download", data=body, method="POST",
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            signed = (json.load(r).get("payload") or {}).get("download_url")
+        if signed:
+            return signed, {}
+    except Exception as e:
+        log.warning("downloads api exchange failed: %s", e)
+    return resource, {"Authorization": "Bearer " + key}
 
 
 def _faceit_import_match(match_id: str, key: str) -> str | None:
-    got = _faceit_demo_url(match_id, key)
-    if not got:
+    resource = _faceit_demo_url(match_id, key)
+    if not resource:
         log.warning("faceit: no demo url for match %s", match_id)
         return None
-    dl, name = got
+    dl, headers = _faceit_signed_url(resource, key)
     raw = ingest._read_capped(urllib.request.urlopen(
-        urllib.request.Request(dl, headers={
-            "Authorization": "Bearer " + key}), timeout=120),
+        urllib.request.Request(dl, headers=headers), timeout=120),
         config.MAX_UPLOAD_BYTES)
+    name = os.path.basename(dl.split("?")[0])
     did, base, _ = ingest.save_demo(name, raw)
     with open(os.path.join(config.UPLOADS_DIR, did + ".dem.name"), "w",
               encoding="utf-8") as f:
@@ -256,11 +258,20 @@ def _save_faceit_state(st: dict) -> None:
 
 
 def _faceit_suggestion(item: dict) -> dict:
+    """Suggestion record enriched straight from history items (teams/score/date)."""
+    teams = item.get("teams") or {}
+    res = item.get("results") or {}
+    f1 = (teams.get("faction1") or {}).get("nickname") or "?"
+    f2 = (teams.get("faction2") or {}).get("nickname") or "?"
+    score = res.get("score") or {}
     started = item["started_at"]
     return {
         "key": f"faceit:{item['id']}",
         "source": "faceit",
         "name": f"faceit-{item['id']}.dem",
+        "teamNames": [f1, f2],
+        "score": [score.get("faction1", 0), score.get("faction2", 0)] if score else [],
+        "meta": True,  # history carries everything we show; map is not in the API
         "mtime": started,
         "date": datetime.fromtimestamp(started, tz=timezone.utc).isoformat() if started else "",
     }
@@ -310,6 +321,8 @@ async def _faceit_loop(eff: dict, on_imported):
 
 # ------------------------------------------------------- suggestion enrichment
 def _enrich_one(item: dict, eff: dict) -> None:
+    """Fill in metadata for one watch-file suggestion (probe). FACEIT records
+    are born enriched from history items."""
     try:
         if item["source"] == "watch":
             from .pipeline.probe import probe_demo
@@ -317,15 +330,6 @@ def _enrich_one(item: dict, eff: dict) -> None:
             suggestions.update(item["key"], map=info.get("map", ""),
                                score=info.get("score", []),
                                teamNames=info.get("teamNames", []), meta=True)
-            return
-        if item["source"] == "faceit":
-            mid = item["key"].split(":", 1)[1]
-            payload = json.loads(_faceit_request(
-                f"https://api.faceit.com/matches/v1/match/{mid}",
-                eff["faceit"]["apiKey"])).get("payload") or {}
-            fields = _faceit_match_meta(mid, payload)
-            fields["meta"] = True
-            suggestions.update(item["key"], **fields)
             return
     except Exception as e:
         log.warning("enrich %s failed: %s", item["key"], e)
