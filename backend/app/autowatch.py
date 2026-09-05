@@ -19,6 +19,7 @@ import os
 import re
 import threading
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -200,8 +201,10 @@ def _faceit_demo_url(match_id: str, key: str) -> str | None:
 def _faceit_signed_url(resource: str, key: str) -> tuple[str, dict]:
     """Exchange a cloud resource URL for a signed link via the Downloads API.
 
-    The Downloads API scope is not part of regular API keys (separate application),
-    so on failure the direct resource URL is returned with the key as auth.
+    The Downloads API scope is not part of regular API keys (separate
+    application at fce.gg/downloads-api-application), so a 403 here is raised
+    as an actionable error; other failures fall back to the direct resource
+    URL authenticated with the API key.
     """
     body = json.dumps({"resource_url": resource}).encode("utf-8")
     req = urllib.request.Request(
@@ -212,6 +215,11 @@ def _faceit_signed_url(resource: str, key: str) -> tuple[str, dict]:
             signed = (json.load(r).get("payload") or {}).get("download_url")
         if signed:
             return signed, {}
+    except urllib.error.HTTPError as e:
+        if e.code == 403:
+            raise RuntimeError(
+                "FACEIT Downloads API scope required (apply at fce.gg/downloads-api-application)")
+        log.warning("downloads api exchange failed: %s", e)
     except Exception as e:
         log.warning("downloads api exchange failed: %s", e)
     return resource, {"Authorization": "Bearer " + key}
@@ -223,9 +231,12 @@ def _faceit_import_match(match_id: str, key: str) -> str | None:
         log.warning("faceit: no demo url for match %s", match_id)
         return None
     dl, headers = _faceit_signed_url(resource, key)
-    raw = ingest._read_capped(urllib.request.urlopen(
-        urllib.request.Request(dl, headers=headers), timeout=120),
-        config.MAX_UPLOAD_BYTES)
+    try:
+        raw = ingest._read_capped(urllib.request.urlopen(
+            urllib.request.Request(dl, headers=headers), timeout=120),
+            config.MAX_UPLOAD_BYTES)
+    except Exception as e:
+        raise RuntimeError(f"demo download failed: {e}") from e
     name = os.path.basename(dl.split("?")[0])
     did, base, _ = ingest.save_demo(name, raw)
     with open(os.path.join(config.UPLOADS_DIR, did + ".dem.name"), "w",
