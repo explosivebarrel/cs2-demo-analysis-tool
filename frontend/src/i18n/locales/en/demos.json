@@ -4,6 +4,11 @@
   "chooseFile": "choose file",
   "uploadErrorArchive": "Could not read file. If it's inside an archive — extract it to disk first.",
   "uploadErrorGeneric": "Upload failed",
+  "srcWatch": "folder",
+  "srcFaceit": "FACEIT",
+  "fetchAnalyze": "Download & analyze",
+  "fetching": "Downloading...",
+  "fetchError": "Download failed",
   "filter": {
     "close": "Close filters"
   }

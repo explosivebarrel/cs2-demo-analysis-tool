@@ -22,6 +22,7 @@ export default function SettingsPage() {
   const [faceitPoll, setFaceitPoll] = useState(300)
   const [apiKey, setApiKey] = useState('')
   const [apiKeySet, setApiKeySet] = useState(false)
+  const [windowHours, setWindowHours] = useState(12)
   const [progress, setProgress] = useState<Settings['progress']>()
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -34,6 +35,7 @@ export default function SettingsPage() {
       setPlayerId(s.faceit.playerId)
       setFaceitPoll(s.faceit.pollSec)
       setApiKeySet(s.faceit.apiKeySet)
+      setWindowHours(s.import?.windowHours ?? 12)
       setProgress(s.progress)
     }).catch(e => setErr(e.message))
   }, [])
@@ -51,6 +53,7 @@ export default function SettingsPage() {
         // empty field = keep the stored key
         apiKey: apiKey === '' ? null : apiKey,
       },
+      import: { windowHours: Number(windowHours) },
     }
     try {
       await api.saveSettings(patch)
@@ -60,6 +63,7 @@ export default function SettingsPage() {
       setPlayerId(s.faceit.playerId)
       setFaceitPoll(s.faceit.pollSec)
       setApiKeySet(s.faceit.apiKeySet)
+      setWindowHours(s.import?.windowHours ?? 12)
       setApiKey('')
       setSaved(true)
       setTimeout(() => setSaved(false), 5000)
@@ -107,6 +111,18 @@ export default function SettingsPage() {
         <label style={labelStyle}>{t('settings:faceitPoll')}</label>
         <input type="number" min={30} max={86400} value={faceitPoll}
           onChange={e => setFaceitPoll(Number(e.target.value))} style={{ ...inputStyle, width: 140 }} />
+      </div>
+
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 2 }}>{t('settings:importTitle')}</div>
+        <label style={labelStyle}>{t('settings:importWindow')}</label>
+        <select value={windowHours} onChange={e => setWindowHours(Number(e.target.value))}
+          style={{ ...inputStyle, width: 140 }}>
+          {[1, 2, 8, 12, 24, 48, 72].map(h => (
+            <option key={h} value={h}>{t('settings:hours', { n: h })}</option>
+          ))}
+        </select>
+        <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>{t('settings:importWindowHint')}</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>

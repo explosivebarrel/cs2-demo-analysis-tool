@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
-from . import autowatch, config, settings, storage, ingest
+from . import autowatch, config, settings, storage, ingest, suggestions
 from .overviews import overview_for_client, radar_png_path
 
 app = FastAPI(title="CS2 Demo Analyzer")
@@ -100,11 +100,14 @@ def _auto_imported(did: str) -> None:
     demo = next((d for d in storage.list_demos() if d["id"] == did), None)
     if not demo:
         return
+    if not os.path.exists(os.path.join(storage.analysis_dir(did), "analysis.json.gz")):
+        if _start_job(demo) == "started":
+            # analysis shows its own progress and writes all the metadata;
+            # probing in parallel would fight over the same status.json
+            return
     st = storage.read_status(did) or {}
     if st.get("status") in ("new", None):
         _start_probe(demo)
-    if not os.path.exists(os.path.join(storage.analysis_dir(did), "analysis.json.gz")):
-        _start_job(demo)
 
 
 @app.on_event("startup")
@@ -124,15 +127,19 @@ async def _startup():
         logging.getLogger("main").info("auto-import: %d source(s) enabled", n)
 
 _jobs: dict[str, subprocess.Popen] = {}
+_probe_jobs: dict[str, subprocess.Popen] = {}
 _jobs_lock = threading.Lock()
 _analyze_dids: set[str] = set()
 
 
 def _reap_locked() -> None:
     """Remove finished workers; flag statuses they left behind. Callers hold _jobs_lock."""
-    dead = [did for did, p in _jobs.items() if p.poll() is not None]
+    dead: set[str] = set()
+    for registry in (_jobs, _probe_jobs):
+        for did in [did for did, p in registry.items() if p.poll() is not None]:
+            registry.pop(did, None)
+            dead.add(did)
     for did in dead:
-        _jobs.pop(did, None)
         _analyze_dids.discard(did)
     for did in dead:
         st = storage.read_status(did) or {}
@@ -176,13 +183,13 @@ def _find_demo(did: str) -> dict:
 def _start_probe(demo: dict) -> bool:
     did = demo["id"]
     with _jobs_lock:
-        if did in _jobs and _jobs[did].poll() is None:
+        proc = _probe_jobs.get(did)
+        if proc is not None and proc.poll() is None:
             return False
-        proc = subprocess.Popen(
+        _probe_jobs[did] = subprocess.Popen(
             [sys.executable, "-m", "app.worker", _demo_fs_path(demo), did, "--probe"],
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
-        _jobs[did] = proc
     return True
 
 
@@ -264,7 +271,22 @@ async def put_settings(patch: dict):
 
 @app.get("/api/demos")
 def demos():
-    return storage.list_demos()
+    items = storage.list_demos() + suggestions.list_entries()
+    items.sort(key=lambda d: -(d.get("mtime") or 0))
+    return items
+
+
+@app.post("/api/demos/fetch")
+async def fetch_demo(body: dict):
+    """Download & analyze a suggestion (watch file or FACEIT match)."""
+    key = str(body.get("key") or "")
+    if suggestions.get(key) is None:
+        raise HTTPException(404, "suggestion not found")
+    if suggestions.get(key).get("fetching"):
+        raise HTTPException(409, "already fetching")
+    threading.Thread(target=autowatch.fetch_suggestion,
+                     args=(key, _auto_imported), daemon=True).start()
+    return {"started": True}
 
 
 @app.post("/api/demos/upload")

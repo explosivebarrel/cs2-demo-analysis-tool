@@ -3,14 +3,20 @@ import json
 import os
 import time
 
-from app import autowatch, config, settings
+from app import autowatch, config, settings, suggestions
 
 
 def _make_watch_dir(tmp_path, monkeypatch):
     d = tmp_path / "watch"
     d.mkdir()
     monkeypatch.setattr(config, "WATCH_DIRS", [str(d)])
+    monkeypatch.setattr(suggestions, "PATH", str(tmp_path / "suggestions.json"))
     return d
+
+
+def _scan(seen, dirs):
+    # cutoff an hour back: everything settled counts as inside the window
+    return autowatch._scan_once(seen, dirs, time.time() - 3600, set())
 
 
 def _settle(path):
@@ -25,7 +31,7 @@ def test_seed_ignores_non_demos(tmp_path, monkeypatch):
 
     seen = set(autowatch._iter_watch_files([str(d)]))
     assert len(seen) == 1
-    assert autowatch._scan_once(seen, [str(d)]) == []  # nothing new afterwards
+    assert _scan(seen, [str(d)]) == []  # nothing new afterwards
 
 
 def test_scan_imports_new_file(tmp_path, monkeypatch):
@@ -37,7 +43,7 @@ def test_scan_imports_new_file(tmp_path, monkeypatch):
     demo.write_bytes(b"\x00" * 16)
     _settle(demo)
 
-    imported = autowatch._scan_once(seen, dirs)
+    imported = _scan(seen, dirs)
     assert len(imported) == 1
     did = imported[0]
     assert os.path.exists(os.path.join(config.UPLOADS_DIR, did + ".dem"))
@@ -48,10 +54,10 @@ def test_scan_imports_new_file(tmp_path, monkeypatch):
     # fresh file (still copying) is postponed, not lost
     fresh = d / "fresh.dem"
     fresh.write_bytes(b"\x00" * 16)
-    assert autowatch._scan_once(seen, dirs) == []
+    assert _scan(seen, dirs) == []
     assert str(fresh) not in seen
     _settle(fresh)
-    assert len(autowatch._scan_once(seen, dirs)) == 1
+    assert len(_scan(seen, dirs)) == 1
 
 
 def test_import_failure_not_retried(tmp_path, monkeypatch):
@@ -60,8 +66,8 @@ def test_import_failure_not_retried(tmp_path, monkeypatch):
     _settle(d / "bad.zst")
     dirs = [str(d)]
     seen: set[str] = set()
-    assert autowatch._scan_once(seen, dirs) == []
-    assert autowatch._scan_once(seen, dirs) == []  # marked seen despite failure
+    assert _scan(seen, dirs) == []
+    assert _scan(seen, dirs) == []  # marked seen despite failure
 
 
 def test_status_masks_key_and_reports(monkeypatch, tmp_path):

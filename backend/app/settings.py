@@ -47,6 +47,17 @@ def write(patch: dict) -> None:
         poll = faceit.get("pollSec")
         if poll is not None:
             clean.setdefault("faceit", {})["pollSec"] = _poll_int(poll, "faceit")
+    imp = patch.get("import")
+    if isinstance(imp, dict):
+        wh = imp.get("windowHours")
+        if wh is not None:
+            try:
+                v = int(wh)
+            except (TypeError, ValueError):
+                raise ValueError("import.windowHours must be an integer")
+            if not 1 <= v <= 720:
+                raise ValueError("import.windowHours must be 1..720")
+            clean.setdefault("import", {})["windowHours"] = v
     if not clean:
         return
     cur = read()
@@ -78,9 +89,10 @@ def effective() -> dict:
             "playerId": config.FACEIT_PLAYER_ID,
             "pollSec": config.FACEIT_POLL_SEC,
         },
+        "import": {"windowHours": config.IMPORT_WINDOW_HOURS},
     }
     saved = read()
-    for section in ("watch", "faceit"):
+    for section in ("watch", "faceit", "import"):
         if isinstance(saved.get(section), dict):
             for k, v in saved[section].items():
                 if v is not None:
@@ -89,4 +101,5 @@ def effective() -> dict:
     for section in ("watch", "faceit"):
         lo, hi = POLL_LIMITS[section]
         eff[section]["pollSec"] = max(lo, min(hi, int(eff[section]["pollSec"])))
+    eff["import"]["windowHours"] = max(1, min(720, int(eff["import"]["windowHours"])))
     return eff

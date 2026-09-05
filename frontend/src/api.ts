@@ -27,9 +27,10 @@ async function req<T>(url: string, opts?: RequestInit): Promise<T> {
 
 export interface DemoEntry {
   id: string
+  key?: string
   name: string
   size: number
-  source: 'inbox' | 'upload'
+  source: 'inbox' | 'upload' | 'faceit' | 'watch'
   status?: string
   progress?: number
   phase?: string
@@ -41,6 +42,7 @@ export interface DemoEntry {
   teamNames?: string[]
   players?: { steamid: string; name: string; clan: string; team: number }[]
   date?: string
+  fetching?: boolean
 }
 
 export interface AnalysisData {
@@ -344,8 +346,10 @@ export interface Moment {
 }
 
 export interface AutoimportStatus {
+  import?: { windowHours: number }
   watch: { enabled: boolean; dirs: string[]; pollSec: number }
   faceit: { enabled: boolean; playerId: string; pollSec: number; knownMatches: number }
+  suggestions?: number
 }
 
 export interface ProgressStageInfo {
@@ -358,12 +362,14 @@ export interface ProgressStageInfo {
 export interface Settings {
   watch: { dirs: string[]; pollSec: number }
   faceit: { apiKeySet: boolean; playerId: string; pollSec: number }
+  import?: { windowHours: number }
   progress?: { source: 'default' | 'measured' | 'pinned'; stages: ProgressStageInfo[] }
 }
 
 export interface SettingsPatch {
   watch?: { dirs?: string[]; pollSec?: number }
   faceit?: { apiKey?: string | null; playerId?: string; pollSec?: number }
+  import?: { windowHours?: number }
 }
 
 export const api = {
@@ -386,6 +392,11 @@ export const api = {
     return req(`/demos/${id}/analyze`, { method: 'POST' })
   },
   probe: (id: string): Promise<unknown> => req(`/demos/${id}/probe`, { method: 'POST' }),
+  fetchDemo: (key: string): Promise<{ started: boolean }> => req('/demos/fetch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  }),
   status: (id: string): Promise<StatusData> => req(`/demos/${id}/status`),
   delete: (id: string): Promise<unknown> => {
     evictDemo(id)

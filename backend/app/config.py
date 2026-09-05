@@ -26,6 +26,9 @@ WATCH_POLL_SEC = int(os.environ.get("CS2_WATCH_POLL_SEC", "20"))
 FACEIT_API_KEY = os.environ.get("CS2_FACEIT_API_KEY", "")
 FACEIT_PLAYER_ID = os.environ.get("CS2_FACEIT_PLAYER_ID", "")
 FACEIT_POLL_SEC = int(os.environ.get("CS2_FACEIT_POLL_SEC", "300"))
+# Only demos newer than this are imported automatically; older known ones
+# surface in the demos list as manual "download & analyze" suggestions.
+IMPORT_WINDOW_HOURS = int(os.environ.get("CS2_IMPORT_WINDOW_HOURS", "12"))
 
 # ------------------------------------------------------- radar sources
 RADAR_REPO = "https://raw.githubusercontent.com/MurkyYT/cs2-map-icons/main"
