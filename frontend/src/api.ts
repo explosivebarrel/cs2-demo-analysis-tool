@@ -27,9 +27,10 @@ async function req<T>(url: string, opts?: RequestInit): Promise<T> {
 
 export interface DemoEntry {
   id: string
+  key?: string
   name: string
   size: number
-  source: 'inbox' | 'upload'
+  source: 'inbox' | 'upload' | 'faceit' | 'watch'
   status?: string
   progress?: number
   phase?: string
@@ -41,6 +42,7 @@ export interface DemoEntry {
   teamNames?: string[]
   players?: { steamid: string; name: string; clan: string; team: number }[]
   date?: string
+  fetching?: boolean
 }
 
 export interface AnalysisData {
@@ -105,7 +107,7 @@ export interface SideSummary {
 
 export interface SeriesPoint { n: number; k: number; d: number; a: number; dmg: number; sv: number; kast: number; opening: string | null; mk: boolean; pistol: number; mvp: number; won: number; imp: number; nades: number }
 
-export interface ClutchEntry { round: number; enemies: number; won: boolean; kills: number }
+export interface ClutchEntry { round: number; enemies: number; won: boolean; kills: number; t0?: number }
 
 export interface RoundData {
   n: number; freezeEndTick: number; endTick: number; durSec: number
@@ -131,7 +133,7 @@ export interface HeatPoint {
   weapon?: string; hs?: boolean; phase?: string
 }
 
-export interface WeaponInfo { raw: string; en: string; ru: string; cls: string }
+export interface WeaponInfo { raw: string; key?: string; en: string; ru: string; cls: string }
 
 export interface InvWeaponInfo { en: string; ru: string; cls: string }
 
@@ -196,10 +198,20 @@ export interface PlayerAnalyticsData {
 
 export interface DuelFrame {
   t: number      // ms offset from kill tick (negative = before)
-  vel: number    // speed in u/s
+  vel: number    // speed in u/s (from positional deltas — velocity props lie on downsampled ticks)
+  w: boolean     // moving forward (velocity direction vs yaw)
+  a: boolean     // strafing left
+  s: boolean     // moving back
+  d: boolean     // strafing right
   jump: boolean  // player_jump event in this tick window
   duck: boolean  // duck_amount > 0.3
   walk: boolean  // is_walking (Shift)
+}
+
+export interface DuelShot {
+  t: number      // ms offset from kill tick
+  sid: string | null  // shooter (duel attacker or victim)
+  hit: boolean   // player_hurt from this shooter within 0.15s
 }
 
 export interface DuelEpisode {
@@ -226,6 +238,7 @@ export interface DuelEpisode {
     attackerWalking: boolean
   }
   frames: DuelFrame[]
+  shots?: DuelShot[]
 }
 
 export interface PlayerMetrics {
@@ -315,6 +328,8 @@ export interface PlayerHistoryEntry {
   adr: number
   kast: number
   rating: number
+  rws?: number
+  imp?: number
 }
 
 export interface Moment {
@@ -325,11 +340,49 @@ export interface Moment {
   won?: boolean
   count?: number
   detail?: string
+  // highlight window on the timeline: [tick - preSec, tick + durSec]
+  preSec?: number
+  durSec?: number
+}
+
+export interface AutoimportStatus {
+  import?: { windowHours: number }
+  watch: { enabled: boolean; dirs: string[]; pollSec: number }
+  faceit: { enabled: boolean; playerId: string; pollSec: number; knownMatches: number }
+  suggestions?: number
+}
+
+export interface ProgressStageInfo {
+  stage: string
+  phase: string
+  pct: [number, number]
+  sec: number
+}
+
+export interface Settings {
+  watch: { dirs: string[]; pollSec: number }
+  faceit: { apiKeySet: boolean; playerId: string; pollSec: number }
+  import?: { windowHours: number }
+  progress?: { source: 'default' | 'measured' | 'pinned'; stages: ProgressStageInfo[] }
+}
+
+export interface SettingsPatch {
+  watch?: { dirs?: string[]; pollSec?: number }
+  faceit?: { apiKey?: string | null; playerId?: string; pollSec?: number }
+  import?: { windowHours?: number }
 }
 
 export const api = {
   demos: (): Promise<DemoEntry[]> => req('/demos'),
   benchmarks: (): Promise<Benchmarks> => req('/benchmarks'),
+  autoimport: (): Promise<AutoimportStatus> => req('/autoimport'),
+  getSettings: (): Promise<Settings> => req('/settings'),
+  saveSettings: (patch: SettingsPatch): Promise<AutoimportStatus> =>
+    req('/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    }),
   upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
     const fd = new FormData(); fd.append('file', file)
     return req('/demos/upload', { method: 'POST', body: fd })
@@ -339,6 +392,11 @@ export const api = {
     return req(`/demos/${id}/analyze`, { method: 'POST' })
   },
   probe: (id: string): Promise<unknown> => req(`/demos/${id}/probe`, { method: 'POST' }),
+  fetchDemo: (key: string): Promise<{ started: boolean }> => req('/demos/fetch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key }),
+  }),
   status: (id: string): Promise<StatusData> => req(`/demos/${id}/status`),
   delete: (id: string): Promise<unknown> => {
     evictDemo(id)

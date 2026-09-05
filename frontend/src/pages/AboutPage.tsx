@@ -1,5 +1,8 @@
+import { useEffect, useState } from 'react'
+import { NavLink } from 'react-router-dom'
 import { t } from '../i18n'
 import { useLang } from '../App'
+import { api, AutoimportStatus } from '../api'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -26,6 +29,42 @@ function P({ children }: { children: React.ReactNode }) {
 
 function H({ children }: { children: React.ReactNode }) {
   return <div style={{ fontWeight: 700, fontSize: 15, marginTop: 14, marginBottom: 4 }}>{children}</div>
+}
+
+function AutoImportSection() {
+  const [st, setSt] = useState<AutoimportStatus | null>(null)
+  useEffect(() => { api.autoimport().then(setSt).catch(() => {}) }, [])
+  const on = <b style={{ color: 'var(--green)' }}>{t('about:aboutAutoOn')}</b>
+  const off = <b style={{ color: 'var(--text3)' }}>{t('about:aboutAutoOff')}</b>
+  return (
+    <Section title={t('about:sections.autoimport')}>
+      <P>{t('about:aboutAutoDesc')}</P>
+      <P><NavLink to="/settings" style={{ color: 'var(--accent)' }}>{t('about:aboutAutoOpenSettings')} →</NavLink></P>
+      <P>{t('about:aboutAutoWatch')}</P>
+      <P>{t('about:aboutAutoFaceit')}</P>
+      <P>{t('about:aboutAutoNote')}</P>
+      <H>{t('about:aboutAutoStatus')}</H>
+      {st ? (
+        <ul style={{ color: 'var(--text2)', fontSize: 14, lineHeight: 1.8, paddingLeft: 20 }}>
+          <li>
+            {t('about:aboutAutoWatchLabel')}: {st.watch.enabled ? on : off}
+            {st.watch.enabled && (
+              <> · {st.watch.dirs.join(', ')} · {t('about:aboutAutoPollSec', { sec: st.watch.pollSec })}</>
+            )}
+          </li>
+          <li>
+            FACEIT: {st.faceit.enabled ? on : off}
+            {st.faceit.enabled && (
+              <> · {st.faceit.playerId} · {t('about:aboutAutoPollSec', { sec: st.faceit.pollSec })}
+                {' · '}{t('about:aboutAutoKnown', { count: st.faceit.knownMatches })}</>
+            )}
+          </li>
+        </ul>
+      ) : (
+        <P>{t('loading')}</P>
+      )}
+    </Section>
+  )
 }
 
 export default function AboutPage() {
@@ -68,6 +107,8 @@ export default function AboutPage() {
         <P>{t('aboutImpNote1')}</P>
         <P>{t('aboutImpNote2')}</P>
       </Section>
+
+      <AutoImportSection />
     </div>
   )
 }

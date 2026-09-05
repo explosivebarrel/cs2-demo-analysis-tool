@@ -367,7 +367,8 @@ def compute_players(ctx, rb, fb):
         p = P(c["player"])
         if p:
             p.clutchAttempts.append({"round": c["round"], "enemies": c["maxEnemies"],
-                                     "won": c["won"], "kills": c["kills"]})
+                                     "won": c["won"], "kills": c["kills"],
+                                     "t0": int(c["t0"])})
 
     # ---------------------------------------------------------- frame stats
     # deaths indexed per victim: the last downsampled frame of a round may

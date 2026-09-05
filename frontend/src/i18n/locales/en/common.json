@@ -1,5 +1,13 @@
 {
   "demos": "Demos",
+  "settings": "Settings",
+  "grenades": "Grenades",
+  "reasons": {
+    "elimination": "Elimination",
+    "bomb": "Bomb exploded",
+    "defuse": "Bomb defused",
+    "time": "Time ran out"
+  },
   "overview": "Match Overview",
   "heatmaps": "Heatmaps",
   "replay": "Replay",
@@ -104,7 +112,7 @@
   "levelLower": "Lower",
   "slowDown": "Slow down",
   "confirmDeleteDemo": "Delete demo?",
-  "onlyDemFiles": ".dem files only",
+  "onlyDemFiles": ".dem / .dem.zst / .gz files only",
   "pistolRound": "pistol",
   "benchmarks": {
     "tier": {
@@ -118,5 +126,8 @@
     "good": "Good: {{range}}",
     "elite": "Elite: {{range}}",
     "yours": "Yours: {{value}}"
+  },
+  "footer": {
+    "note": "CS2 Demo Analyzer · self-hosted Counter-Strike 2 demo analytics · AGPL-3.0"
   }
 }

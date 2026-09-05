@@ -9,6 +9,7 @@
   --accent2: #f5c542;
   --text: #dde1e9;
   --text2: #8b909e;
+  --text3: #6b7080;
   --green: #4caf7d;
   --red: #e05252;
   --blue: #4a9eda;
@@ -18,6 +19,14 @@
 }
 
 body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+/* thin dark scrollbars everywhere (default white ones glow on the dark bg) */
+* { scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #3a3e48; }
+::-webkit-scrollbar-corner { background: transparent; }
 
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
@@ -121,3 +130,7 @@ tr:hover td { background: var(--bg3); }
 .text-right { text-align: right; }
 .bold { font-weight: 700; }
 .w-full { width: 100%; }
+
+/* clickable table rows (player history, etc.) */
+.row-link { cursor: pointer; }
+.row-link:hover { background: var(--bg3); }

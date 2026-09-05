@@ -144,7 +144,7 @@ function RoundsTable({ data }: { data: AnalysisData }) {
             <th>#</th><th>{t('score')}</th><th>{t('winner')}</th>
             <th>{t('reason')}</th><th>{t('buy')} {teams[0].name}</th>
             <th>{t('buy')} {teams[1].name}</th><th>{t('plant')}</th>
-            <th>🔴</th>
+            <th>{t('grenades')}</th>
             <th>MVP</th>
           </tr>
         </thead>
@@ -162,7 +162,7 @@ function RoundsTable({ data }: { data: AnalysisData }) {
                 </td>
                 <td>{r.scoreTeam0}:{r.scoreTeam1}</td>
                 <td style={{ fontWeight: 600 }}>{wName}</td>
-                <td style={{ color: 'var(--text2)' }}>{r.reason}</td>
+                <td style={{ color: 'var(--text2)' }}>{t('reasons.' + r.reason)}</td>
                 <td>
                   <span style={{ color: sideColor(side0), fontSize: 11, marginRight: 4 }}>{side0}</span>
                   {buyLabel(r.buyTeam0)}

@@ -15,7 +15,7 @@ export default function RoundSwitcher({
   knifeRound?: KnifeRound | null
   matchStartTick?: number
 }) {
-  const curTick = ticks[frameIdx] ?? 0
+  const curTick = ticks[Math.floor(frameIdx)] ?? 0
   const tick0 = ticks[0] ?? 0
 
   // pre-match window: warmup, then (if detected) the knife round

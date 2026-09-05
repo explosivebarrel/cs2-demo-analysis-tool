@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnalysisData, ReplayData, RoundData } from '../../api'
 import { findRoundForTick, teamColorAtFrame } from '../../lib/replay'
 import { t, getLang } from '../../i18n'
+import WeaponIcon from '../WeaponIcon'
 
 // ── kill diagnosis rules ──────────────────────────────────────────────────────
 interface KillContext {
@@ -50,7 +51,7 @@ export default function EventLog({
   const [filter, setFilter] = useState<EventFilter>('all')
   const [focusPidx, setFocusPidx] = useState<number | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
-  const curTick = replay.ticks[frameIdx] ?? 0
+  const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
 
   const curRound = analysis?.rounds ? findRoundForTick(analysis.rounds as RoundData[], curTick) : null
   const roundStart = curRound?.freezeEndTick ?? 0
@@ -95,7 +96,7 @@ export default function EventLog({
       const aTeam = replay.players[ai]?.team ?? -1
       const diag = kc ? diagnosisLines(kc, true) : []
       const highlighted = focusPidx !== null && (ai === focusPidx || vi === focusPidx)
-      const attackerColor = aTeam >= 0 ? teamColorAtFrame(replay, frameIdx, aTeam) : '#fff'
+      const attackerColor = aTeam >= 0 ? teamColorAtFrame(replay, Math.floor(frameIdx), aTeam) : '#fff'
       return (
         <div key={idx}
           style={{ padding: '6px 8px', borderBottom: '1px solid var(--border)', background: highlighted ? 'rgba(255,255,255,0.04)' : 'transparent', cursor: 'pointer' }}
@@ -103,11 +104,17 @@ export default function EventLog({
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
-            <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '1px 5px' }}>{t('replay:eventLog.kill')}{hs ? ` ${t('replay:eventLog.hs')}` : ''}</span>
+            <span style={{ fontSize: 10, background: 'var(--red)', color: '#fff', borderRadius: 3, padding: '2px 5px', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              {t('replay:eventLog.kill')}
+              {hs && <img src="/icons/weapons/icon_headshot.svg" alt="HS" width={11} height={11} />}
+            </span>
             <span style={{ fontSize: 12, color: attackerColor, fontWeight: 600 }}>{attacker}</span>
             <span style={{ fontSize: 10, color: 'var(--text2)' }}>→</span>
             <span style={{ fontSize: 12, color: 'var(--text2)' }}>{victim}</span>
-            <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto' }}>{weapName}</span>
+            <span style={{ fontSize: 10, color: 'var(--text2)', marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <WeaponIcon id={weapInfo?.key} name={weapName || null} size={13} />
+              {weapName}
+            </span>
           </div>
           {diag.map((d, di) => (
             <div key={di} style={{ fontSize: 11, color: 'var(--accent)', marginTop: 2, paddingLeft: 36 }}>{d}</div>
@@ -123,9 +130,11 @@ export default function EventLog({
     if (bombLabels[ty]) {
       const pidx = e.p as number
       const pname = replay.players[pidx]?.name ?? ''
+      const bombIcon = ty === 'bp' ? 'planted_c4' : ty === 'bf' ? 'defuser' : ty === 'bx' ? 'c4' : 'bomb_c4'
       return (
         <div key={idx} style={{ padding: '5px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
           <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
+          <img src={`/icons/weapons/${bombIcon}.svg`} alt="" width={13} height={13} style={{ flexShrink: 0 }} />
           <span style={{ fontSize: 12 }}>{bombLabels[ty]}{pname ? ` · ${pname}` : ''}</span>
         </div>
       )
@@ -134,12 +143,16 @@ export default function EventLog({
     const nadeLabels: Record<string, string> = {
       sm: t('replay:nade.smoke'), hd: t('replay:nade.he'), fd: t('replay:nade.flash'), fr: t('replay:nade.molotov'),
     }
+    const nadeIcons: Record<string, string> = {
+      sm: 'smokegrenade', hd: 'hegrenade', fd: 'flashbang', fr: 'molotov',
+    }
     if (nadeLabels[ty]) {
       const pidx = e.p as number
       const pname = replay.players[pidx]?.name ?? ''
       return (
         <div key={idx} style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center', opacity: 0.8 }}>
           <span style={{ fontSize: 10, color: 'var(--text2)', minWidth: 30 }}>{fmtTick(tick)}</span>
+          <img src={`/icons/weapons/${nadeIcons[ty]}.svg`} alt="" width={13} height={13} style={{ flexShrink: 0 }} />
           <span style={{ fontSize: 11, color: 'var(--text2)' }}>{nadeLabels[ty]}{pname ? ` · ${pname}` : ''}</span>
         </div>
       )

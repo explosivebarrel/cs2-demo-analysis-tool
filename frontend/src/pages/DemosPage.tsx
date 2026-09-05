@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useReducer, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, DemoEntry } from '../api'
 import { t } from '../i18n'
@@ -36,7 +36,7 @@ function isAnalyzed(d: DemoEntry) {
 }
 
 function isUnanalyzed(d: DemoEntry) {
-  return !d.status || d.status === 'new' || d.status === 'probed' || d.status === 'probing' || d.status === 'error'
+  return !d.status || d.status === 'new' || d.status === 'probed' || d.status === 'probing' || d.status === 'error' || d.status === 'available'
 }
 
 function demoDate(d: DemoEntry): Date | null {
@@ -72,14 +72,31 @@ function StatusBadge({ d }: { d: DemoEntry }) {
 
 // ── ProgressRow ──────────────────────────────────────────────────────────────
 
+// parse start timestamps survive re-renders so the elapsed label keeps ticking
+const parseStart: Record<string, number> = {}
+
 function ProgressRow({ d }: { d: DemoEntry }) {
-  if (!isRunning(d)) return null
+  const [, tick] = useReducer(x => x + 1, 0)
+  useEffect(() => {
+    if (!isRunning(d)) return
+    parseStart[d.id] ??= Date.now()
+    const iv = window.setInterval(tick, 1000)
+    return () => window.clearInterval(iv)
+  }, [d.id, d.status, d.progress])
+  if (!isRunning(d)) {
+    delete parseStart[d.id]
+    return null
+  }
+  if (!parseStart[d.id]) parseStart[d.id] = Date.now()
+  const elapsed = Math.max(0, Math.floor((Date.now() - parseStart[d.id]) / 1000))
+  const label = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
   const pct = d.progress ?? 0
   return (
-    <div style={{ marginTop: 6 }}>
+    <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
       <div className="progress-bar" style={{ width: 200 }}>
         <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
       </div>
+      <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>{label}</span>
     </div>
   )
 }
@@ -306,6 +323,14 @@ export default function DemosPage() {
     refresh()
   }
 
+  async function startFetch(key: string, e: React.MouseEvent) {
+    e.stopPropagation()
+    try {
+      await api.fetchDemo(key)
+    } catch { /* 404/409 — the record state shows what happened */ }
+    refresh()
+  }
+
   async function deletDemo(id: string, e: React.MouseEvent) {
     e.stopPropagation()
     if (!confirm(t('confirmDeleteDemo'))) return
@@ -313,8 +338,11 @@ export default function DemosPage() {
     refresh()
   }
 
+  const DEMO_EXTS = ['.dem', '.dem.zst', '.zst', '.dem.gz', '.gz']
+  const isDemoFile = (name: string) => DEMO_EXTS.some(ext => name.toLowerCase().endsWith(ext))
+
   async function uploadFile(file: File) {
-    if (!file.name.endsWith('.dem')) { setUploadErr(t('onlyDemFiles')); return }
+    if (!isDemoFile(file.name)) { setUploadErr(t('onlyDemFiles')); return }
     setUploadErr('')
     setUploading(true)
     try {
@@ -417,7 +445,7 @@ export default function DemosPage() {
           <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? <span className="spinner" /> : t('upload')}
           </button>
-          <input ref={fileRef} type="file" accept=".dem" style={{ display: 'none' }}
+          <input ref={fileRef} type="file" accept=".dem,.dem.zst,.zst,.dem.gz,.gz" style={{ display: 'none' }}
             onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = '' }} />
         </div>
       </div>
@@ -444,7 +472,7 @@ export default function DemosPage() {
           ))}
         </div>
       ) : (
-        <DemoList rows={rows} groupByDate={groupByDate} onAnalyze={startAnalyze} onDelete={deletDemo} onNavigate={id => navigate(`/match/${id}`)} />
+        <DemoList rows={rows} groupByDate={groupByDate} onAnalyze={startAnalyze} onFetch={startFetch} onDelete={deletDemo} onNavigate={id => navigate(`/match/${id}`)} />
       )}
     </div>
   )
@@ -452,10 +480,11 @@ export default function DemosPage() {
 
 // ── DemoList ──────────────────────────────────────────────────────────────────
 
-function DemoList({ rows, groupByDate, onAnalyze, onDelete, onNavigate }: {
+function DemoList({ rows, groupByDate, onAnalyze, onFetch, onDelete, onNavigate }: {
   rows: DemoEntry[]
   groupByDate: boolean
   onAnalyze: (id: string, e: React.MouseEvent) => void
+  onFetch: (key: string, e: React.MouseEvent) => void
   onDelete: (id: string, e: React.MouseEvent) => void
   onNavigate: (id: string) => void
 }) {
@@ -465,7 +494,7 @@ function DemoList({ rows, groupByDate, onAnalyze, onDelete, onNavigate }: {
   if (!groupByDate) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {rows.map(d => <DemoCard key={d.id} d={d} showDate onAnalyze={onAnalyze} onDelete={onDelete} onNavigate={onNavigate} />)}
+        {rows.map(d => <DemoCard key={d.id} d={d} showDate onAnalyze={onAnalyze} onFetch={onFetch} onDelete={onDelete} onNavigate={onNavigate} />)}
       </div>
     )
   }
@@ -487,7 +516,7 @@ function DemoList({ rows, groupByDate, onAnalyze, onDelete, onNavigate }: {
             {g.label}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {g.demos.map(d => <DemoCard key={d.id} d={d} showDate={false} onAnalyze={onAnalyze} onDelete={onDelete} onNavigate={onNavigate} />)}
+            {g.demos.map(d => <DemoCard key={d.id} d={d} showDate={false} onAnalyze={onAnalyze} onFetch={onFetch} onDelete={onDelete} onNavigate={onNavigate} />)}
           </div>
         </div>
       ))}
@@ -497,10 +526,11 @@ function DemoList({ rows, groupByDate, onAnalyze, onDelete, onNavigate }: {
 
 // ── DemoCard ─────────────────────────────────────────────────────────────────
 
-function DemoCard({ d, showDate, onAnalyze, onDelete, onNavigate }: {
+function DemoCard({ d, showDate, onAnalyze, onFetch, onDelete, onNavigate }: {
   d: DemoEntry
   showDate: boolean
   onAnalyze: (id: string, e: React.MouseEvent) => void
+  onFetch: (key: string, e: React.MouseEvent) => void
   onDelete: (id: string, e: React.MouseEvent) => void
   onNavigate: (id: string) => void
 }) {
@@ -509,6 +539,10 @@ function DemoCard({ d, showDate, onAnalyze, onDelete, onNavigate }: {
   const ready = d.status === 'ready'
   const errored = d.status === 'error'
   const probed = d.status === 'probed'
+  const available = d.status === 'available'
+  const srcLabel = d.source === 'inbox' ? 'inbox'
+    : d.source === 'upload' ? 'upload'
+      : d.source === 'faceit' ? t('demos:srcFaceit') : t('demos:srcWatch')
 
   return (
     <div className="card" style={{ cursor: ready ? 'pointer' : 'default' }}
@@ -516,13 +550,21 @@ function DemoCard({ d, showDate, onAnalyze, onDelete, onNavigate }: {
       <div className="flex items-center justify-between wrap gap-8">
         <div>
           <span style={{ fontWeight: 600 }}>{d.name}</span>
-          <span className="text-muted text-sm" style={{ marginLeft: 10 }}>{fmtSize(d.size)}</span>
-          <span className="tag" style={{ marginLeft: 8, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 10 }}>
-            {d.source === 'inbox' ? 'inbox' : 'upload'}
+          {d.size > 0 && <span className="text-muted text-sm" style={{ marginLeft: 10 }}>{fmtSize(d.size)}</span>}
+          <span className="tag" style={{
+            marginLeft: 8, fontSize: 10,
+            ...(d.source === 'faceit'
+              ? { background: '#001a3d', color: 'var(--blue)' }
+              : { background: 'var(--bg3)', color: 'var(--text2)' }),
+          }}>
+            {srcLabel}
           </span>
         </div>
         <div className="flex items-center gap-8">
-          {!probed && <StatusBadge d={d} />}
+          {!probed && !available && <StatusBadge d={d} />}
+          {available && d.error && (
+            <span className="tag tag-red" title={d.error}>{t('demos:fetchError')}</span>
+          )}
           {ready && (
             <>
               <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }}
@@ -539,6 +581,18 @@ function DemoCard({ d, showDate, onAnalyze, onDelete, onNavigate }: {
             <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }}
               onClick={e => onAnalyze(d.id, e)}>
               {t('retryAnalyze')}
+            </button>
+          )}
+          {available && d.fetching && (
+            <span className="flex items-center gap-8">
+              <span className="spinner" />
+              <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('demos:fetching')}</span>
+            </span>
+          )}
+          {available && !d.fetching && d.key && (
+            <button className="btn-primary" style={{ fontSize: 12, padding: '4px 10px' }}
+              onClick={e => onFetch(d.key!, e)}>
+              {t('demos:fetchAnalyze')}
             </button>
           )}
           {(probed || (!d.status || d.status === 'new')) && !running && (

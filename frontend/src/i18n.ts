@@ -21,6 +21,7 @@ import ruMetrics from './i18n/locales/ru/metrics.json'
 import ruReplay from './i18n/locales/ru/replay.json'
 import ruHeatmaps from './i18n/locales/ru/heatmaps.json'
 import ruAbout from './i18n/locales/ru/about.json'
+import ruSettings from './i18n/locales/ru/settings.json'
 
 import enCommon from './i18n/locales/en/common.json'
 import enDemos from './i18n/locales/en/demos.json'
@@ -30,6 +31,7 @@ import enMetrics from './i18n/locales/en/metrics.json'
 import enReplay from './i18n/locales/en/replay.json'
 import enHeatmaps from './i18n/locales/en/heatmaps.json'
 import enAbout from './i18n/locales/en/about.json'
+import enSettings from './i18n/locales/en/settings.json'
 
 export type Lang = 'ru' | 'en'
 
@@ -37,10 +39,12 @@ const resources = {
   ru: {
     common: ruCommon, demos: ruDemos, match: ruMatch, player: ruPlayer,
     metrics: ruMetrics, replay: ruReplay, heatmaps: ruHeatmaps, about: ruAbout,
+    settings: ruSettings,
   },
   en: {
     common: enCommon, demos: enDemos, match: enMatch, player: enPlayer,
     metrics: enMetrics, replay: enReplay, heatmaps: enHeatmaps, about: enAbout,
+    settings: enSettings,
   },
 }
 
@@ -52,7 +56,7 @@ void i18next.init({
   defaultNS: 'common',
   // legacy flat keys live in common; per-domain keys also resolve without an
   // explicit prefix — t('layerKills') still finds heatmaps:layerKills
-  fallbackNS: ['demos', 'match', 'player', 'metrics', 'replay', 'heatmaps', 'about'],
+  fallbackNS: ['demos', 'match', 'player', 'metrics', 'replay', 'heatmaps', 'about', 'settings'],
   interpolation: { escapeValue: false },
 })
 

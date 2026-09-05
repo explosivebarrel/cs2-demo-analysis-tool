@@ -36,7 +36,7 @@ export default function MomentsPanel(
   { moments, replay, onJump }: {
     moments: Moment[]
     replay: ReplayData
-    onJump: (tick: number) => void
+    onJump: (m: Moment) => void
   },
 ) {
   const [filter, setFilter] = useState<MomentFilter>('all')
@@ -51,7 +51,7 @@ export default function MomentsPanel(
   if (!moments.length) return null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flex: 1, minHeight: 0 }}>
       <div style={{ fontSize: 11, color: 'var(--text2)', textTransform: 'uppercase' }}>
         {t('replay:moments.title')} · {moments.length}
       </div>
@@ -66,12 +66,12 @@ export default function MomentsPanel(
           </button>
         ))}
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 260, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minHeight: 0, overflowY: 'auto' }}>
         {filtered.length === 0 && (
           <div style={{ fontSize: 12, color: 'var(--text2)' }}>{t('replay:moments.empty')}</div>
         )}
         {filtered.map((m, i) => (
-          <button key={`${m.type}-${m.tick}-${i}`} onClick={() => onJump(m.tick)} style={{
+          <button key={`${m.type}-${m.tick}-${i}`} onClick={() => onJump(m)} style={{
             display: 'flex', alignItems: 'center', gap: 6,
             background: 'var(--bg3)', border: 'none', borderRadius: 4,
             padding: '4px 8px', cursor: 'pointer', fontSize: 12, textAlign: 'left', color: 'var(--text)',
@@ -101,12 +101,15 @@ export function frameForTickMinus(replay: ReplayData, tick: number, seconds: num
   return res
 }
 
-export function momentsAround(moments: Moment[], curTick: number, tickrate: number): {
+export function momentsAround(moments: Moment[], curTick: number, tickrate: number, lookaheadSec = 1): {
   prev: Moment | null; next: Moment | null
 } {
   let prev: Moment | null = null
   let next: Moment | null = null
-  const lookahead = Math.round(tickrate * 1)  // current position counts as "at" the moment
+  // moments within the lookahead window count as "at current position"; callers
+  // that jump back `lookaheadSec` before a moment pass the same value so the
+  // freshly-jumped moment counts as prev, not next
+  const lookahead = Math.round(tickrate * lookaheadSec)
   for (const m of moments) {
     if (m.tick <= curTick + lookahead) prev = m
     else if (!next) { next = m; break }

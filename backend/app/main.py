@@ -2,6 +2,7 @@
 import asyncio
 import gzip
 import json
+import logging
 import mimetypes
 import os
 import subprocess
@@ -13,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse
 
-from . import config, storage
+from . import autowatch, config, settings, storage, ingest, suggestions
 from .overviews import overview_for_client, radar_png_path
 
 app = FastAPI(title="CS2 Demo Analyzer")
@@ -94,6 +95,21 @@ async def _status_watcher():
             pass
 
 
+def _auto_imported(did: str) -> None:
+    """Probe + analyze a demo that just landed via auto-import."""
+    demo = next((d for d in storage.list_demos() if d["id"] == did), None)
+    if not demo:
+        return
+    if not os.path.exists(os.path.join(storage.analysis_dir(did), "analysis.json.gz")):
+        if _start_job(demo) == "started":
+            # analysis shows its own progress and writes all the metadata;
+            # probing in parallel would fight over the same status.json
+            return
+    st = storage.read_status(did) or {}
+    if st.get("status") in ("new", None):
+        _start_probe(demo)
+
+
 @app.on_event("startup")
 async def _startup():
     _sweep_orphaned_statuses()
@@ -106,17 +122,24 @@ async def _startup():
             if st.get("status") in ("new", None) and not st.get("map"):
                 _start_probe(demo)
     threading.Thread(target=_probe_new, daemon=True).start()
+    n = autowatch.start(_auto_imported)
+    if n:
+        logging.getLogger("main").info("auto-import: %d source(s) enabled", n)
 
 _jobs: dict[str, subprocess.Popen] = {}
+_probe_jobs: dict[str, subprocess.Popen] = {}
 _jobs_lock = threading.Lock()
 _analyze_dids: set[str] = set()
 
 
 def _reap_locked() -> None:
     """Remove finished workers; flag statuses they left behind. Callers hold _jobs_lock."""
-    dead = [did for did, p in _jobs.items() if p.poll() is not None]
+    dead: set[str] = set()
+    for registry in (_jobs, _probe_jobs):
+        for did in [did for did, p in registry.items() if p.poll() is not None]:
+            registry.pop(did, None)
+            dead.add(did)
     for did in dead:
-        _jobs.pop(did, None)
         _analyze_dids.discard(did)
     for did in dead:
         st = storage.read_status(did) or {}
@@ -160,13 +183,13 @@ def _find_demo(did: str) -> dict:
 def _start_probe(demo: dict) -> bool:
     did = demo["id"]
     with _jobs_lock:
-        if did in _jobs and _jobs[did].poll() is None:
+        proc = _probe_jobs.get(did)
+        if proc is not None and proc.poll() is None:
             return False
-        proc = subprocess.Popen(
+        _probe_jobs[did] = subprocess.Popen(
             [sys.executable, "-m", "app.worker", _demo_fs_path(demo), did, "--probe"],
             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
-        _jobs[did] = proc
     return True
 
 
@@ -204,9 +227,66 @@ def benchmarks():
     return config.BENCHMARKS
 
 
+@app.get("/api/autoimport")
+def autoimport():
+    return autowatch.status()
+
+
+@app.get("/api/settings")
+def get_settings():
+    eff = settings.effective()
+    eff["faceit"]["apiKeySet"] = bool(eff["faceit"]["apiKey"])
+    eff["faceit"]["apiKey"] = ""  # never expose the key
+    eff["progress"] = _progress_info()
+    return eff
+
+
+def _progress_info() -> dict:
+    from .pipeline.progress import DISPLAY_PHASE, STAGE_ORDER, effective_weights, spans
+    weights = effective_weights()
+    sp = spans(weights)
+    if os.environ.get("CS2_PROGRESS_WEIGHTS", "").strip():
+        source = "pinned"
+    elif storage.stage_weights():
+        source = "measured"
+    else:
+        source = "default"
+    return {
+        "source": source,
+        "stages": [{"stage": s, "phase": DISPLAY_PHASE.get(s, s),
+                    "pct": list(sp[s]), "sec": round(weights[s], 1)}
+                   for s in STAGE_ORDER],
+    }
+
+
+@app.put("/api/settings")
+async def put_settings(patch: dict):
+    try:
+        settings.write(patch)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    autowatch.reload(_auto_imported)
+    return autowatch.status()
+
+
 @app.get("/api/demos")
 def demos():
-    return storage.list_demos()
+    items = storage.list_demos() + suggestions.list_entries()
+    items.sort(key=lambda d: -(d.get("mtime") or 0))
+    return items
+
+
+@app.post("/api/demos/fetch")
+async def fetch_demo(body: dict):
+    """Download & analyze a suggestion (watch file or FACEIT match)."""
+    key = str(body.get("key") or "")
+    if suggestions.get(key) is None:
+        raise HTTPException(404, "suggestion not found")
+    if suggestions.get(key).get("fetching"):
+        raise HTTPException(409, "already fetching")
+    threading.Thread(target=autowatch.fetch_suggestion,
+                     args=(key, _auto_imported), daemon=True).start()
+    return {"started": True}
 
 
 @app.post("/api/demos/upload")
@@ -215,20 +295,22 @@ async def upload(file: UploadFile = File(...)):
     if len(data) > config.MAX_UPLOAD_BYTES:
         raise HTTPException(413, "file too large")
     name = file.filename or "upload.dem"
-    if not name.lower().endswith(".dem"):
+    if not ingest.is_supported(name):
         name += ".dem"
-    did = storage.demo_id(os.path.basename(name), len(data))
-    dest = os.path.join(config.UPLOADS_DIR, did + ".dem")
-    with open(dest, "wb") as f:
-        f.write(data)
-    with open(dest + ".name", "w", encoding="utf-8") as f:
-        json.dump({"name": os.path.basename(name)}, f)
+    try:
+        did, base, size = ingest.save_demo(name, data)
+    except ValueError as e:
+        raise HTTPException(413, str(e))
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+    with open(os.path.join(config.UPLOADS_DIR, did + ".dem.name"), "w", encoding="utf-8") as f:
+        json.dump({"name": base, "origin": "upload"}, f)
     # auto-start probe so map/teams appear immediately
     demo = _find_demo(did)
     st = storage.read_status(did)
     if not st or st.get("status") in ("new", None):
         _start_probe(demo)
-    return {"id": did, "name": name, "size": len(data)}
+    return {"id": did, "name": base, "size": size}
 
 
 @app.post("/api/demos/{did}/probe")

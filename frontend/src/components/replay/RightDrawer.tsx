@@ -5,6 +5,7 @@ import {
   FLAG_DEFUSER, FLAG_HELMET, TEAM_COLORS, buildInvIndex, fieldsOf, invAt, playerSpeedAt, teamColorAtFrame,
 } from '../../lib/replay'
 import { t, getLang } from '../../i18n'
+import WeaponIcon from '../WeaponIcon'
 
 interface InvInfo { en: string; ru: string; cls: string }
 
@@ -35,11 +36,12 @@ export default function RightDrawer({
   const lang = getLang()
   const FIELDS = fieldsOf(replay)
   const hasV2 = FIELDS === 13
+  const fi = Math.floor(frameIdx)
 
   const invIndex = useMemo(() => buildInvIndex(replay), [replay])
 
   const teams: { idx: number; label: string; color: string; players: typeof replay.players }[] = [1, 0].map(idx => {
-    const color = teamColorAtFrame(replay, frameIdx, idx)
+    const color = teamColorAtFrame(replay, fi, idx)
     const label = color === TEAM_COLORS[2] ? t('replay:side.t') : t('replay:side.ct')
     return { idx, label, color, players: replay.players.filter(p => p.team === idx) }
   })
@@ -56,7 +58,7 @@ export default function RightDrawer({
             </div>
             {team.players.map((pl, teamLocalIdx) => {
               const globalIdx = replay.players.findIndex(p => p.steamid === pl.steamid)
-              const base = frameIdx * replay.players.length * FIELDS + globalIdx * FIELDS
+              const base = fi * replay.players.length * FIELDS + globalIdx * FIELDS
               const alive = replay.data[base + F_ALIVE] ?? 0
               const hp = replay.data[base + F_HP] ?? 0
               const armor = replay.data[base + F_ARMOR] ?? 0
@@ -68,8 +70,8 @@ export default function RightDrawer({
               const equip = replay.data[base + F_EQUIP] ?? 0
               const weapInfo = replay.weapons[wid]
               const weapName = weapInfo ? (lang === 'ru' ? weapInfo.ru : weapInfo.en) : ''
-              const speed = playerSpeedAt(replay, globalIdx, frameIdx)
-              const ids = invAt(invIndex, globalIdx, frameIdx)
+              const speed = playerSpeedAt(replay, globalIdx, fi)
+              const ids = invAt(invIndex, globalIdx, fi)
               const byId = (id: string) => replay.invWeapons?.[id]?.cls ?? 'other'
               const primary = ids.filter(id => ['rifle', 'sniper', 'smg', 'heavy'].includes(byId(id)))
               const secondary = ids.filter(id => byId(id) === 'pistol')
@@ -85,11 +87,14 @@ export default function RightDrawer({
                     <div style={{ width: 16, height: 16, borderRadius: '50%', background: alive ? team.color : '#555', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <span style={{ fontSize: 10, fontWeight: 700, color: '#fff', lineHeight: 1 }}>{teamLocalIdx + 1}</span>
                     </div>
-                    <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {((replay.data[base + F_FLAGS] ?? 0) & 1) ? '💣 ' : ''}{pl.name}
+                    <span style={{ flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      {((replay.data[base + F_FLAGS] ?? 0) & 1) ? <img src="/icons/weapons/bomb_c4.svg" alt="C4" width={11} height={11} /> : null}{pl.name}
                     </span>
                     {hasV2 && <span style={{ fontSize: 10, color: 'var(--green)', fontVariantNumeric: 'tabular-nums' }}>${money}</span>}
-                    <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 48, overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'right' }}>{weapName}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 56, overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'right', whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                      <WeaponIcon id={weapInfo?.key} name={weapName || null} size={13} />
+                      {weapName}
+                    </span>
                     <div style={{ width: 30, height: 4, background: '#333', borderRadius: 2, flexShrink: 0 }}>
                       <div style={{ width: `${hp}%`, height: '100%', borderRadius: 2, background: hp > 50 ? '#4caf7d' : hp > 25 ? '#f5c542' : '#e05252' }} />
                     </div>
@@ -105,19 +110,42 @@ export default function RightDrawer({
                           {t('replay:card.noData')}
                         </div>
                       )}
-                      <Row label={t('replay:card.armor')} value={armor > 0 ? <>{armor}{helmet ? ' 🪖' : ''}</> : '—'} />
+                      <Row label={t('replay:card.armor')} value={armor > 0 ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                          {armor}{helmet && <img src="/icons/weapons/helmet.svg" alt="helmet" width={12} height={12} />}
+                        </span>
+                      ) : '—'} />
                       {hasV2 && <Row label={t('replay:card.money')} value={`$${money}`} />}
-                      <Row label={t('replay:card.weapon')} value={weapName || '—'} />
+                      <Row label={t('replay:card.weapon')} value={
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                          <WeaponIcon id={weapInfo?.key} name={weapName || null} size={14} />
+                          {weapName || '—'}
+                        </span>
+                      } />
                       {hasV2 && ammo > 0 && <Row label={t('replay:card.ammo')} value={ammo} />}
                       <Row label={t('replay:card.speed')} value={alive ? `${speed} u/s` : '—'} />
-                      {hasV2 && <Row label={t('replay:card.primary')} value={primary.length ? primary.map(id => invLabel(replay, id)).join(', ') : '—'} />}
-                      {hasV2 && <Row label={t('replay:card.secondary')} value={secondary.length ? secondary.map(id => invLabel(replay, id)).join(', ') : '—'} />}
-                      {hasV2 && <Row label={t('replay:card.nades')} value={nades.length ? nades.map(id => invLabel(replay, id)).join(', ') : '—'} />}
+                      {hasV2 && <Row label={t('replay:card.primary')} value={primary.length ? primary.map(id => (
+                        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6 }}>
+                          <WeaponIcon id={id} size={13} />{invLabel(replay, id)}
+                        </span>
+                      )) : '—'} />}
+                      {hasV2 && <Row label={t('replay:card.secondary')} value={secondary.length ? secondary.map(id => (
+                        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6 }}>
+                          <WeaponIcon id={id} size={13} />{invLabel(replay, id)}
+                        </span>
+                      )) : '—'} />}
+                      {hasV2 && <Row label={t('replay:card.nades')} value={nades.length ? nades.map(id => (
+                        <span key={id} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, marginLeft: 6 }}>
+                          <WeaponIcon id={id} size={13} />{invLabel(replay, id)}
+                        </span>
+                      )) : '—'} />}
                       {hasV2 && (knife.length > 0 || hasKit) && (
-                        <Row label={t('replay:card.gear')} value={[
-                          knife.length ? invLabel(replay, knife[0]) : null,
-                          hasKit ? t('replay:card.kit') : null,
-                        ].filter(Boolean).join(', ') || '—'} />
+                        <Row label={t('replay:card.gear')} value={
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end' }}>
+                            {knife.length > 0 && <><WeaponIcon id={knife[0]} size={13} />{invLabel(replay, knife[0])}</>}
+                            {hasKit && <><img src="/icons/weapons/defuser_white.svg" alt="kit" width={13} height={13} />{t('replay:card.kit')}</>}
+                          </span>
+                        } />
                       )}
                       {!hasV2 && equip > 0 && <Row label="$" value={equip} />}
                     </div>

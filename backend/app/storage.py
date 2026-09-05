@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import threading
 import time
 
 from . import config
@@ -38,7 +39,9 @@ def write_status(did: str, **fields):
     st = read_status(did) or {}
     st.update(fields)
     st["updated"] = time.time()
-    tmp = status_path(did) + ".tmp"
+    # unique tmp per writer: the worker heartbeat thread and the progress
+    # callback write the same file concurrently from different threads
+    tmp = status_path(did) + f".tmp.{os.getpid()}.{threading.get_ident()}"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(st, f)
     os.replace(tmp, status_path(did))
@@ -158,3 +161,46 @@ def save_history_entry(entry: dict) -> None:
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump({"entries": entries}, f, ensure_ascii=False)
     os.replace(tmp, HISTORY_PATH)
+
+
+# ------------------------------------------------------------- stage timings
+# Rolling benchmark of analysis stage durations; feeds the progress mapping.
+STAGE_TIMES_PATH = os.path.join(config.STORE_DIR, "stage_times.json")
+STAGE_TIMES_KEEP = 10
+
+
+def load_stage_times() -> list[dict]:
+    try:
+        with open(STAGE_TIMES_PATH, "r", encoding="utf-8") as f:
+            return json.load(f).get("records", [])
+    except Exception:
+        return []
+
+
+def save_stage_record(did: str, map_name: str, sec_per_stage: dict) -> None:
+    records = [r for r in load_stage_times() if r.get("demoId") != did]
+    records.append({
+        "demoId": did, "map": map_name, "ts": time.time(),
+        "sec": {k: float(v) for k, v in sec_per_stage.items()
+                if isinstance(v, (int, float))},
+    })
+    records = records[-STAGE_TIMES_KEEP:]
+    tmp = STAGE_TIMES_PATH + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump({"records": records}, f, ensure_ascii=False)
+    os.replace(tmp, STAGE_TIMES_PATH)
+
+
+def stage_weights() -> dict | None:
+    """Per-stage median seconds across recent analyses (None without data)."""
+    import statistics
+    recs = [r for r in load_stage_times() if isinstance(r.get("sec"), dict)]
+    if not recs:
+        return None
+    keys = set().union(*(r["sec"].keys() for r in recs))
+    out = {}
+    for k in keys:
+        vals = [r["sec"][k] for r in recs if isinstance(r["sec"].get(k), (int, float))]
+        if vals:
+            out[k] = statistics.median(vals)
+    return out or None

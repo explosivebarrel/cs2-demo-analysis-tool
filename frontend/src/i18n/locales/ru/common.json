@@ -1,5 +1,13 @@
 {
   "demos": "Демо",
+  "settings": "Настройки",
+  "grenades": "Гранаты",
+  "reasons": {
+    "elimination": "Уничтожение",
+    "bomb": "Взрыв бомбы",
+    "defuse": "Разминирование",
+    "time": "Время вышло"
+  },
   "overview": "Обзор матча",
   "heatmaps": "Хитмапы",
   "replay": "Реплей",
@@ -104,19 +112,22 @@
   "levelLower": "Нижний",
   "slowDown": "Замедлить",
   "confirmDeleteDemo": "Удалить демо?",
-  "onlyDemFiles": "Только .dem файлы",
+  "onlyDemFiles": "Только файлы .dem / .dem.zst / .gz",
   "pistolRound": "пистолетка",
   "benchmarks": {
     "tier": {
-      "weak": "СЛАБО",
-      "avg": "СРЕДНЕЕ",
-      "good": "ХОРОШО",
-      "elite": "ОТЛИЧНО"
+      "weak": "Слабо",
+      "avg": "Средне",
+      "good": "Хорошо",
+      "elite": "Элита"
     },
     "weak": "Слабые: {{range}}",
     "avg": "Средние: {{range}}",
     "good": "Хорошие: {{range}}",
     "elite": "Элита: {{range}}",
     "yours": "У тебя: {{value}}"
+  },
+  "footer": {
+    "note": "CS2 Demo Analyzer · селф-хостед аналитика демок Counter-Strike 2 · AGPL-3.0"
   }
 }

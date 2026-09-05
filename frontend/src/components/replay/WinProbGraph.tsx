@@ -1,13 +1,15 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { RoundData } from '../../api'
 import { findRoundForTick } from '../../lib/replay'
 import { t } from '../../i18n'
 
 interface KnifeRound { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string }
 
+export interface MomentHighlight { startFi: number; endFi: number }
+
 /** SVG balance-of-power graph that acts as a timeline scrubber for the current round. */
 export default function WinProbGraph({
-  winprob, ticks, rounds, frameIdx, onScrub, height = 60, knifeRound, matchStartTick,
+  winprob, ticks, rounds, frameIdx, onScrub, height = 60, knifeRound, matchStartTick, highlight,
 }: {
   winprob: number[]
   ticks: number[]
@@ -17,14 +19,27 @@ export default function WinProbGraph({
   height?: number
   knifeRound?: KnifeRound | null
   matchStartTick?: number
+  highlight?: MomentHighlight | null
 }) {
   const svgRef = useRef<SVGSVGElement>(null)
   const dragging = useRef(false)
   const total = winprob.length
   const W = 1000
 
+  // yellow moment highlight: solid for a while, then fades out
+  const [hl, setHl] = useState<{ x0: number; x1: number; fading: boolean } | null>(null)
+  useEffect(() => {
+    if (!highlight) return
+    const x0 = fi2x(highlight.startFi)
+    const x1 = fi2x(highlight.endFi)
+    setHl({ x0, x1, fading: false })
+    const t1 = window.setTimeout(() => setHl(h => (h ? { ...h, fading: true } : h)), 3500)
+    const t2 = window.setTimeout(() => setHl(null), 5000)
+    return () => { window.clearTimeout(t1); window.clearTimeout(t2) }
+  }, [highlight])
+
   // compute current round frame bounds — include freeze time + ±10s neighbours
-  const curTick = ticks[frameIdx] ?? 0
+  const curTick = ticks[Math.floor(frameIdx)] ?? 0
   const knife = knifeRound && knifeRound.endTick > 0 ? knifeRound : null
   const inKnife = !!knife && curTick >= knife.startTick && curTick < knife.endTick
   const curRound = inKnife ? null : findRoundForTick(rounds, curTick)
@@ -110,23 +125,31 @@ export default function WinProbGraph({
     curvePts.map(([x, y]) => `L ${x.toFixed(1)},${y.toFixed(1)}`).join(' ') +
     ` L ${lastX.toFixed(1)},${midY} Z`
 
-  const curVal = winprob[frameIdx] ?? 0.5
+  const curVal = winprob[Math.floor(frameIdx)] ?? 0.5
   const ctPct  = Math.round(curVal * 100)
   const tPct   = 100 - ctPct
 
   const hatchId = 'nbHatch'
+  const momentHatchId = 'momHatch'
+
+  // HTML chips instead of SVG text: preserveAspectRatio="none" would stretch glyphs
+  const chipStyle = (color: string): CSSProperties => ({
+    position: 'absolute', fontSize: 11, fontFamily: 'monospace', fontWeight: 'bold',
+    color, pointerEvents: 'none', textShadow: '0 1px 3px rgba(0,0,0,.9)', lineHeight: 1,
+  })
 
   return (
-    <svg
-      ref={svgRef}
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      style={{ width: '100%', height, display: 'block', cursor: 'crosshair', userSelect: 'none' }}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
-    >
+    <div style={{ position: 'relative', width: '100%', height }}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
+        style={{ width: '100%', height, display: 'block', cursor: 'crosshair', userSelect: 'none' }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      >
       <defs>
         <clipPath id="clipCT">
           <rect x="0" y="0" width={W} height={midY} />
@@ -144,6 +167,9 @@ export default function WinProbGraph({
         </linearGradient>
         <pattern id={hatchId} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
           <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(120,120,120,0.35)" strokeWidth="3" />
+        </pattern>
+        <pattern id={momentHatchId} patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+          <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255,200,40,0.6)" strokeWidth="3" />
         </pattern>
       </defs>
 
@@ -188,8 +214,17 @@ export default function WinProbGraph({
 
       <line x1={cursorX} y1="0" x2={cursorX} y2={H} stroke="rgba(255,255,255,0.8)" strokeWidth="1.5" />
 
-      <text x="6" y="11" fill="#4a9eda" fontSize="10" fontFamily="monospace" fontWeight="bold">{t('replay:side.ct')} {ctPct}%</text>
-      <text x={W - 6} y={H - 4} fill="#e4882a" fontSize="10" fontFamily="monospace" fontWeight="bold" textAnchor="end">{t('replay:side.t')} {tPct}%</text>
-    </svg>
+      {hl && (
+        <rect
+          x={Math.max(0, hl.x0).toFixed(1)} y="0"
+          width={Math.max(2, Math.min(W, hl.x1) - Math.max(0, hl.x0)).toFixed(1)}
+          height={H} fill={`url(#${momentHatchId})`}
+          style={{ opacity: hl.fading ? 0 : 1, transition: 'opacity 1.4s' }}
+        />
+      )}
+      </svg>
+      <div style={{ ...chipStyle('#4a9eda'), top: 4, left: 8 }}>{t('replay:side.ct')} {ctPct}%</div>
+      <div style={{ ...chipStyle('#e4882a'), bottom: 4, right: 8 }}>{t('replay:side.t')} {tPct}%</div>
+    </div>
   )
 }

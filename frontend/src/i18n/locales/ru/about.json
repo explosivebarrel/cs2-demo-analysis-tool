@@ -15,13 +15,25 @@
   "aboutKastNote": "Норма для профессионалов — 70%+.",
   "aboutImpDesc": "IMP — упрощённый аналог Swing от HLTV. Swing требует внутренних данных HLTV, поэтому мы считаем собственный IMP из событий демки.",
   "aboutImpFormula": "Формула (за раунд):",
-  "aboutImpFormulaBody": "opening kill + won:   +2.0\\nopening kill + lost:  +0.5\\nopening death + won:  −0.5\\nopening death + lost: −1.0\\nкаждый доп. килл:     +0.5\\nклатч выигран:        +1.5\\nсейв (выжил/проигр.): +0.2",
+  "aboutImpFormulaBody": "opening kill + won:   +2.0\nopening kill + lost:  +0.5\nopening death + won:  −0.5\nopening death + lost: −1.0\nкаждый доп. килл:     +0.5\nклатч выигран:        +1.5\nсейв (выжил/проигр.): +0.2",
   "aboutImpNote1": "Общий IMP — среднее за матч. Положительный IMP = игрок регулярно влиял на исход раундов.",
   "aboutImpNote2": "В таблице по раундам IMP со знаком: +2.0 = открывашка в выигранном, −1.0 = смерть первым в проигранном.",
+  "aboutAutoDesc": "Анализатор может сам подхватывать новые демок: следить за папкой (watch) и опрашивать историю матчей FACEIT. Настраивается на странице «Настройки» и применяется сразу; переменные окружения (CS2_* в docker-compose.yml) действуют как значения по умолчанию.",
+  "aboutAutoWatch": "• Watch-папка: CS2_WATCH_DIRS — список путей внутри контейнера через «:» (сами папки монтируются как volume), CS2_WATCH_POLL_SEC — интервал опроса (по умолчанию 20 с).",
+  "aboutAutoFaceit": "• FACEIT: CS2_FACEIT_API_KEY — бесплатный ключ из FACEIT Developer Portal (App Studio → твоё приложение → API Keys); CS2_FACEIT_PLAYER_ID — GUID профиля (виден в адресной строке страницы профиля FACEIT); CS2_FACEIT_POLL_SEC — интервал опроса (по умолчанию 300 с).",
+  "aboutAutoNote": "Первый скан только запоминает уже лежащие файлы и матчи (seed) — импортируется лишь появившееся позже. Ошибки конфигурации и сети пишутся в лог backend: docker compose logs backend.",
+  "aboutAutoStatus": "Текущий статус:",
+  "aboutAutoOpenSettings": "Открыть настройки",
+  "aboutAutoOn": "включён",
+  "aboutAutoOff": "выключен",
+  "aboutAutoWatchLabel": "Watch-папка",
+  "aboutAutoPollSec": "опрос каждые {{sec}} с",
+  "aboutAutoKnown": "в истории {{count}} матчей",
   "sections": {
     "rating": "Rating 2.0",
     "rws": "RWS (доля побед в раундах)",
     "kast": "KAST",
-    "imp": "IMP (Импакт)"
+    "imp": "IMP (Импакт)",
+    "autoimport": "Автоимпорт демок"
   }
 }

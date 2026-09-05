@@ -3,6 +3,7 @@
 Run: python -m app.worker <demo_path> <demo_id> [--probe]
 """
 import sys
+import threading
 import traceback
 
 from . import storage
@@ -37,8 +38,20 @@ def run_analyze(demo_path: str, did: str):
         print(f"[{did}] {phase}: {pct}%{' — ' + detail if detail else ''}", flush=True)
 
     storage.write_status(did, status="parsing", progress=0, phase="start", detail="")
+    # long parse phases can stall real progress for tens of seconds; bump the
+    # status file periodically so WS watchers see the job is alive
+    stop = threading.Event()
+
+    def heartbeat():
+        while not stop.wait(3.0):
+            storage.write_status(did)
+
+    threading.Thread(target=heartbeat, daemon=True).start()
     try:
-        info = analyze_demo(demo_path, did, progress)
+        try:
+            info = analyze_demo(demo_path, did, progress)
+        finally:
+            stop.set()
         # grab date from file mtime
         import os
         from datetime import datetime, timezone

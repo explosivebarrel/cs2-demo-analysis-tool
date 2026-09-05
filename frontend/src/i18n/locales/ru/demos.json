@@ -1,9 +1,14 @@
 {
   "notAnalyzed": "Не проанализировано",
-  "dropHere": "Перетащите .dem файл сюда или",
+  "dropHere": "Перетащите .dem / .dem.zst / .gz файл сюда или",
   "chooseFile": "выберите файл",
   "uploadErrorArchive": "Не удалось прочитать файл. Если это файл из архива — сначала распакуйте его на диск.",
   "uploadErrorGeneric": "Ошибка загрузки",
+  "srcWatch": "папка",
+  "srcFaceit": "FACEIT",
+  "fetchAnalyze": "Скачать и анализировать",
+  "fetching": "Скачивание...",
+  "fetchError": "Ошибка скачивания",
   "filter": {
     "close": "Закрыть фильтры"
   }

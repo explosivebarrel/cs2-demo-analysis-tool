@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { api, AnalysisData, MapOverview, ReplayData, RoundData } from '../api'
+import { api, AnalysisData, MapOverview, Moment, ReplayData, RoundData } from '../api'
 import { useLang } from '../App'
 import { frameForTickMinus, momentsAround } from '../components/replay/MomentsPanel'
 import LeftDrawer, { DrawerTab } from '../components/replay/LeftDrawer'
@@ -17,6 +17,9 @@ import { t } from '../i18n'
 
 const LEFT_WIDTH = 300
 const RIGHT_WIDTH = 280
+// moments are played from a few seconds before the action; prev/next moment
+// navigation uses the same window so a fresh jump doesn't re-target itself
+const SEEK_BACK_SEC = 3
 
 /** Full-viewport replay player screen (route /match/:id/replay). */
 export default function ReplayScreen() {
@@ -44,15 +47,15 @@ export default function ReplayScreen() {
   const [hotkeysOpen, setHotkeysOpen] = useState(false)
   const [chromeHidden, setChromeHidden] = useState(false)
   const [isFs, setIsFs] = useState(false)
+  const [momentHl, setMomentHl] = useState<{ startFi: number; endFi: number } | null>(null)
 
   const rafRef = useRef(0)
   const lastTimeRef = useRef(0)
   const frameIdxRef = useRef(0)
+  const momentHlTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const replayRef = useRef<ReplayData | null>(null)
   const analysisRef = useRef<AnalysisData | null>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
-  const midRef = useRef<HTMLDivElement>(null)
-  const [midSize, setMidSize] = useState({ w: 800, h: 600 })
 
   useEffect(() => { frameIdxRef.current = frameIdx }, [frameIdx])
   useEffect(() => { replayRef.current = replay }, [replay])
@@ -80,37 +83,35 @@ export default function ReplayScreen() {
     if (fi >= 0) setFrameIdx(fi)
   }, [replay, analysis, searchParams])
 
-  // ── canvas sizing ───────────────────────────────────────────────────────────
-  // the mid container mounts only after all three payloads arrive (overview last),
-  // so re-run the observer subscription on the real mount condition
-  const mounted = !!replay && !!overview && !!analysis
+  // jump to a tick passed via router state (e.g. clutch click on a metrics page)
+  const stateSeekTick = (location.state as { seekTick?: number } | null)?.seekTick
   useEffect(() => {
-    const el = midRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => {
-      setMidSize({ w: el.clientWidth, h: el.clientHeight })
-    })
-    ro.observe(el)
-    setMidSize({ w: el.clientWidth, h: el.clientHeight })
-    return () => ro.disconnect()
-  }, [mounted])
-  const side = Math.max(200, Math.floor(Math.min(midSize.w, midSize.h)))
+    if (!replay || !stateSeekTick) return
+    const fi = replay.ticks.findIndex(tk => tk >= stateSeekTick)
+    if (fi >= 0) { setFrameIdx(fi); setPlaying(false) }
+    // drop the state so a refresh doesn't re-seek
+    window.history.replaceState({}, '')
+  }, [replay, stateSeekTick])
 
   // ── playback ────────────────────────────────────────────────────────────────
   const totalFrames = replay?.ticks.length ?? 0
 
+  // time-based loop producing fractional frame indices: drawFrame interpolates
+  // positions between frames, so playback is smooth even at 8 frames/sec
   useEffect(() => {
     if (!playing || !replay) return
-    const frameMs = (replay.frameStep / replay.tickrate) * 1000 / speed
+    const secPerFrame = (replay.frameStep / replay.tickrate) / speed
+    // avoid a stale-dt jump on the first tick after (re)starting playback
+    lastTimeRef.current = performance.now()
     function tick(now: number) {
-      if (now - lastTimeRef.current >= frameMs) {
-        lastTimeRef.current = now
-        setFrameIdx(prev => {
-          const next = prev + 1
-          if (next >= (replayRef.current?.ticks.length ?? 0)) { setPlaying(false); return prev }
-          return next
-        })
-      }
+      const dt = (now - lastTimeRef.current) / 1000
+      lastTimeRef.current = now
+      setFrameIdx(prev => {
+        const next = prev + Math.min(0.25, dt) / secPerFrame
+        const last = (replayRef.current?.ticks.length ?? 1) - 1
+        if (next >= last) { setPlaying(false); return last }
+        return next
+      })
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
@@ -133,7 +134,10 @@ export default function ReplayScreen() {
   }, [])
 
   // ── navigation helpers ──────────────────────────────────────────────────────
-  function jumpToFrame(fi: number) { setFrameIdx(fi); setPlaying(false) }
+  function jumpToFrame(fi: number, play = false) {
+    setFrameIdx(fi)
+    setPlaying(play)
+  }
 
   function seekSec(deltaSec: number) {
     if (!replay) return
@@ -142,11 +146,35 @@ export default function ReplayScreen() {
   }
 
   function jumpToMoment(dir: 1 | -1) {
-    const curTick = replay?.ticks[frameIdx] ?? 0
-    const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replay?.tickrate ?? 64)
+    const curTick = replay?.ticks[Math.floor(frameIdx)] ?? 0
+    const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replay?.tickrate ?? 64, SEEK_BACK_SEC)
     const m = dir === 1 ? mm.next : mm.prev
-    if (m && replay) jumpToFrame(frameForTickMinus(replay, m.tick, 3))
+    if (m) onMomentSelect(m)
   }
+
+  function fiForTick(tick: number): number {
+    if (!replay) return 0
+    const i = replay.ticks.findIndex(tk => tk >= tick)
+    return i < 0 ? replay.ticks.length - 1 : Math.max(0, i)
+  }
+
+  /** Jump to a moment (and play it), flashing its episode on the winprob timeline. */
+  function onMomentSelect(m: Moment) {
+    if (!replay) return
+    const back = Math.max(SEEK_BACK_SEC, Math.min(m.preSec ?? SEEK_BACK_SEC, 12))
+    jumpToFrame(frameForTickMinus(replay, m.tick, back), true)
+    const rate = replay.tickrate
+    setMomentHl({
+      startFi: fiForTick(m.tick - (m.preSec ?? SEEK_BACK_SEC) * rate),
+      endFi: fiForTick(m.tick + (m.durSec ?? 6) * rate),
+    })
+    if (momentHlTimer.current) clearTimeout(momentHlTimer.current)
+    momentHlTimer.current = setTimeout(() => setMomentHl(null), 6000)
+  }
+
+  // latest-ref so hotkeys can trigger moment jumps without effect dep churn
+  const onMomentSelectRef = useRef<(m: Moment) => void>(() => {})
+  useEffect(() => { onMomentSelectRef.current = onMomentSelect })
 
   function seekTick(tick: number) {
     const fi = replay?.ticks.findIndex(t => t >= tick) ?? -1
@@ -168,13 +196,10 @@ export default function ReplayScreen() {
       else if (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р') setChromeHidden(v => !v)
       else if (e.key === 'f' || e.key === 'F' || e.key === 'а' || e.key === 'А') toggleFullscreen()
       else if (e.key === '[' || e.key === ']') {
-        const curTick = replayRef.current?.ticks[frameIdxRef.current] ?? 0
-        const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replayRef.current?.tickrate ?? 64)
+        const curTick = replayRef.current?.ticks[Math.floor(frameIdxRef.current)] ?? 0
+        const mm = momentsAround(analysisRef.current?.moments ?? [], curTick, replayRef.current?.tickrate ?? 64, SEEK_BACK_SEC)
         const m = e.key === '[' ? mm.prev : mm.next
-        if (m && replayRef.current) {
-          setFrameIdx(frameForTickMinus(replayRef.current, m.tick, 3))
-          setPlaying(false)
-        }
+        if (m) onMomentSelectRef.current(m)
       }
     }
     window.addEventListener('keydown', onKey)
@@ -191,16 +216,37 @@ export default function ReplayScreen() {
   if (err) return <div className="page"><div className="tag tag-red">{err}</div></div>
   if (!replay || !overview || !analysis) {
     return (
-      <div style={{ height: 'calc(100vh - 48px)', padding: 20 }}>
-        <div className="skeleton" style={{ height: 36, borderRadius: 8, marginBottom: 12 }} />
-        <div style={{ display: 'flex', gap: 12 }}>
-          <div className="skeleton" style={{ flex: 1, height: '70vh', borderRadius: 8 }} />
-          <div style={{ width: RIGHT_WIDTH, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {[...Array(10)].map((_, i) => (
-              <div key={i} className="skeleton" style={{ height: 44, borderRadius: 6 }} />
+      <div style={{
+        height: 'calc(100vh - 48px)', display: 'flex', flexDirection: 'column',
+        padding: '10px 14px', gap: 8, overflow: 'hidden',
+      }}>
+        {/* TopBar: back button, round strip, 3 icon buttons */}
+        <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
+          <div className="skeleton" style={{ width: 70, height: 28, borderRadius: 4 }} />
+          <div className="skeleton" style={{ flex: 1, height: 28, borderRadius: 4 }} />
+          <div style={{ display: 'flex', gap: 6 }}>
+            {[0, 1, 2].map(i => (
+              <div key={i} className="skeleton" style={{ width: 34, height: 28, borderRadius: 4 }} />
             ))}
           </div>
         </div>
+        {/* main row: left drawer, map canvas, right drawer */}
+        <div style={{ flex: 1, display: 'flex', gap: 8, minHeight: 0 }}>
+          <div style={{ width: LEFT_WIDTH, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <div className="skeleton" style={{ flex: 1, height: 24, borderRadius: 4 }} />
+              <div className="skeleton" style={{ flex: 1, height: 24, borderRadius: 4 }} />
+            </div>
+            <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+          </div>
+          <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+          <div style={{ width: RIGHT_WIDTH, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+            <div className="skeleton" style={{ flex: 1, borderRadius: 8 }} />
+          </div>
+        </div>
+        {/* BottomBar: playback controls + winprob strip */}
+        <div className="skeleton" style={{ height: 104, flexShrink: 0, borderRadius: 8 }} />
       </div>
     )
   }
@@ -240,13 +286,13 @@ export default function ReplayScreen() {
         </TopBar>
       )}
 
-      <div ref={midRef} style={{ flex: 1, display: 'flex', gap: 8, minHeight: 0 }}>
+      <div style={{ flex: 1, display: 'flex', gap: 8, minHeight: 0 }}>
         {hasChrome && (
           leftOpen ? (
             <LeftDrawer
               replay={replay} analysis={analysis} frameIdx={frameIdx}
               tab={leftTab} setTab={setLeftTab} width={LEFT_WIDTH}
-              onEventSeek={seekTick} onMomentSeek={tk => jumpToFrame(frameForTickMinus(replay, tk, 3))}
+              onEventSeek={seekTick} onMomentSelect={onMomentSelect}
             />
           ) : (
             <button className="btn-ghost" title={t('replay:eventLog.header')} style={{ padding: '10px 2px', fontSize: 11, flexShrink: 0 }}
@@ -254,12 +300,12 @@ export default function ReplayScreen() {
           )
         )}
 
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: 0, position: 'relative' }}>
+        <div style={{ flex: 1, display: 'flex', minWidth: 0, minHeight: 0, position: 'relative' }}>
           <MapCanvas
             replay={replay} analysis={analysis} overview={overview}
             frameIdx={frameIdx} tx={tx} setTx={setTx}
             nadeTrailMode={nadeTrailMode} nadeFilter={nadeOff}
-            level={level} setLevel={setLevel} side={side}
+            level={level} setLevel={setLevel}
           />
         </div>
 
@@ -287,7 +333,7 @@ export default function ReplayScreen() {
           playing={playing} onPlayPause={() => setPlaying(p => !p)}
           onSeekSec={seekSec}
           hasMoments={(analysis.moments?.length ?? 0) > 0} onMoment={jumpToMoment}
-          time={fmtTime(frameIdx)} duration={fmtTime(totalFrames - 1)}
+          time={fmtTime(Math.floor(frameIdx))} duration={fmtTime(totalFrames - 1)}
           speed={speed} onSpeed={setSpeed}
           nadeFilter={nadeOff} onToggleNade={toggleNade}
           trailMode={nadeTrailMode} onTrailMode={setNadeTrailMode}
@@ -303,11 +349,12 @@ export default function ReplayScreen() {
                 height={56}
                 knifeRound={analysis.knifeRound}
                 matchStartTick={analysis.meta.matchStartTick}
+                highlight={momentHl}
               />
             </div>
           ) : (
             <div style={{ position: 'relative' }}>
-              <input type="range" min={0} max={Math.max(0, totalFrames - 1)} value={frameIdx}
+              <input type="range" min={0} max={Math.max(0, totalFrames - 1)} value={Math.floor(frameIdx)}
                 onChange={e => { setFrameIdx(Number(e.target.value)); setPlaying(false) }}
                 style={{ width: '100%', accentColor: 'var(--accent)' }} />
               {rounds.map(r => {

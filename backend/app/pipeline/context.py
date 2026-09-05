@@ -4,6 +4,8 @@ import pandas as pd
 
 from demoparser2 import DemoParser
 
+from .. import config
+
 # Full-path props (resolve reliably across demo sources)
 P_MONEY = "CCSPlayerController.CCSPlayerController_InGameMoneyServices.m_iAccount"
 P_START_MONEY = "CCSPlayerController.CCSPlayerController_InGameMoneyServices.m_iStartAccount"
@@ -41,9 +43,11 @@ PLAYER_PROPS = ["X", "Y", "Z", "health", "armor_value", "active_weapon_name"]
 
 
 class DemoContext:
-    def __init__(self, path: str, progress=None):
+    def __init__(self, path: str, on_stage=None):
         self.path = path
-        self._progress = progress or (lambda phase, pct: None)
+        # stage-boundary callback: parse calls are blocking, so stage switches
+        # are the only exact progress points inside load()
+        self._on_stage = on_stage or (lambda stage: None)
         self.parser = DemoParser(path)
         self.header = self.parser.parse_header()
         self.events: dict[str, pd.DataFrame] = {}
@@ -55,7 +59,7 @@ class DemoContext:
 
     # ------------------------------------------------------------- loading
     def load(self):
-        self._progress("probe", 4)
+        self._on_stage("probe")
         # Pass 1: minimal full-tick scan to learn tickrate & max tick.
         gt = self.parser.parse_ticks(["game_time"])
         gt = gt.reset_index() if gt.index.name else gt
@@ -68,9 +72,9 @@ class DemoContext:
         dt = dt[dt > 0]
         per_tick = np.median(dt) if len(dt) else 1.0 / 64.0
         self.tickrate = float(max(16.0, min(256.0, round(1.0 / per_tick))))
-        self.frame_step = max(4, int(round(self.tickrate * 0.125)))
+        self.frame_step = max(4, int(round(self.tickrate * config.FRAME_SECONDS)))
 
-        self._progress("events", 12)
+        self._on_stage("events")
         ev = self.parser.parse_events(EVENTS_WITH_PLAYERS, player=PLAYER_PROPS)
         for name, df in ev:
             self.events[name] = self._clean(df)
@@ -78,14 +82,14 @@ class DemoContext:
         for name, df in ev2:
             self.events[name] = self._clean(df)
 
-        self._progress("ticks", 30)
+        self._on_stage("ticks")
         want = list(range(0, self.max_tick + 1, self.frame_step))
         if not want or want[-1] != self.max_tick:
             want.append(self.max_tick)
         self.ticks = self.parser.parse_ticks(TICK_PROPS, ticks=want)
         self.ticks = self._clean(self.ticks)
 
-        self._progress("grenades", 55)
+        self._on_stage("grenades")
         try:
             g = self.parser.parse_grenades()
             if isinstance(g, tuple):
