@@ -30,7 +30,7 @@ class PlayerStats:
             "dmg": 0.0, "taken": 0.0, "utilDmg": 0.0, "postPlantDmg": 0.0,
             "postPlantTaken": 0.0, "enemyFlashed": 0, "blindSec": 0.0,
             "effectiveFlashes": 0, "plant": 0, "defuse": 0, "defuseAttempt": 0,
-            "tradedDeath": False, "tradedKill": False, "opening": None,
+            "opening": None,
             "shots": 0, "hits": 0, "survived": False, "nades": 0,
         })
         self.weapons: dict[str, dict] = defaultdict(lambda: {
@@ -40,6 +40,10 @@ class PlayerStats:
         self.openingDeaths = 0
         self.tradeKills = 0
         self.tradedDeaths = 0
+        # (round, tick) of every trade kill / traded death — lists, not
+        # per-round flags, so multiple trades in one round all survive
+        self.tradeKillEvents: list[tuple[int, int]] = []
+        self.tradedDeathEvents: list[tuple[int, int]] = []
         self.multiKills = {2: 0, 3: 0, 4: 0, 5: 0}
         self.multiKillRounds = 0
         self.flashThrows = 0
@@ -207,7 +211,8 @@ def compute_players(ctx, rb, fb):
                 victim_index[v].append(i)
         for lst in victim_index.values():
             lst.sort(key=lambda i: int(kt[i]))
-        for i in range(len(kills)):
+        used_trade_kills: set[int] = set()   # one avenging kill = one trade kill,
+        for i in range(len(kills)):          # even if it avenges several deaths
             a, v = _sid(a_arr[i]), _sid(v_arr[i])
             if not a or not v:
                 continue
@@ -216,6 +221,9 @@ def compute_players(ctx, rb, fb):
                 continue
             lst = victim_index.get(a, [])
             t_i = int(kt[i])
+            rr_i = round_of_tick(t_i)
+            if rr_i is None:
+                continue
             j0 = int(np.searchsorted([int(kt[j]) for j in lst], t_i, side="right"))
             for j in lst[j0:]:
                 if int(kt[j]) - t_i > trade_window:
@@ -224,11 +232,17 @@ def compute_players(ctx, rb, fb):
                 pm = P(m)
                 if pm is None or m == a or pm.team != pv.team:
                     continue
-                pm.tradeKills += 1
-                trade_rn = round_of_tick(int(kt[j]))["n"] if round_of_tick(int(kt[j])) else 0
-                pm.r(trade_rn)["tradedKill"] = int(kt[j])  # store tick instead of True
+                rr_j = round_of_tick(int(kt[j]))
+                if rr_j is None:
+                    continue
+                # one avenging kill is one trade kill even if it avenges
+                # several deaths; each avenged death still counts
+                if j not in used_trade_kills:
+                    used_trade_kills.add(j)
+                    pm.tradeKills += 1
+                    pm.tradeKillEvents.append((rr_j["n"], int(kt[j])))
                 pv.tradedDeaths += 1
-                pv.r(n)["tradedDeath"] = int(kt[i])  # store original kill tick
+                pv.tradedDeathEvents.append((rr_i["n"], t_i))
                 break
 
         # opening kills
@@ -390,6 +404,7 @@ def compute_players(ctx, rb, fb):
         st.positions = fs.get("positions", [])
         alive_at_end = fs.get("aliveAtEnd", {})
         d_ticks = victim_death_ticks.get(sid, [])
+        traded_rounds = {rn for rn, _ in st.tradedDeathEvents}
         for rr in rb.rounds:
             pr = st.r(rr["n"])
             survived = bool(alive_at_end.get(str(rr["n"])))
@@ -405,7 +420,7 @@ def compute_players(ctx, rb, fb):
                 st.saves += 1
             # KAST: kill OR assist OR survive OR traded death
             if (pr["kills"] or pr["assists"] or pr["flashAssists"] or pr["survived"]
-                    or pr["tradedDeath"]):
+                    or rr["n"] in traded_rounds):
                 st.kastRounds.add(rr["n"])
 
     # ---------------------------------------------------------- money spend

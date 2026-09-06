@@ -507,6 +507,7 @@ function TradeKillsPage({ analytics, playerNames, lang, totalRounds }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const rounds = analytics.metrics.tradeKillRounds ?? []
+  const ticks = analytics.metrics.tradeKillTicks ?? []
   const pct = analytics.metrics.tradeKillPct
   const episodes = analytics.duels.filter(d => d.isTradeKill)
   const nonTradeEpisodes = analytics.duels.filter(d => !d.isTradeKill)
@@ -516,7 +517,7 @@ function TradeKillsPage({ analytics, playerNames, lang, totalRounds }: {
     <div>
       <MetricHero
         title={t('metrics:tradeKills.title')}
-        subtitle={t('metrics:tradeKills.subtitle', { n: rounds.length, rounds: rounds.join(', ') || '—' })}
+        subtitle={t('metrics:tradeKills.subtitle', { n: ticks.length, rounds: rounds.join(', ') || '—' })}
         value={pct.toFixed(1) + '%'} metricKey="tradeKillPct" lang={lang}
       />
       {episodes.length > 0 && nonTradeEpisodes.length > 0 && (
@@ -545,6 +546,7 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
   analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const rounds = analytics.metrics.tradedDeathRounds ?? []
+  const ticks = analytics.metrics.tradedDeathTicks ?? []
   const pct = analytics.metrics.tradedDeathPct
   const episodes = analytics.duels.filter(d => d.isTradedDeath)
   const nonTradedDeaths = analytics.duels.filter(d => !d.isTradedDeath)
@@ -554,7 +556,7 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
     <div>
       <MetricHero
         title={t('metrics:tradedDeaths.title')}
-        subtitle={t('metrics:tradedDeaths.subtitle', { n: rounds.length, rounds: rounds.join(', ') || '—' })}
+        subtitle={t('metrics:tradedDeaths.subtitle', { n: ticks.length, rounds: rounds.join(', ') || '—' })}
         value={pct.toFixed(1) + '%'} metricKey="tradedDeathPct" lang={lang}
       />
       {episodes.length > 0 && nonTradedDeaths.length > 0 && (

@@ -668,11 +668,12 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         1 for d in attacker_duels if d.get("context", {}).get("attackerWalking"))
     isolated_count = sum(1 for d in duels if "isolated" in d["errors"])
 
-    trade_kill_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedKill"))
-    traded_death_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedDeath"))
-    # ticks of the actual trade-kill / traded-death events for precise duel matching
-    trade_kill_ticks = sorted(int(pr["tradedKill"]) for pr in p.rounds.values() if pr.get("tradedKill") and pr["tradedKill"] is not True)
-    traded_death_ticks = sorted(int(pr["tradedDeath"]) for pr in p.rounds.values() if pr.get("tradedDeath") and pr["tradedDeath"] is not True)
+    trade_kill_events = getattr(p, "tradeKillEvents", []) or []
+    traded_death_events = getattr(p, "tradedDeathEvents", []) or []
+    trade_kill_rounds = sorted({rn for rn, _ in trade_kill_events})
+    traded_death_rounds = sorted({rn for rn, _ in traded_death_events})
+    trade_kill_ticks = sorted(t for _, t in trade_kill_events)
+    traded_death_ticks = sorted(t for _, t in traded_death_events)
 
     trade_kill_pct = round(trade_kills / total_kills * 100, 1) if total_kills else 0.0
     traded_death_pct = round(traded_deaths / total_deaths * 100, 1) if total_deaths else 0.0
@@ -1007,19 +1008,10 @@ def build_player_analytics(ctx, rb, fb, players: dict,
         trade_kill_tick_set: set[int] = set()
         traded_death_tick_set: set[int] = set()
         if p is not None:
-            for pr in p.rounds.values():
-                tk = pr.get("tradedKill")
-                if tk and tk is not True:
-                    try:
-                        trade_kill_tick_set.add(int(tk))
-                    except (TypeError, ValueError):
-                        pass
-                td = pr.get("tradedDeath")
-                if td and td is not True:
-                    try:
-                        traded_death_tick_set.add(int(td))
-                    except (TypeError, ValueError):
-                        pass
+            for _, tk in getattr(p, "tradeKillEvents", []) or []:
+                trade_kill_tick_set.add(int(tk))
+            for _, td in getattr(p, "tradedDeathEvents", []) or []:
+                traded_death_tick_set.add(int(td))
         for d in duels:
             d["isTradeKill"] = d["tick"] in trade_kill_tick_set
             d["isTradedDeath"] = d["tick"] in traded_death_tick_set
