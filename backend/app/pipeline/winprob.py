@@ -70,10 +70,15 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
             probs.append(0.5)
             continue
 
-        # bomb planted in the current round and still ticking?
+        # bomb planted in the current round and still ticking? The window is
+        # bounded by the round's end: during the NEXT round's freeze the world
+        # is already reset and must get a fresh estimate, not a carried-over
+        # decided state. A defuse voids the fallback fuse (the bomb cannot
+        # explode after being defused), so it is checked before the explosion.
         r = round_at_tick(tick)
         bomb = bombs.get(r["n"]) if r is not None else None
-        planted = bool(bomb and bomb["plant"] <= tick)
+        end = r.get("endTick") if r is not None else 0
+        planted = bool(bomb and bomb["plant"] <= tick and (not end or tick <= end))
 
         hp_ct = hp_t = 0.0
         alive_ct = alive_t = 0
@@ -103,12 +108,14 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
                     alive_t += 1
                     equip_t += equip
 
-        # determined outcomes first: bomb already exploded / already defused
-        if planted and bomb["explode"] <= tick:
-            probs.append(0.05)
-            continue
+        # determined outcomes first — a done defuse beats the fuse clock
+        # (explodeTick is often absent when defused, and the 40 s fallback
+        # must not "detonate" an already-defused bomb)
         if planted and bomb["defused"] and tick >= bomb["defused"]:
             probs.append(0.95)
+            continue
+        if planted and bomb["explode"] <= tick:
+            probs.append(0.05)
             continue
         if planted and alive_ct == 0:
             probs.append(0.05)   # nobody left to defuse -> T win

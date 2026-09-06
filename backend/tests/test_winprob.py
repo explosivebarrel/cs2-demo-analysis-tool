@@ -126,3 +126,23 @@ def test_both_alive_kit_band():
     assert 0.05 < p_kit < 0.5
     assert 0.05 < p_nokit < 0.5
     assert p_kit > p_nokit
+
+
+def test_defused_voids_fallback_fuse():
+    # defused at 9000, no bomb_exploded event: the 40 s fallback (tick 10560)
+    # must not "detonate" the defused bomb within the round
+    r = _round(plantTick=PLANT, plantX=1000, plantY=1000, defuseTick=9000)
+    both = _frame(ts=[_player(team="T")] * 5, cs=[_player()] * 5)
+    assert _at(r, both, 10560) == 0.95
+
+
+def test_freeze_of_next_round_gets_fresh_estimate():
+    # round 1 defused, its fallback fuse expires during round 2's freeze:
+    # no carried-over 0.95/0.05 there — the reset world is scored fresh
+    r1 = _round(plantTick=PLANT, plantX=1000, plantY=1000, defuseTick=9000,
+                endTick=10000)
+    r2 = {"n": 2, "freezeEndTick": 11000, "endTick": 200 * RATE, "plantTick": None,
+          "explodeTick": None, "defuseTick": None, "beginDefuseTick": None,
+          "beginDefuser": None, "defuseKit": False, "plantX": None, "plantY": None}
+    both = _frame(ts=[_player(team="T")] * 5, cs=[_player()] * 5)
+    assert _at(r1 + [r2], both, 10600) == 0.5
