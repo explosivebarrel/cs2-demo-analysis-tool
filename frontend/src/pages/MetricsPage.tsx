@@ -18,13 +18,14 @@ function prettyWeapon(raw: string): string {
 // ------------------------------------------------------------------ MetricHero
 
 function MetricHero({ title, subtitle, value, metricKey, lang, higherIsBetter = true }: {
-  title: string; subtitle?: string; value: string; metricKey: string; lang: 'ru' | 'en'; higherIsBetter?: boolean
+  title: string; subtitle?: string; value: string; metricKey?: string; lang: 'ru' | 'en'; higherIsBetter?: boolean
 }) {
   const benchmarks = useBenchmarks()
   const [showTip, setShowTip] = useState(false)
   const rawNum = parseFloat(value)
-  const tier = isNaN(rawNum) ? null : getTier(benchmarks, metricKey, rawNum, higherIsBetter)
-  const tiers = benchmarks[metricKey]
+  const tier = !isNaN(rawNum) && metricKey
+    ? getTier(benchmarks, metricKey, rawNum, higherIsBetter) : null
+  const tiers = metricKey ? benchmarks[metricKey] : undefined
   const tip = tiers && !isNaN(rawNum) ? formatTierTooltip(tiers, rawNum, higherIsBetter) : null
   const color = tier ? TIER_COLORS[tier] : 'var(--text)'
   const label = tier ? tierLabel(tier) : null
@@ -335,6 +336,13 @@ function IdealStrafePctPage({ analytics, playerNames, lang, totalRounds }: {
         subtitle={t('metrics:idealStrafe.subtitle', { stopped: cleanAll.length, moving: movingAll.length, total: allDuels.length })}
         value={pct.toFixed(1) + '%'} metricKey="idealStrafePct" lang={lang}
       />
+      <div style={{
+        background: 'var(--card)', borderRadius: 8, border: '1px solid var(--border)',
+        padding: '12px 16px', fontSize: 12, color: 'var(--text2)', lineHeight: 1.6,
+        marginBottom: 16,
+      }}>
+        {t('metrics:idealStrafe.hint')}
+      </div>
       <SectionHeading label={t('metrics:shared.impact')} />
       <WinRateComparison
         cleanCount={cleanAll.length} cleanWins={cleanWins}
@@ -1506,7 +1514,7 @@ function MissedFirstPage({ analytics, playerNames, lang, totalRounds }: {
       <MetricHero
         title={t('metrics:missedFirst.title')}
         subtitle={t('metrics:missedFirst.subtitle', { missed: missedDuels.length, total: wonDuels.length })}
-        value={`${pct}%`} metricKey="firstBulletAcc" lang={lang} higherIsBetter={false}
+        value={`${pct}%`} lang={lang}
       />
 
       {wonDuels.length > 0 && (
@@ -1584,9 +1592,14 @@ function ExcellentContactsPage({ analytics, playerNames, lang, totalRounds }: {
   const duels = analytics.duels
   const shots = m.firstBulletShots ?? []
 
-  // Excellent contact = won + stopped (no moving_shot error) + first bullet hit
-  const hitRounds = new Set(shots.filter(s => s.hit).map(s => s.round))
-  const excellentDuels = duels.filter(d => d.won && !d.errors.includes('moving_shot') && hitRounds.has(d.round))
+  // exact episodes from the backend (kill ticks of excellent contacts);
+  // old artifacts without the ticks fall back to the won+stopped+hit heuristic
+  const excellentDuels = (m.excellentContactTicks?.length
+    ? duels.filter(d => d.won && m.excellentContactTicks!.includes(d.tick))
+    : duels.filter(d => {
+        const hitRounds = new Set(shots.filter(s => s.hit).map(s => s.round))
+        return d.won && !d.errors.includes('moving_shot') && hitRounds.has(d.round)
+      }))
 
   // For WinRateComparison: use round-level win rates, not just won-duels
   const excellentRounds = new Set(excellentDuels.map(d => d.round))

@@ -459,9 +459,14 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             continue
 
         tick = int(k["tick"])
+        # a duel is an in-round engagement against an enemy: warmup/knife-round
+        # kills are counted nowhere else, suicides and teamkills are not duels
+        rn = _round_of(tick)
+        if rn is None or a_sid == v_sid \
+                or rb.steamid_team.get(a_sid) == rb.steamid_team.get(v_sid):
+            continue
         weapon = str(k.get("weapon", ""))
         headshot = bool(k.get("headshot"))
-        rn = _round_of(tick) or 0
         won = (a_sid == steamid)
 
         # timestamp from round start
@@ -663,6 +668,9 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
     attacker_duels = [d for d in duels if d["won"]]
     total_duels = len(attacker_duels)
 
+    # overshoot by the duel tag — the same episodes the metrics page lists
+    overshoot_count = sum(1 for d in duels if "overshoot" in d["errors"])
+
     # shift peek is deliberate play (not an error tag) — read it from context
     shift_peek_count = sum(
         1 for d in attacker_duels if d.get("context", {}).get("attackerWalking"))
@@ -706,6 +714,7 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         "isolatedPct": isolated_pct,
         "mainProblem": main_problem,
         "passiveAngleCount": passive_angle_count,
+        "overshootCount": overshoot_count,
         "tradeKillRounds": trade_kill_rounds,
         "tradedDeathRounds": traded_death_rounds,
         "tradeKillTicks": trade_kill_ticks,
@@ -979,7 +988,8 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                     "reloadErrors": 0, "angleControlCount": 0,
                     "angleControlByPhase": {"early": 0, "mid": 0, "late": 0},
                     "reactionTimeMs": 0.0, "overshootCount": 0,
-                    "excellentContacts": 0, "crosshairPlacementPct": 0.0,
+                    "excellentContacts": 0, "excellentContactTicks": [],
+                    "crosshairPlacementPct": 0.0,
                     "successfulReactionTimeMs": 0.0,
                     "reactionDeltas": [], "reactionDeltasHit": [],
                 },
@@ -1068,7 +1078,8 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "angleControlByPhase": {"early": 0, "mid": 0, "late": 0},
                 "reactionTimeMs": 0.0, "overshootCount": 0,
-                "excellentContacts": 0, "crosshairPlacementPct": 0.0,
+                "excellentContacts": 0, "excellentContactTicks": [],
+                "crosshairPlacementPct": 0.0,
                 "successfulReactionTimeMs": 0.0,
                 "reactionDeltas": [], "reactionDeltasHit": [],
             }
@@ -1091,7 +1102,8 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "angleControlByPhase": {"early": 0, "mid": 0, "late": 0},
                 "reactionTimeMs": 0.0, "overshootCount": 0,
-                "excellentContacts": 0, "crosshairPlacementPct": 0.0,
+                "excellentContacts": 0, "excellentContactTicks": [],
+                "crosshairPlacementPct": 0.0,
                 "successfulReactionTimeMs": 0.0,
                 "reactionDeltas": [], "reactionDeltasHit": [],
             }

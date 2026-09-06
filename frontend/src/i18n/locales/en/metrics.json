@@ -101,7 +101,8 @@
   },
   "idealStrafe": {
     "title": "Ideal strafes",
-    "subtitle": "{{stopped}} stopped · {{moving}} moving (of {{total}} duels)"
+    "subtitle": "{{stopped}} stopped · {{moving}} moving (of {{total}} duels)",
+    "hint": "The percentage is computed over duel-opening shots that led to a kill: the share taken while fully stopped. The comparison below covers all moving-shot duels."
   },
   "firstBullet": {
     "title": "First bullet accuracy",
@@ -141,7 +142,7 @@
   },
   "counterStrafe": {
     "title": "Counter-strafe errors",
-    "subtitle": "Shots fired while moving (no stop before shooting)",
+    "subtitle": "Shots fired while moving, without stopping before the shot. The list below shows only the duels that had one.",
     "movingDuels": "Duels with moving shots",
     "empty": "No duels with moving shots"
   },
