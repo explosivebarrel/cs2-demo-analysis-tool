@@ -17,10 +17,12 @@ def _replay(rows, ticks=None):
 
 class _FB:
     players = ["a", "b", "c", "d"]
+    player_idx = {"a": 0, "b": 1, "c": 2, "d": 3}
 
 
 class _RB:
     rounds = []
+    ctx = SimpleNamespace(tickrate=64)
 
 
 def test_winprob_stride13():
@@ -48,10 +50,11 @@ def test_frame_pos_stride13():
 
 def test_winprob_post_plant_overrides():
     fb = _FB()
-    rb = SimpleNamespace(rounds=[{"n": 1, "freezeEndTick": 0, "plantTick": 50, "endTick": 300}])
+    rb = SimpleNamespace(rounds=[{"n": 1, "freezeEndTick": 0, "plantTick": 50, "endTick": 300}],
+                         ctx=SimpleNamespace(tickrate=64))
     ct, t = _row(100, 1, 3, 4000), _row(100, 1, 2, 4000)
 
-    # planted, all T dead -> free defuse -> CT win
+    # planted, all T dead, plenty of fuse -> CT defuse
     rows = [ct, ct, _row(0, 0, 2), _row(0, 0, 2)]
     probs = compute_winprob(fb, rb, _replay([rows], ticks=[100]))
     assert probs[0] == 0.95
@@ -60,3 +63,10 @@ def test_winprob_post_plant_overrides():
     rows = [_row(0, 0, 3), _row(0, 0, 3), t, t]
     probs = compute_winprob(fb, rb, _replay([rows], ticks=[100]))
     assert probs[0] == 0.05
+
+    # after the real explode/defuse ticks the outcome stays decided
+    rb.rounds[0].update(explodeTick=120, defuseTick=None)
+    rows = [ct, ct, t, t]
+    assert compute_winprob(fb, rb, _replay([rows], ticks=[130]))[0] == 0.05
+    rb.rounds[0].update(explodeTick=None, defuseTick=120)
+    assert compute_winprob(fb, rb, _replay([rows], ticks=[130]))[0] == 0.95

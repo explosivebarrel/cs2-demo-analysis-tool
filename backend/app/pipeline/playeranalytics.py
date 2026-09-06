@@ -9,8 +9,8 @@ import math
 from collections import defaultdict
 from typing import Any
 
+from .. import config
 from .aim_mechanics import compute_aim_mechanics
-
 
 def _sid(v) -> str | None:
     if v is None:
@@ -1211,28 +1211,34 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
                                 "detail": ",".join(sorted(errs)),
                                 "preSec": 1.5, "durSec": 1.5})
 
-    # winprob swings: largest single-step shift inside a round. States where
-    # the round is already decided (wp <= 0.08 / >= 0.92 — round collapse and
-    # the next-round reset) are excluded, otherwise every round boundary
-    # produces a fake 40-50% "swing"
+    # winprob swings: largest shifts over a SWING_WINDOW_SEC window, strictly
+    # inside the round (frames beyond endTick already reflect the next round's
+    # reset and would fake a 40-50% "swing"). Slow momentum swings (95% <-> 5%
+    # over 20-30 s) move ~0.01 per 0.125 s frame — only a windowed difference
+    # can see them.
     if winprob and replay_ticks:
         ticks_arr = _np.array(replay_ticks, dtype="int64")
         wp = _np.array(winprob, dtype="float64")
+        w = max(2, int(round(config.SWING_WINDOW_SEC / config.FRAME_SECONDS)))
         for r in rb.rounds:
             i0 = int(_np.searchsorted(ticks_arr, r["freezeEndTick"]))
-            i1 = int(_np.searchsorted(ticks_arr, r["endTick"]))
-            if i1 - i0 < 2:
+            i1 = int(_np.searchsorted(ticks_arr, r["endTick"], side="right")) - 1
+            if i1 - i0 < w:
                 continue
-            seg = wp[i0:i1 + 1]
-            contested = (seg > 0.08) & (seg < 0.92)
-            d = _np.abs(_np.diff(seg))
-            d[~(contested[:-1] & contested[1:])] = 0
-            j = int(d.argmax())
-            if d[j] >= 0.2:
-                moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + 1]),
+            d = _np.abs(wp[i0 + w:i1 + 1] - wp[i0:i1 + 1 - w])
+            picked: list[int] = []
+            for j in _np.argsort(d)[::-1]:
+                if d[j] < 0.2 or len(picked) >= 2:
+                    break
+                # non-max suppression over 2 windows: a gradual ramp otherwise
+                # yields equal-delta windows at both of its ends
+                if all(abs(int(j) - p) >= 2 * w for p in picked):
+                    picked.append(int(j))
+            for j in sorted(picked):
+                moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + w]),
                                 "round": r["n"], "steamid": None,
                                 "detail": f"{d[j] * 100:.0f}%",
-                                "preSec": 2.5, "durSec": 2.5})
+                                "preSec": 6.0, "durSec": 2.5})
 
     moments.sort(key=lambda m: m["tick"])
     return moments[:300]

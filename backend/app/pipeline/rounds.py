@@ -330,6 +330,7 @@ class RoundBuilder:
     def _bomb_events(self, rounds):
         planted = self.ctx.ev("bomb_planted")
         defused = self.ctx.ev("bomb_defused")
+        exploded = self.ctx.ev("bomb_exploded")
         begin_plant = self.ctx.ev("bomb_beginplant")
         begin_defuse = self.ctx.ev("bomb_begindefuse")
         # site is a zone id (not always 0/1); map distinct ids to A/B by order
@@ -347,8 +348,10 @@ class RoundBuilder:
             r["defuser"] = None
             r["defuseKit"] = False
             r["defuseTick"] = None
+            r["explodeTick"] = None
             r["beginPlantTick"] = None
             r["beginDefuseTick"] = None
+            r["beginDefuser"] = None
             for _, row in planted.iterrows():
                 if w0 <= row["tick"] <= w1:
                     r["bombPlanted"] = True
@@ -363,10 +366,14 @@ class RoundBuilder:
                 if w0 <= row["tick"] <= w1:
                     r["defuser"] = str(row.get("user_steamid", ""))
                     r["defuseTick"] = int(row["tick"])
+            for _, row in exploded.iterrows():
+                if w0 <= row["tick"] <= w1:
+                    r["explodeTick"] = int(row["tick"])
             for _, row in begin_defuse.iterrows():
                 if w0 <= row["tick"] <= w1:
                     r["defuseKit"] = bool(row.get("haskit"))
                     r["beginDefuseTick"] = int(row["tick"])
+                    r["beginDefuser"] = str(row.get("user_steamid", "")) or None
             for _, row in begin_plant.iterrows():
                 if w0 <= row["tick"] <= w1:
                     r["beginPlantTick"] = int(row["tick"])

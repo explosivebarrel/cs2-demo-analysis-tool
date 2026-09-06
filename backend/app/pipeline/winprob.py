@@ -1,11 +1,20 @@
 """Win probability curve computed per replay frame.
 
 Uses alive + HP + per-frame equipment value heuristic. Normalised to [0.05, 0.95].
-Post-plant: *1.5 boost toward T side (while the bomb is alive).
 
-Post-plant override: a planted bomb with no CT alive is already a T win (0.05);
-with no T alive the CTs get a free defuse (0.95) — regardless of HP/equipment.
+Post-plant the bomb clock dominates: once the C4 is down the CT side can only
+win by defusing, so the curve is driven by the remaining fuse time vs the
+defuse time (5 s with a kit, 10 s without). Determined outcomes collapse to
+the clamped plateaus: bomb explodes -> 0.05, defuse done (or guaranteed) -> 0.95.
+A hopeless situation (fuse < 5 s, both sides alive, nobody defusing) is already
+a T win — killing the Ts does not stop the bomb.
 """
+
+
+BOMB_TIMER = 40.0        # seconds from plant to explosion
+DEFUSE_KIT = 5.0         # defuse seconds with a kit
+DEFUSE_NO_KIT = 10.0     # defuse seconds without a kit
+CT_SPEED = 250.0         # units/sec run speed, for ETA to the bomb
 
 
 def compute_winprob(fb, rb, replay: dict) -> list[float]:
@@ -17,17 +26,33 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
     ticks = replay["ticks"]
     data = replay["data"]
     FIELDS = 13   # [x, y, z, yaw, hp, armor, alive, wid, flags, team_num, equip, money, ammo]
+    F_X     = 0
+    F_Y     = 1
     F_HP    = 4
     F_ALIVE = 6
+    F_FLAGS = 8   # bit1 = carries C4, bit2 = has defuse kit
     F_TEAM  = 9   # team_num: 2=T, 3=CT
     F_EQUIP = 10  # per-frame equipment value
 
-    # planted tick and round end per round for the post-plant window
-    plant_info: dict[int, tuple[int, int]] = {}  # n -> (plantTick, endTick)
+    rate = max(1.0, float(rb.ctx.tickrate))
+
+    # per-round bomb clock: (plantTick, explodeTick, defuseTick, beginDefuseTick,
+    # beginDefuser, beginKit, plantX, plantY)
+    bombs: dict[int, dict] = {}
     for r in rb.rounds:
         pt = r.get("plantTick")
-        if pt:
-            plant_info[r["n"]] = (pt, r.get("endTick") or 0)
+        if not pt:
+            continue
+        bombs[r["n"]] = {
+            "plant": pt,
+            "explode": r.get("explodeTick") or int(pt + BOMB_TIMER * rate),
+            "defused": r.get("defuseTick"),
+            "begin": r.get("beginDefuseTick"),
+            "defuser": r.get("beginDefuser"),
+            "kit": bool(r.get("defuseKit")),
+            "x": r.get("plantX"),
+            "y": r.get("plantY"),
+        }
 
     def round_at_tick(t: int):
         cur = None
@@ -45,9 +70,16 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
             probs.append(0.5)
             continue
 
+        # bomb planted in the current round and still ticking?
+        r = round_at_tick(tick)
+        bomb = bombs.get(r["n"]) if r is not None else None
+        planted = bool(bomb and bomb["plant"] <= tick)
+
         hp_ct = hp_t = 0.0
         alive_ct = alive_t = 0
         equip_ct = equip_t = 0
+        kit_ct = False
+        ct_dist2 = []   # squared distance of living CTs to the planted bomb
 
         for i in range(n):
             b = base + i * FIELDS
@@ -60,43 +92,69 @@ def compute_winprob(fb, rb, replay: dict) -> list[float]:
                     hp_ct += hp
                     alive_ct += 1
                     equip_ct += equip
+                    if data[b + F_FLAGS] & 2:
+                        kit_ct = True
+                    if bomb and bomb["x"] is not None and bomb["y"] is not None:
+                        dx = data[b + F_X] - bomb["x"]
+                        dy = data[b + F_Y] - bomb["y"]
+                        ct_dist2.append(dx * dx + dy * dy)
                 elif team == 2:  # T
                     hp_t += hp
                     alive_t += 1
                     equip_t += equip
 
-        # bomb planted in the current round and still ticking?
-        r = round_at_tick(tick)
-        planted = False
-        if r is not None:
-            info = plant_info.get(r["n"])
-            if info and info[0] <= tick <= info[1]:
-                planted = True
-
-        # post-plant overrides: the surviving side already has the round
+        # determined outcomes first: bomb already exploded / already defused
+        if planted and bomb["explode"] <= tick:
+            probs.append(0.05)
+            continue
+        if planted and bomb["defused"] and tick >= bomb["defused"]:
+            probs.append(0.95)
+            continue
         if planted and alive_ct == 0:
             probs.append(0.05)   # nobody left to defuse -> T win
             continue
+
         if planted and alive_t == 0:
-            probs.append(0.95)   # free defuse -> CT win
+            # the CTs must defuse: fuse time vs defuse time decides
+            time_left = (bomb["explode"] - tick) / rate
+            if (bomb["begin"] and tick >= bomb["begin"]
+                    and (not bomb["defused"] or tick < bomb["defused"])):
+                idx = fb.player_idx.get(bomb["defuser"]) if bomb["defuser"] else None
+                if idx is not None and data[base + idx * FIELDS + F_ALIVE]:
+                    need = DEFUSE_KIT if bomb["kit"] else DEFUSE_NO_KIT
+                    probs.append(0.95 if bomb["begin"] + need * rate <= bomb["explode"] else 0.05)
+                    continue
+            need = (DEFUSE_KIT if kit_ct else DEFUSE_NO_KIT)
+            if ct_dist2:
+                need += (min(ct_dist2) ** 0.5) / CT_SPEED
+            probs.append(0.95 if time_left >= need else max(0.05, 0.95 * time_left / need))
             continue
 
         # HP contribution: two terms — team size and average HP — so that
         # five 10-HP players do not outweigh one full-HP player
         hp_score_ct = (alive_ct / 5.0) * (hp_ct / (alive_ct * 100.0) if alive_ct else 0.0)
-        hp_score_t  = (alive_t / 5.0) * (hp_t  / (alive_t * 100.0)  if alive_t  else 0.0)
+        hp_score_t  = (alive_t / 5.0) * (hp_t  / (alive_t * 100.0)  if alive_t else 0.0)
 
         # equipment: AWP team ≈ 4750, full rifle team ≈ ~14k → normalise by 15000/5
         equip_norm = 3000.0
         eq_score_ct = (equip_ct / equip_norm) * (1.0 / 5.0) if alive_ct else 0.0
-        eq_score_t  = (equip_t  / equip_norm) * (1.0 / 5.0) if alive_t  else 0.0
+        eq_score_t  = (equip_t  / equip_norm) * (1.0 / 5.0) if alive_t else 0.0
 
         raw_ct = hp_score_ct * 0.55 + eq_score_ct * 0.45
         raw_t  = hp_score_t  * 0.55 + eq_score_t  * 0.45
 
-        # post-plant boost toward T (bomb pressure)
+        # post-plant: only a defuse wins for CT, so the fuse clock tilts the
+        # curve toward T; under 5 s not even a kit in hand makes it in time
+        boost = 1.0
         if planted:
-            raw_t *= 1.5
+            time_left = (bomb["explode"] - tick) / rate
+            if time_left < DEFUSE_KIT:
+                probs.append(0.05)
+                continue
+            if time_left < DEFUSE_NO_KIT:
+                boost = 1.8 if kit_ct else 2.2
+
+        raw_t *= boost
 
         total = raw_ct + raw_t
         if total < 1e-6:
