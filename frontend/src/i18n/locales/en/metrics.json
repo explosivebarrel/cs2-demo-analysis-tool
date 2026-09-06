@@ -141,7 +141,7 @@
     "filterClean": "Clean ({{n}})"
   },
   "counterStrafe": {
-    "title": "Counter-strafe errors",
+    "title": "Shots while moving",
     "subtitle": "Shots fired while moving, without stopping before the shot. The list below shows only the duels that had one.",
     "movingDuels": "Duels with moving shots",
     "empty": "No duels with moving shots"
@@ -200,8 +200,8 @@
     "explanation": "Angle control counts unique positions held still for ≥2 seconds during live rounds. A higher value means patient angle holding. Phase breakdown shows when in the round you prefer to hold angles."
   },
   "reaction": {
-    "title": "Reaction time",
-    "subtitle": "Avg ms from enemy peek onset to first shot",
+    "title": "Time to first shot on peek",
+    "subtitle": "Avg ms from the enemy starting to move to the first shot (includes pre-aim correction)",
     "value": "{{value}} ms",
     "distribution": "Reaction time distribution",
     "summary": "{{n}} duels · avg {{avg}} ms · min {{min}} ms · max {{max}} ms",
@@ -223,14 +223,10 @@
   },
   "crosshair": {
     "title": "Crosshair placement",
-    "subtitle": "{{head}} head hits out of {{total}} first-bullet hits",
-    "headLabel": "First bullet — head",
-    "bodyLabel": "First bullet — body",
-    "byWeapon": "By weapon",
-    "headHits": "{{head}}/{{total}} head hits",
-    "hitHead": "✓ Head",
-    "hitBody": "— Body",
-    "explanation": "Measures how accurately you pre-aim at head level before duels start. Calculated as % of first-bullet hits on an enemy that landed on the head. A high value means good pre-aim and snappy flicks."
+    "subtitle": "{{n}} duels with the crosshair on the enemy at peek start",
+    "explanation": "The moment an enemy starts moving to peek, your crosshair should already be on them. This is the share of duels where, at that moment, your crosshair was within {{deg}}° of the enemy. A low value means you were looking where the enemy did not appear.",
+    "goodLabel": "Crosshair ready",
+    "empty": "No duels with a detected enemy peek"
   },
   "missedFirst": {
     "title": "Inaccurate first shot",

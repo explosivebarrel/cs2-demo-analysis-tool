@@ -90,13 +90,15 @@ def audit_player(name, pl, block, issues):
     if kills:
         check("hsPct(weapons)", _round(hs_sum / kills * 100), pl["hsPct"])
 
-    # --- duel population vs kills/deaths
+    # --- duel population vs kills/deaths. Duels exclude suicides/teamkill
+    # deaths and out-of-round kills, so equality holds only on demos without
+    # them; the honest invariant is a subset relation.
     won = sum(1 for d in duels if d["won"])
     lost = sum(1 for d in duels if not d["won"])
-    if won != kills:
-        issues.append(f"{name}: duels won={won} != kills={kills}")
-    if lost != deaths:
-        issues.append(f"{name}: duels lost={lost} != deaths={deaths}")
+    if won > kills:
+        issues.append(f"{name}: duels won={won} > kills={kills}")
+    if lost > deaths:
+        issues.append(f"{name}: duels lost={lost} > deaths={deaths}")
 
     # --- discipline percentages recomputed from duels
     won_duels = [d for d in duels if d["won"]]

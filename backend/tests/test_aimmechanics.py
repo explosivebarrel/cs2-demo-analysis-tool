@@ -48,7 +48,7 @@ def test_first_bullet_ignores_teammate_hits():
     assert pct == 100.0 and shots[0]["hit"] is True
 
 
-def test_reaction_time_returns_four_values():
+def test_reaction_time_returns_six_values():
     ticks = pd.DataFrame({
         "tick": [960, 1000], "steamid": "me", "X": [0.0, 0.0], "Y": [0.0, 0.0],
         "yaw": [0.0, 0.0],
@@ -58,7 +58,34 @@ def test_reaction_time_returns_four_values():
         "tick": [1010], "attacker_steamid": "me", "user_steamid": "enemy",
     })
     res = _compute_reaction_time(ticks, wf, kills, "me", RATE, pd.DataFrame(), ENEMIES)
-    assert len(res) == 4
+    assert len(res) == 6
+
+
+def test_crosshair_placement_measured_at_peek_onset():
+    # victim peeks (moving the whole window), attacker yaw 0° points at them ->
+    # good placement; second duel the yaw is 45° off -> bad
+    rows = []
+    for k in range(160):                      # attacker samples, 800..2080
+        t = 800 + k * 8
+        rows.append({"tick": t, "steamid": "me", "X": 0.0, "Y": 0.0,
+                     "yaw": 0.0 if t <= 1500 else 45.0})
+    for base, sid in ((920, "enemy"), (1920, "enemy2")):
+        for k in range(11):                   # victim moving 250 u/s
+            rows.append({"tick": base + k * 8, "steamid": sid,
+                         "X": 1000.0 + 31.25 * k, "Y": 0.0, "yaw": 0.0})
+    ticks = pd.DataFrame(rows)
+
+    wf = _wf([1000, 2000])
+    kills = pd.DataFrame({
+        "tick": [1010, 2010],
+        "attacker_steamid": ["me", "me"],
+        "user_steamid": ["enemy", "enemy2"],
+    })
+
+    (_, _, _, _, placement_pct, good) = _compute_reaction_time(
+        ticks, wf, kills, "me", RATE, pd.DataFrame(), ENEMIES)
+    assert placement_pct == 50.0
+    assert good == [1010]
 
 
 def test_excellent_contacts_returns_matching_ticks():

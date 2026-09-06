@@ -267,6 +267,7 @@ export interface PlayerMetrics {
   overshootCount: number
   excellentContacts: number
   excellentContactTicks?: number[]
+  crosshairGoodTicks?: number[]
   crosshairPlacementPct: number
   successfulReactionTimeMs: number
   reactionDeltas: number[]

@@ -1340,49 +1340,21 @@ function OvershootPage({ analytics, playerNames, lang, totalRounds }: {
 
 // ------------------------------------------------------------------ crosshair placement page
 
-function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
-  analytics: PlayerAnalyticsData; lang: 'ru' | 'en'; totalRounds: number
+function CrosshairPlacementPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
 }) {
   const m = analytics.metrics
   const pct = m.crosshairPlacementPct ?? 0
-  const shots = m.firstBulletShots ?? []
-
-  // Build per-weapon breakdown from firstBulletShots + hurt events
-  // We use the shots list and pair hits with the hitgroup from duels
-  // Pair by round: crosshair = % head hits among first-bullet HITS per weapon
   const duels = analytics.duels
 
-  // Approximate: for first-bullet hits, check if the duel kill was a headshot
-  const hitRoundWeaponMap: { round: number; weapon: string; headshot: boolean }[] = []
-  for (const s of shots) {
-    if (!s.hit) continue
-    const duel = duels.find(d => d.round === s.round && d.won)
-    if (duel) {
-      hitRoundWeaponMap.push({ round: s.round, weapon: s.weapon, headshot: duel.headshot })
-    }
-  }
+  // exact episodes: duels where the crosshair was on the enemy when the peek started
+  const goodTicks = m.crosshairGoodTicks ?? []
+  const goodDuels = duels.filter(d => d.won && goodTicks.includes(d.tick))
 
-  // weapon breakdown
-  const weaponStats: Record<string, { hits: number; headHits: number }> = {}
-  for (const { weapon, headshot } of hitRoundWeaponMap) {
-    if (!weaponStats[weapon]) weaponStats[weapon] = { hits: 0, headHits: 0 }
-    weaponStats[weapon].hits++
-    if (headshot) weaponStats[weapon].headHits++
-  }
-  const weaponRows = Object.entries(weaponStats)
-    .filter(([, v]) => v.hits > 0)
-    .sort((a, b) => b[1].hits - a[1].hits)
+  const goodRounds = new Set(goodDuels.map(d => d.round))
+  const goodRoundDuels = duels.filter(d => goodRounds.has(d.round))
+  const otherRoundDuels = duels.filter(d => !goodRounds.has(d.round))
 
-  const totalHits = shots.filter(s => s.hit).length
-  const headHitsEst = hitRoundWeaponMap.filter(r => r.headshot).length
-
-  // WinRateComparison: head-hit rounds vs body-hit rounds
-  const headRounds = new Set(hitRoundWeaponMap.filter(r => r.headshot).map(r => r.round))
-  const bodyRounds = new Set(hitRoundWeaponMap.filter(r => !r.headshot).map(r => r.round))
-  const headDuels = duels.filter(d => headRounds.has(d.round))
-  const bodyDuels = duels.filter(d => bodyRounds.has(d.round))
-
-  // RoundGrid: color by duel outcome
   const roundOutcomes: Record<number, RoundOutcome> = {}
   for (const d of duels) {
     if (!(d.round in roundOutcomes)) roundOutcomes[d.round] = d.won ? 'kill' : 'death'
@@ -1392,22 +1364,9 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
     <div>
       <MetricHero
         title={t('metrics:crosshair.title')}
-        subtitle={t('metrics:crosshair.subtitle', { head: headHitsEst, total: totalHits })}
+        subtitle={t('metrics:crosshair.subtitle', { n: goodDuels.length })}
         value={pct.toFixed(1) + '%'} metricKey="crosshairPlacementPct" lang={lang}
       />
-
-      {headDuels.length > 0 && bodyDuels.length > 0 && (
-        <>
-          <SectionHeading label={t('metrics:shared.impact')} />
-          <WinRateComparison
-            cleanCount={headDuels.length} cleanWins={headDuels.filter(d => d.won).length}
-            otherCount={bodyDuels.length} otherWins={bodyDuels.filter(d => d.won).length}
-            lang={lang}
-            cleanLabel={t('metrics:crosshair.headLabel')}
-            otherLabel={t('metrics:crosshair.bodyLabel')}
-          />
-        </>
-      )}
 
       <SectionHeading label={t('metrics:shared.whatItMeans')} />
       <div style={{
@@ -1415,63 +1374,30 @@ function CrosshairPlacementPage({ analytics, lang, totalRounds }: {
         padding: '14px 16px', fontSize: 13, color: 'var(--text2)', lineHeight: 1.6,
         marginBottom: 16,
       }}>
-        {t('metrics:crosshair.explanation')}
+        {t('metrics:crosshair.explanation', { deg: 25 })}
       </div>
 
-      {weaponRows.length > 0 && (
+      {goodDuels.length > 0 && otherRoundDuels.length > 0 && (
         <>
-          <SectionHeading label={t('metrics:crosshair.byWeapon')} />
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
-            {weaponRows.map(([wep, { hits, headHits }]) => {
-              const wpct = hits > 0 ? Math.round(headHits / hits * 100) : 0
-              const color = wpct >= 50 ? 'var(--green)' : wpct >= 30 ? 'var(--accent2)' : 'var(--red)'
-              const label = wep.replace('weapon_', '')
-              return (
-                <div key={wep} style={{
-                  background: 'var(--bg3)', borderRadius: 8, padding: '10px 14px',
-                  minWidth: 110, flex: '1 1 110px',
-                }}>
-                  <div style={{ fontSize: 10, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '.04em', marginBottom: 6 }}>
-                    {label}
-                  </div>
-                  <div style={{ fontSize: 22, fontWeight: 800, color, lineHeight: 1, marginBottom: 4 }}>
-                    {wpct}%
-                  </div>
-                  <div style={{ fontSize: 11, color: 'var(--text2)' }}>
-                    {t('metrics:crosshair.headHits', { head: headHits, total: hits })}
-                  </div>
-                  <div style={{ marginTop: 6, height: 4, background: 'var(--bg2)', borderRadius: 2, overflow: 'hidden' }}>
-                    <div style={{ width: `${wpct}%`, height: '100%', background: color, borderRadius: 2, transition: 'width .3s' }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+          <SectionHeading label={t('metrics:shared.impact')} />
+          <WinRateComparison
+            cleanCount={goodRoundDuels.length} cleanWins={goodRoundDuels.filter(d => d.won).length}
+            otherCount={otherRoundDuels.length} otherWins={otherRoundDuels.filter(d => d.won).length}
+            lang={lang}
+            cleanLabel={t('metrics:crosshair.goodLabel')}
+            otherLabel={t('metrics:shared.otherDuels')}
+          />
         </>
       )}
 
       <SectionHeading label={t('metrics:shared.episodes')} />
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: 400, overflowY: 'auto' }}>
-        {shots.filter(s => s.hit).map((s, i) => {
-          const duel = duels.find(d => d.round === s.round && d.won)
-          const isHead = duel?.headshot ?? false
-          const wepLabel = s.weapon.replace('weapon_', '')
-          return (
-            <div key={i} style={{
-              display: 'flex', alignItems: 'center', gap: 12,
-              background: isHead ? 'rgba(80,200,120,0.05)' : 'rgba(200,200,100,0.04)',
-              border: `1px solid ${isHead ? 'var(--green)' : 'var(--border)'}`,
-              borderRadius: 6, padding: '7px 12px',
-            }}>
-              <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{s.round}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, color: isHead ? 'var(--green)' : 'var(--text2)', minWidth: 80 }}>
-                {isHead ? t('metrics:crosshair.hitHead') : t('metrics:crosshair.hitBody')}
-              </span>
-              <span style={{ fontSize: 11, color: 'var(--text2)' }}>{wepLabel}</span>
-            </div>
-          )
-        })}
-      </div>
+      {goodDuels.length > 0 ? (
+        <EpisodeList duels={goodDuels} playerNames={playerNames} lang={lang} />
+      ) : (
+        <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
+          {t('metrics:crosshair.empty')}
+        </div>
+      )}
 
       <div style={{ marginTop: 24 }}>
         <SectionHeading label={t('metrics:shared.byRound')} />
@@ -1951,7 +1877,7 @@ export default function MetricsPage() {
       case 'excellentContacts':
         return <ExcellentContactsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'crosshairPlacementPct':
-        return <CrosshairPlacementPage analytics={analytics} lang={lang} totalRounds={totalRounds} />
+        return <CrosshairPlacementPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'missedFirst':
         return <MissedFirstPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'passiveAngle':
