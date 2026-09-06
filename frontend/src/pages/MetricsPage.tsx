@@ -1638,16 +1638,16 @@ function ExcellentContactsPage({ analytics, playerNames, lang, totalRounds }: {
       }}>
         {t('metrics:excellent.explanation', { velocity: 50 })}
       </div>
-      <div style={{ marginTop: 24 }}>
-        <SectionHeading label={t('metrics:shared.byRound')} />
-        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
-      </div>
       {excellentDuels.length > 0 && (
         <>
           <SectionHeading label={t('metrics:excellent.title')} />
           <EpisodeList duels={excellentDuels} playerNames={playerNames} lang={lang} />
         </>
       )}
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={t('metrics:shared.byRound')} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
     </div>
   )
 }
