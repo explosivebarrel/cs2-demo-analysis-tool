@@ -60,8 +60,66 @@ def _sid(v) -> str | None:
     return s if s and s not in ("None", "nan", "0") else None
 
 
-def _vel_at(vel_lookup: dict, tick: int, steamid: str) -> float:
-    return float(vel_lookup.get((tick, steamid), 0.0))
+def _vel_at(vel_index: "VelIndex", tick: int, steamid: str) -> float:
+    return vel_index.at(tick, steamid)
+
+
+class VelIndex:
+    """Positional velocity at arbitrary event ticks.
+
+    Tick samples sit on the downsample grid (~0.125 s), but event ticks
+    (shots, kills) are arbitrary — an exact-tick dict lookup misses ~7/8 of
+    the time and silently yields 0. Here the two samples bracketing the event
+    tick give a central difference, which is alignment-independent.
+    """
+
+    def __init__(self, ticks_df, tickrate: float):
+        self.empty = True
+        try:
+            import numpy as _np
+
+            pos = ticks_df[["tick", "steamid", "X", "Y"]].copy()
+            pos["steamid"] = pos["steamid"].astype(str)
+            pos = pos.sort_values(["steamid", "tick"])
+            self.by_sid: dict[str, tuple] = {}
+            for sid, grp in pos.groupby("steamid"):
+                self.by_sid[sid] = (
+                    grp["tick"].to_numpy(dtype="int64"),
+                    grp["X"].to_numpy(dtype=float),
+                    grp["Y"].to_numpy(dtype=float),
+                )
+            self.tickrate = float(tickrate)
+            self.empty = not self.by_sid
+            self._np = _np
+        except Exception:
+            self.empty = True
+
+    def at(self, tick: int, steamid: str, default: float = 0.0) -> float:
+        if self.empty:
+            return default
+        entry = self.by_sid.get(steamid)
+        if entry is None:
+            return default
+        t_arr, x_arr, y_arr = entry
+        import bisect
+        i = bisect.bisect_left(t_arr, tick)
+        if i == 0:
+            j0, j1 = 0, 1
+        elif i >= len(t_arr):
+            j0, j1 = len(t_arr) - 2, len(t_arr) - 1
+        else:
+            j0, j1 = i - 1, i
+        if j1 >= len(t_arr) or j1 == j0:
+            return default
+        dt = int(t_arr[j1] - t_arr[j0])
+        if dt <= 0:
+            return default
+        dist = self._np.hypot(x_arr[j1] - x_arr[j0], y_arr[j1] - y_arr[j0])
+        return float(dist / dt * self.tickrate)
+
+
+def _build_vel_index(ticks_df, tickrate: float) -> VelIndex:
+    return VelIndex(ticks_df, tickrate)
 
 
 def _nearest_tick_key(sorted_keys: list[int], target: int) -> int:
@@ -81,7 +139,7 @@ def _nearest_tick_key(sorted_keys: list[int], target: int) -> int:
 def _compute_strafe_metrics(
     wf_df,           # weapon_fire DataFrame
     kills_df,        # player_death DataFrame
-    vel_lookup: dict,
+    vel_index: VelIndex,
     steamid: str,
     tickrate: float,
 ) -> tuple[int, float]:
@@ -128,7 +186,7 @@ def _compute_strafe_metrics(
 
     for _, row in my_wf.iterrows():
         tick = int(row["tick"])
-        vel = _vel_at(vel_lookup, tick, steamid)
+        vel = _vel_at(vel_index, tick, steamid)
 
         if vel > SHOOT_THRESHOLD:
             errors += 1
@@ -606,7 +664,7 @@ def _compute_excellent_contacts(
     wf_df,
     hurt_df,
     kills_df,
-    vel_lookup: dict,
+    vel_index: VelIndex,
     steamid: str,
     tickrate: float,
     enemy_sids: set | None = None,
@@ -669,7 +727,7 @@ def _compute_excellent_contacts(
         if not hit:
             continue
         # attacker must be stopped at shot tick
-        vel = _vel_at(vel_lookup, st, steamid)
+        vel = _vel_at(vel_index, st, steamid)
         if vel > SHOOT_THRESHOLD:
             continue
         excellent += 1
@@ -697,24 +755,12 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     hurt_df = ctx.ev("player_hurt") if ctx.has_ev("player_hurt") else None
     kills_df = ctx.ev("player_death") if ctx.has_ev("player_death") else None
 
-    # build velocity lookup shared across sub-computations
-    vel_lookup: dict = {}
-    if ticks_df is not None and len(ticks_df):
-        try:
-            pos = ticks_df[["tick", "steamid", "X", "Y"]].copy()
-            pos["steamid"] = pos["steamid"].astype(str)
-            pos = pos.sort_values(["steamid", "tick"])
-            pos["dx"] = pos.groupby("steamid")["X"].diff().fillna(0.0)
-            pos["dy"] = pos.groupby("steamid")["Y"].diff().fillna(0.0)
-            pos["dtick"] = pos.groupby("steamid")["tick"].diff().fillna(1.0).clip(lower=1)
-            pos["vel"] = (pos["dx"] ** 2 + pos["dy"] ** 2).pow(0.5) / pos["dtick"] * tickrate
-            vel_lookup = pos.set_index(["tick", "steamid"])["vel"].to_dict()
-        except Exception:
-            vel_lookup = {}
+    # build velocity index shared across sub-computations
+    vel_index = VelIndex(ticks_df, tickrate)
 
     try:
         cs_errors, ideal_pct = _compute_strafe_metrics(
-            wf_df, kills_df, vel_lookup, steamid, tickrate
+            wf_df, kills_df, vel_index, steamid, tickrate
         )
     except Exception:
         cs_errors, ideal_pct = 0, 0.0
@@ -749,7 +795,7 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
 
     try:
         excellent_contacts, excellent_ticks = _compute_excellent_contacts(
-            wf_df, hurt_df, kills_df, vel_lookup, steamid, tickrate, enemy_sids)
+            wf_df, hurt_df, kills_df, vel_index, steamid, tickrate, enemy_sids)
     except Exception:
         excellent_contacts, excellent_ticks = 0, []
 

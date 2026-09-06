@@ -3,8 +3,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 
-from app.pipeline.aim_mechanics import (
-    _compute_excellent_contacts,
+from app.pipeline.aim_mechanics import (VelIndex, _compute_excellent_contacts,
     _compute_first_bullet_acc,
     _compute_reaction_time,
 )
@@ -68,8 +67,25 @@ def test_excellent_contacts_returns_matching_ticks():
     kills = pd.DataFrame({
         "tick": [1050, 2050], "attacker_steamid": "me", "user_steamid": "enemy",
     })
-    vel = {(1000, "me"): 0.0, (2000, "me"): 120.0}  # second shot on the move
+    # me standing still around tick 1000, moving 120 u/s around tick 2000
+    ticks = pd.DataFrame({
+        "tick": [992, 1000, 1008, 1992, 2000, 2008],
+        "steamid": "me",
+        "X": [0.0, 0.0, 0.0, 100.0, 115.0, 130.0],
+        "Y": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    })
     count, ticks_out = _compute_excellent_contacts(
-        wf, hurt, kills, vel, "me", RATE, ENEMIES)
+        wf, hurt, kills, VelIndex(ticks, RATE), "me", RATE, ENEMIES)
     assert count == 1
     assert ticks_out == [1050]   # kill ticks, so duel episodes match by d.tick
+
+
+def test_vel_index_reads_arbitrary_event_ticks():
+    # samples every 8 ticks, mover advances 250 u/s = 31.25 units per 8 ticks
+    rows = [{"tick": 1000 + k * 8, "steamid": "p", "X": 31.25 * k, "Y": 0.0}
+            for k in range(6)]
+    vi = VelIndex(pd.DataFrame(rows), RATE)
+    # event ticks off the sampling grid must still resolve to the real speed
+    for tick in (1004, 1011, 1023, 1030):
+        assert abs(vi.at(tick, "p") - 250.0) < 1.0
+    assert vi.at(1000, "unknown") == 0.0

@@ -10,7 +10,7 @@ from collections import defaultdict
 from typing import Any
 
 from .. import config
-from .aim_mechanics import compute_aim_mechanics
+from .aim_mechanics import VelIndex, _build_vel_index, compute_aim_mechanics
 
 def _sid(v) -> str | None:
     if v is None:
@@ -28,21 +28,6 @@ def _f(v, default: float = 0.0) -> float:
 
 
 # ------------------------------------------------------------------ tick helpers
-
-def _build_vel_lookup(ticks_df, tickrate: float) -> dict:
-    """Build (tick, steamid) -> velocity (u/s) lookup from full ticks DataFrame."""
-    try:
-        pos = ticks_df[["tick", "steamid", "X", "Y"]].copy()
-        pos["steamid"] = pos["steamid"].astype(str)
-        pos = pos.sort_values(["steamid", "tick"])
-        pos["dx"] = pos.groupby("steamid")["X"].diff().fillna(0.0)
-        pos["dy"] = pos.groupby("steamid")["Y"].diff().fillna(0.0)
-        pos["dtick"] = pos.groupby("steamid")["tick"].diff().fillna(1.0).clip(lower=1)
-        pos["vel"] = (pos["dx"] ** 2 + pos["dy"] ** 2).pow(0.5) / pos["dtick"] * tickrate
-        return pos.set_index(["tick", "steamid"])["vel"].to_dict()
-    except Exception:
-        return {}
-
 
 def _build_ticks_by_tick(ticks_df) -> dict:
     """Index ticks DataFrame by tick value for O(1) frame lookups."""
@@ -242,7 +227,7 @@ def _compute_duel_aim_error(
 def _classify_duel(
     attacker_sid: str,
     frame_rows: dict,  # steamid -> row at kill tick
-    vel_lookup: dict,
+    vel_index: "VelIndex",
     kill_tick: int,
     weapon_fire_ticks: list[int],  # weapon_fire ticks for this attacker in this round
     headshot: bool,
@@ -252,7 +237,7 @@ def _classify_duel(
     Classify a single duel and return (error_list, context_dict).
 
     frame_rows: {steamid: row} at the kill tick.
-    vel_lookup: (tick, steamid) -> velocity.
+    vel_index: positional velocity at arbitrary event ticks.
     weapon_fire_ticks: sorted list of weapon_fire ticks for attacker.
     """
     a_row = frame_rows.get(attacker_sid)
@@ -262,7 +247,7 @@ def _classify_duel(
     # vice versa), which systematically mislabels moving_shot / shift peek
     shot_tick = max((t for t in weapon_fire_ticks if t <= kill_tick), default=None)
     vel_tick = shot_tick if shot_tick is not None else kill_tick
-    attacker_vel = round(_f(vel_lookup.get((vel_tick, attacker_sid), 0.0)), 1)
+    attacker_vel = round(vel_index.at(vel_tick, attacker_sid), 1)
 
     # attacker flash duration
     attacker_flash = 0.0
@@ -352,7 +337,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
 
     kills_df = kills_df.sort_values("tick")
 
-    vel_lookup = _build_vel_lookup(ticks_df, ctx.tickrate)
+    vel_index = _build_vel_index(ticks_df, ctx.tickrate)
     ticks_by_tick = _build_ticks_by_tick(ticks_df)
 
     # round lookup by tick — used for both kills and weapon_fire
@@ -489,12 +474,12 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                 pass
 
         # victim velocity
-        victim_vel = round(_f(vel_lookup.get((tick, v_sid), 0.0)), 1)
+        victim_vel = round(vel_index.at(tick, v_sid), 1)
 
         # classify (only meaningful when player is attacker)
         if won:
             errors, context = _classify_duel(
-                a_sid, frame_rows, vel_lookup, tick,
+                a_sid, frame_rows, vel_index, tick,
                 wf_ticks.get((steamid, rn), []),
                 headshot, won,
             )
@@ -544,7 +529,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             # player is victim — classify from victim's perspective
             a_row = frame_rows.get(a_sid)
             v_row = frame_rows.get(v_sid)
-            a_vel = round(_f(vel_lookup.get((tick, a_sid), 0.0)), 1)
+            a_vel = round(vel_index.at(tick, a_sid), 1)
             a_walking = False
             if a_row is not None:
                 try:
