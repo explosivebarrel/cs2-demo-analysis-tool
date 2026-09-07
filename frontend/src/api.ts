@@ -59,6 +59,7 @@ export interface AnalysisData {
   knifeRound?: { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string } | null
   weapons: Record<number, string>
   moments?: Moment[]
+  teamKills?: MatchTeamKill[]
 }
 
 export interface TeamData {
@@ -190,6 +191,7 @@ export interface FirstBulletShot {
 
 export interface PlayerAnalyticsData {
   duels: DuelEpisode[]
+  teamKills?: TeamKillEpisode[]
   metrics: PlayerMetrics
   impact: PlayerImpact
   mapEvents: MapEvent[]
@@ -241,6 +243,20 @@ export interface DuelEpisode {
   shots?: DuelShot[]
 }
 
+// a teamkill episode mirrors a duel episode minus the duel classification
+export type TeamKillEpisode = Omit<
+  DuelEpisode, 'won' | 'opening' | 'isTradeKill' | 'isTradedDeath' | 'errors' | 'winProb'
+>
+
+export interface MatchTeamKill {
+  round: number
+  tick: number
+  attacker: string
+  victim: string
+  weapon: string
+  headshot: boolean
+}
+
 export interface PlayerMetrics {
   tradeKillPct: number
   tradedDeathPct: number
@@ -254,6 +270,9 @@ export interface PlayerMetrics {
   tradedDeathRounds: number[]
   tradeKillTicks: number[]
   tradedDeathTicks: number[]
+  teamKills?: number
+  teamKillRounds?: number[]
+  teamKillTicks?: number[]
   // aim mechanics (Batch 2)
   counterStrafeErrors: number
   idealStrafePct: number

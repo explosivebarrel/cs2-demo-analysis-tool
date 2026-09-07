@@ -52,6 +52,8 @@
     "tradedDeathsSub": "% deaths avenged",
     "lostDuels": "Lost Duels",
     "lostDuelsSub": "deaths in duels",
+    "teamKills": "Team Kills",
+    "teamKillsSub": "killed own teammates",
     "clutchWinPct": "Clutch Win%",
     "flashEfficiency": "Flash Efficiency",
     "flashEfficiencySub": "% flashes effective",

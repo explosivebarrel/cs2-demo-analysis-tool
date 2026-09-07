@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
-import { api, PlayerAnalyticsData, DuelEpisode, AnalysisData, FirstBulletShot } from '../api'
+import { api, PlayerAnalyticsData, DuelEpisode, TeamKillEpisode, AnalysisData, FirstBulletShot } from '../api'
 import { useLang, useBenchmarks } from '../App'
 import { t } from '../i18n'
 import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../benchmarkUtils'
@@ -8,7 +8,7 @@ import EpisodeDrillDown from '../components/player/EpisodeDrillDown'
 import WeaponIcon from '../components/WeaponIcon'
 import MatchNav from '../components/MatchNav'
 
-type RoundOutcome = 'kill' | 'death' | 'draw' | 'none'
+type RoundOutcome = 'kill' | 'death' | 'draw' | 'tk' | 'none'
 
 function prettyWeapon(raw: string): string {
   const id = raw.replace(/^weapon_/, '')
@@ -192,7 +192,8 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
   lang: 'ru' | 'en'
 }) {
   const DOT_COLORS: Record<RoundOutcome, string> = {
-    kill: 'var(--green)', death: 'var(--red)', draw: 'var(--accent2)', none: 'var(--bg3)',
+    kill: 'var(--green)', death: 'var(--red)', draw: 'var(--accent2)',
+    tk: '#e8a33d', none: 'var(--bg3)',
   }
   return (
     <div>
@@ -212,10 +213,11 @@ function RoundGrid({ totalRounds, roundOutcomes, lang }: {
           )
         })}
       </div>
-      <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--text2)' }}>
+      <div style={{ display: 'flex', gap: 16, marginTop: 10, fontSize: 11, color: 'var(--text2)', flexWrap: 'wrap' }}>
         <span><span style={{ color: 'var(--green)' }}>■</span> {t('metrics:outcome.kill')}</span>
         <span><span style={{ color: 'var(--red)' }}>■</span> {t('metrics:outcome.death')}</span>
         <span><span style={{ color: 'var(--accent2)' }}>■</span> {t('metrics:outcome.draw')}</span>
+        <span><span style={{ color: '#e8a33d' }}>■</span> {t('metrics:outcome.tk')}</span>
       </div>
     </div>
   )
@@ -581,6 +583,92 @@ function TradedDeathsPage({ analytics, playerNames, lang, totalRounds }: {
       )}
       <SectionHeading label={t('metrics:shared.episodes')} />
       <EpisodeList duels={episodes} playerNames={playerNames} lang={lang} />
+      <div style={{ marginTop: 24 }}>
+        <SectionHeading label={t('metrics:shared.byRound')} />
+        <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ team kills page
+
+function TeamKillRow({ tk, playerNames, selected, onClick }: {
+  tk: TeamKillEpisode; playerNames: Record<string, string>; selected: boolean; onClick: () => void
+}) {
+  const attName = playerNames[tk.attacker] ?? tk.attacker.slice(-6)
+  const vicName = playerNames[tk.victim] ?? tk.victim.slice(-6)
+  return (
+    <div onClick={onClick} style={{
+      display: 'flex', alignItems: 'center', gap: 10,
+      background: selected ? 'var(--bg3)' : 'rgba(232,163,61,0.06)',
+      border: `1px solid ${selected ? 'var(--accent)' : '#e8a33d'}`,
+      borderRadius: 6, padding: '8px 12px', cursor: 'pointer', transition: 'background .1s',
+    }}>
+      <span style={{ fontSize: 11, color: 'var(--text2)', minWidth: 28 }}>R{tk.round}</span>
+      <span style={{ fontSize: 12, fontWeight: 700, color: '#e8a33d', minWidth: 50 }}>
+        {t('metrics:teamKills.badge')}
+      </span>
+      <span style={{ fontSize: 12, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {attName} → {vicName}
+      </span>
+      <span style={{ fontSize: 11, color: 'var(--text2)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <WeaponIcon id={tk.weapon.replace(/^weapon_/, '')} name={prettyWeapon(tk.weapon)} size={13} />
+        {prettyWeapon(tk.weapon)}
+      </span>
+      {tk.headshot && <img src="/icons/weapons/icon_headshot.svg" alt="HS" title="HS" width={13} height={13} />}
+    </div>
+  )
+}
+
+function TeamKillsPage({ analytics, playerNames, lang, totalRounds }: {
+  analytics: PlayerAnalyticsData; playerNames: Record<string, string>; lang: 'ru' | 'en'; totalRounds: number
+}) {
+  const episodes = analytics.teamKills ?? []
+  const rounds = analytics.metrics.teamKillRounds ?? []
+  const count = analytics.metrics.teamKills ?? episodes.length
+  const [sel, setSel] = useState(0)
+  const [drill, setDrill] = useState(false)
+  const roundOutcomes: Record<number, RoundOutcome> = {}
+  for (const r of rounds) roundOutcomes[r] = 'tk'
+  return (
+    <div>
+      <MetricHero
+        title={t('metrics:teamKills.title')}
+        subtitle={t('metrics:teamKills.subtitle', { n: count, rounds: rounds.join(', ') || '—' })}
+        value={String(count)} lang={lang}
+      />
+      <SectionHeading label={t('metrics:shared.whatItMeans')} />
+      <div className="card" style={{ padding: '10px 14px', fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.55, marginBottom: 20 }}>
+        {t('metrics:teamKills.explanation')}
+      </div>
+      <SectionHeading label={t('metrics:shared.episodes')} />
+      {!episodes.length ? (
+        <div style={{ color: 'var(--text2)', fontSize: 13, padding: '12px 0' }}>
+          {t('metrics:shared.noEpisodes')}
+        </div>
+      ) : (
+        <div>
+          <div style={{ color: 'var(--text2)', fontSize: 11, margin: '2px 0 6px' }}>
+            {t('metrics:shared.clickRow')}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 5, maxHeight: EPISODE_VIEW_H, overflowY: 'auto' }}>
+            {episodes.map((tk, i) => (
+              <TeamKillRow
+                key={i} tk={tk} playerNames={playerNames}
+                selected={i === sel}
+                onClick={() => { setSel(i); setDrill(true) }}
+              />
+            ))}
+          </div>
+          {drill && (
+            <EpisodeDrillDown
+              duel={episodes[sel] as unknown as DuelEpisode}
+              playerNames={playerNames} lang={lang} isTeamKill onClose={() => setDrill(false)}
+            />
+          )}
+        </div>
+      )}
       <div style={{ marginTop: 24 }}>
         <SectionHeading label={t('metrics:shared.byRound')} />
         <RoundGrid totalRounds={totalRounds} roundOutcomes={roundOutcomes} lang={lang} />
@@ -1878,6 +1966,8 @@ export default function MetricsPage() {
         return <ExcellentContactsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'crosshairPlacementPct':
         return <CrosshairPlacementPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
+      case 'teamKills':
+        return <TeamKillsPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'missedFirst':
         return <MissedFirstPage analytics={analytics} playerNames={playerNames} lang={lang} totalRounds={totalRounds} />
       case 'passiveAngle':

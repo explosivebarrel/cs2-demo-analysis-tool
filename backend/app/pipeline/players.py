@@ -44,6 +44,9 @@ class PlayerStats:
         # per-round flags, so multiple trades in one round all survive
         self.tradeKillEvents: list[tuple[int, int]] = []
         self.tradedDeathEvents: list[tuple[int, int]] = []
+        # teamkills are counted separately (they still count towards kills)
+        self.teamKills = 0
+        self.teamKillEvents: list[tuple[int, int]] = []
         self.multiKills = {2: 0, 3: 0, 4: 0, 5: 0}
         self.multiKillRounds = 0
         self.flashThrows = 0
@@ -194,6 +197,9 @@ def compute_players(ctx, rb, fb):
                 if math.isfinite(dist[i]) and dist[i] > 0:
                     pa.killDist.append(float(dist[i]))
                 fb.clutch.note_kill(a, n)
+                if pv is not None and pa.team == pv.team:
+                    pa.teamKills += 1
+                    pa.teamKillEvents.append((n, t))
             pas = P(ass)
             if pas is not None and ass not in (a, v):
                 if afl[i]:

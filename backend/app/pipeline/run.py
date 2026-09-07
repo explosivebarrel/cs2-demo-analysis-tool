@@ -427,6 +427,12 @@ def _build_analysis(ctx, rb, fb, players, moments=None):
 
     halves = _halves(rb, ctx)
 
+    from .playeranalytics import _build_match_teamkills
+    try:
+        match_teamkills = _build_match_teamkills(ctx, rb)
+    except Exception:
+        match_teamkills = []
+
     meta = {
         "map": ctx.header.get("map_name", "?"),
         "server": ctx.header.get("server_name", ""),
@@ -449,6 +455,7 @@ def _build_analysis(ctx, rb, fb, players, moments=None):
         "halves": halves,
         "knifeRound": getattr(rb, "knife_round", None),
         "moments": moments,
+        "teamKills": match_teamkills,
         "weapons": weapon_id_table(),
     }
 

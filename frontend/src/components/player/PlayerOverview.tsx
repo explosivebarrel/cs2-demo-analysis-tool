@@ -219,6 +219,12 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={t('player:overview.lostDuelsSub')}
             onClick={() => goMetric('lostDuels')}
           />
+          <MetricCard
+            label={t('player:overview.teamKills')}
+            value={String(metrics.teamKills ?? 0)}
+            sub={t('player:overview.teamKillsSub')}
+            onClick={() => goMetric('teamKills')}
+          />
         </div>
       </div>
 

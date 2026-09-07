@@ -49,6 +49,7 @@ interface Props {
   playerNames: Record<string, string>
   lang?: 'ru' | 'en'
   onClose: () => void
+  isTeamKill?: boolean
 }
 
 /** Merge per-frame key booleans into [startMs, endMs] intervals. */
@@ -278,7 +279,7 @@ function KeyTimeline({ frames, tMs, onSeek }: {
   )
 }
 
-export default function EpisodeDrillDown({ duel, playerNames, onClose }: Props) {
+export default function EpisodeDrillDown({ duel, playerNames, onClose, isTeamKill }: Props) {
   const navigate = useNavigate()
   const { id } = useParams<{ id: string }>()
   const frames = duel.frames ?? []
@@ -310,18 +311,24 @@ export default function EpisodeDrillDown({ duel, playerNames, onClose }: Props) 
 
   const seek = (v: number) => setTMs(Math.max(tMin, Math.min(tMax, v)))
 
-  const errMeta = duel.errors.map(e => ERROR_META[e]).filter(Boolean)
+  const errMeta = (duel.errors ?? []).map(e => ERROR_META[e]).filter(Boolean)
   const primaryErr = errMeta[0]
   const attName = playerNames[duel.attacker] ?? duel.attacker.slice(-6)
   const vicName = playerNames[duel.victim] ?? duel.victim.slice(-6)
 
-  const headerColor = duel.won
-    ? (primaryErr ? primaryErr.color : 'var(--green)')
-    : 'var(--red)'
+  const tkColor = '#e8a33d'
+  const headerColor = isTeamKill
+    ? tkColor
+    : duel.won
+      ? (primaryErr ? primaryErr.color : 'var(--green)')
+      : 'var(--red)'
 
   const diagLines: string[] = []
   const { context: kc } = duel
-  if (duel.won) {
+  if (isTeamKill) {
+    if (kc.attackerVel > 50)
+      diagLines.push(t('player:drilldown.diagShootingMoving', { vel: Math.round(kc.attackerVel) }))
+  } else if (duel.won) {
     if (kc.aliveAllies === 0)
       diagLines.push(t('player:drilldown.diagFullIsolation'))
     else if (kc.nearAllyDist !== null && kc.nearAllyDist > 800)
@@ -402,14 +409,16 @@ export default function EpisodeDrillDown({ duel, playerNames, onClose }: Props) 
         <div style={{ background: 'var(--bg3)', padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 20 }}>{primaryErr?.icon ?? (duel.won ? '✅' : '❌')}</span>
+              <span style={{ fontSize: 20 }}>{isTeamKill ? '💥' : (primaryErr?.icon ?? (duel.won ? '✅' : '❌'))}</span>
               <div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: headerColor }}>
-                  {primaryErr
-                    ? t(primaryErr.key)
-                    : (duel.won
-                      ? t('player:drilldown.duelWon')
-                      : t('player:drilldown.duelLost'))}
+                  {isTeamKill
+                    ? t('metrics:teamKills.drillTitle')
+                    : primaryErr
+                      ? t(primaryErr.key)
+                      : (duel.won
+                        ? t('player:drilldown.duelWon')
+                        : t('player:drilldown.duelLost'))}
                 </div>
                 {diagLines[0] && (
                   <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 2 }}>{diagLines[0]}</div>
@@ -428,7 +437,7 @@ export default function EpisodeDrillDown({ duel, playerNames, onClose }: Props) 
         <div style={{ padding: '16px 18px', overflowY: 'auto', flex: 1 }}>
           {/* participants */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14, fontSize: 13 }}>
-            <span style={{ fontWeight: 700, color: duel.won ? 'var(--green)' : 'var(--red)' }}>
+            <span style={{ fontWeight: 700, color: isTeamKill ? tkColor : (duel.won ? 'var(--green)' : 'var(--red)') }}>
               {attName}
             </span>
             <span style={{ fontSize: 16 }}>→</span>

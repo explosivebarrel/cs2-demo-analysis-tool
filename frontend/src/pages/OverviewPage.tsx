@@ -4,6 +4,7 @@ import { api, AnalysisData, PlayerData, RoundData } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
 import MatchNav from '../components/MatchNav'
+import WeaponIcon from '../components/WeaponIcon'
 
 function ScoreBoard({ data, id }: { data: AnalysisData; id: string }) {
   useLang()
@@ -185,6 +186,38 @@ function RoundsTable({ data }: { data: AnalysisData }) {
   )
 }
 
+function TeamKillsCard({ data }: { data: AnalysisData }) {
+  useLang()
+  const tks = data.teamKills ?? []
+  if (!tks.length) return null
+  const nameOf = (sid: string) =>
+    data.players.find(p => p.steamid === sid)?.name ?? sid.slice(-6)
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>
+        {t('teamKills')} <span style={{ color: '#e8a33d' }}>{tks.length}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {tks.map((tk, i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 10, fontSize: 12,
+            background: 'var(--bg3)', borderRadius: 6, padding: '6px 10px',
+          }}>
+            <span style={{ color: 'var(--text2)', minWidth: 28 }}>R{tk.round}</span>
+            <span style={{ fontWeight: 600, color: '#e8a33d' }}>{nameOf(tk.attacker)}</span>
+            <span style={{ color: 'var(--text2)' }}>→</span>
+            <span>{nameOf(tk.victim)}</span>
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text2)' }}>
+              <WeaponIcon id={tk.weapon.replace(/^weapon_/, '')} name={tk.weapon.replace(/^weapon_/, '')} size={13} />
+              {tk.headshot && <img src="/icons/weapons/icon_headshot.svg" alt="HS" width={13} height={13} />}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function OverviewPage() {
   useLang()
   const { id } = useParams<{ id: string }>()
@@ -223,6 +256,7 @@ export default function OverviewPage() {
       <MatchNav id={id!} players={data.players} />
       <ScoreBoard data={data} id={id!} />
       <Scoreboard data={data} id={id!} />
+      <TeamKillsCard data={data} />
       <RoundsTable data={data} />
     </div>
   )

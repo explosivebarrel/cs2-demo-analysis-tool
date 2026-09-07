@@ -67,16 +67,22 @@ def audit_player(name, pl, block, issues):
     check("flashEfficiency", _round(fl["effective"] / fl["thrown"] * 100) if fl["thrown"] else 0.0,
           m["flashEfficiency"])
 
-    # --- KAST: series flag vs reported vs traded-rounds recomputation
+    # --- KAST: series flag vs reported vs recomputation.
+    # kastRounds also credits flash-assist-only rounds, which the series
+    # payload cannot express (its `a` flag is assists-only), so the artifact
+    # may legitimately exceed the recomputation by that many rounds.
     traded_rounds = set(m["tradedDeathRounds"])
     kast_by_flag = round(sum(1 for s in series if s["kast"]) / rounds_n * 100, 1)
     check("kast(series flag)", kast_by_flag, pl["kast"])
     kast_recomputed = round(sum(
         1 for s in series if s["k"] or s["a"] or s["sv"] or s["n"] in traded_rounds
     ) / rounds_n * 100, 1)
-    if kast_recomputed != pl["kast"]:
+    fa_only = sum(
+        1 for s in series
+        if s["kast"] and not (s["k"] or s["a"] or s["sv"] or s["n"] in traded_rounds))
+    if not (kast_recomputed <= pl["kast"] <= kast_recomputed + round(fa_only / rounds_n * 100, 1)):
         issues.append(f"{name}: kast artifact={pl['kast']}, recomputed={kast_recomputed} "
-                      f"(flag={kast_by_flag})")
+                      f"(flag={kast_by_flag}, fa-only rounds={fa_only})")
 
     # --- basics from series
     check("kills(series)", sum(s["k"] for s in series), kills, 0)
@@ -107,7 +113,6 @@ def audit_player(name, pl, block, issues):
     check("shiftPeekPct", shift_exp, m["shiftPeekPct"])
     iso_exp = _round(sum(1 for d in duels if "isolated" in d["errors"]) / len(duels) * 100) if duels else 0.0
     check("isolatedPct", iso_exp, m["isolatedPct"])
-    moving_shot_won = sum(1 for d in won_duels if "moving_shot" in d["errors"])
     # frontend ProbBar movingShotPct uses the same formula — nothing to compare
 
     # --- overshoot: card counter must equal the duel tags the page lists
@@ -141,6 +146,16 @@ def audit_player(name, pl, block, issues):
     if phase_sum and phase_sum != m["angleControlCount"]:
         issues.append(f"{name}: angleControlCount={m['angleControlCount']} != byPhase sum={phase_sum}")
 
+    # --- teamkills: counter == ticks == episodes; rounds match tick rounds
+    tk_count = m.get("teamKills", 0)
+    tk_ep = block.get("teamKills", [])
+    tk_ticks_list = m.get("teamKillTicks", [])
+    if tk_count != len(tk_ticks_list) or len(tk_ticks_list) != len(tk_ep):
+        issues.append(f"{name}: teamKills counter={tk_count}, ticks={len(tk_ticks_list)}, "
+                      f"episodes={len(tk_ep)}")
+    if sorted(tk_ticks_list) != sorted(e["tick"] for e in tk_ep):
+        issues.append(f"{name}: teamKillTicks mismatch vs episode ticks")
+
     # --- impact
     imp = block["impact"]
     srt = sorted(series, key=lambda s: s["imp"], reverse=True)
@@ -171,6 +186,19 @@ def main():
             issues.append(f"{sid}: in player_analytics but not in analysis")
             continue
         audit_player(pl["name"], pl, block, issues)
+
+    # --- match-level teamkills: every entry must be an attacker episode of some player
+    mtks = analysis.get("teamKills")
+    if mtks is not None:
+        per_player = {(e["attacker"], e["tick"]): e for b in pa.values() for e in b.get("teamKills", [])}
+        for t in mtks:
+            if (t["attacker"], t["tick"]) not in per_player:
+                issues.append(f"match teamkill R{t['round']} tick={t['tick']} "
+                              f"attacker={t['attacker']}: no matching player episode")
+        attacker_eps = sum(len(b.get("teamKills", [])) for b in pa.values())
+        if len(mtks) != attacker_eps:
+            issues.append(f"match teamKills={len(mtks)} != sum of player attacker episodes={attacker_eps}")
+
     print(f"demo {did}: {len(pa)} players checked")
     if issues:
         print(f"--- {len(issues)} issues ---")

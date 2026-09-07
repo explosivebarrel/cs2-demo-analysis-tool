@@ -33,6 +33,7 @@
     "kill": "kill",
     "death": "died",
     "draw": "draw",
+    "tk": "teamkill",
     "none": "—"
   },
   "error": {
@@ -123,6 +124,13 @@
     "title": "Traded deaths",
     "subtitle": "{{n}} traded deaths in rounds: {{rounds}}",
     "cleanLabel": "Traded deaths"
+  },
+  "teamKills": {
+    "title": "Team Kills",
+    "subtitle": "{{n}} teamkills in rounds: {{rounds}}",
+    "explanation": "Kills on own teammates. They do not affect the kill counter (it matches the standard one) but show who shot at whom on the same team — random flicks, grenades or a teammate walking into the line of fire. Click an episode for the breakdown.",
+    "badge": "own",
+    "drillTitle": "Teamkill"
   },
   "lostDuels": {
     "title": "Lost duels",
