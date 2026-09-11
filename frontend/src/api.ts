@@ -404,10 +404,25 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }),
-  upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
-    const fd = new FormData(); fd.append('file', file)
-    return req('/demos/upload', { method: 'POST', body: fd })
-  },
+  upload: (
+    file: File,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<{ id: string; name: string; size: number }> =>
+    new Promise((resolve, reject) => {
+      const fd = new FormData(); fd.append('file', file)
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', BASE + '/demos/upload')
+      xhr.responseType = 'json'
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) onProgress?.(e.loaded, e.total)
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response)
+        else reject(new Error(`${xhr.status} ${xhr.statusText}`))
+      }
+      xhr.onerror = () => reject(new Error('network error'))
+      xhr.send(fd)
+    }),
   analyze: (id: string): Promise<unknown> => {
     evictDemo(id)  // re-analysis invalidates cached artifacts
     return req(`/demos/${id}/analyze`, { method: 'POST' })

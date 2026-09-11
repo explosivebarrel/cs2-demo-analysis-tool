@@ -225,13 +225,65 @@ function DemoMeta({ d, showDate }: { d: DemoEntry; showDate: boolean }) {
 type SortKey = 'date' | 'map'
 type SortDir = 'asc' | 'desc'
 
+interface UploadItem {
+  key: number
+  name: string
+  size: number
+  loaded: number
+  error?: string
+}
+
+// client-side pseudo-rows for files currently being uploaded; they are not on
+// the server yet, so they live outside the demo list and disappear on success
+function UploadCard({ u, onDismiss }: { u: UploadItem; onDismiss: () => void }) {
+  useLang()
+  const pct = u.size > 0 ? Math.min(100, Math.round((u.loaded / u.size) * 100)) : 0
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between wrap gap-8">
+        <div>
+          <span style={{ fontWeight: 600 }}>{u.name}</span>
+          {u.size > 0 && <span className="text-muted text-sm" style={{ marginLeft: 10 }}>{fmtSize(u.size)}</span>}
+        </div>
+        <div className="flex items-center gap-8">
+          {u.error ? (
+            <>
+              <span className="tag tag-red" title={u.error}>{t('error')}</span>
+              <button onClick={onDismiss} aria-label={t('demos:dismissError')}
+                style={{ background: 'none', border: 'none', color: 'var(--text2)', cursor: 'pointer', fontSize: 20, lineHeight: 1 }}>×</button>
+            </>
+          ) : (
+            <span className="flex items-center gap-8">
+              <span className="spinner" />
+              <span style={{ color: 'var(--text2)', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                {t('demos:uploading')} {pct}%
+              </span>
+            </span>
+          )}
+        </div>
+      </div>
+      {u.error ? (
+        <div style={{ color: 'var(--red)', marginTop: 6, fontSize: 13 }}>{u.error}</div>
+      ) : (
+        <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="progress-bar" style={{ width: 200 }}>
+            <div className="progress-bar-fill" style={{ width: `${pct}%` }} />
+          </div>
+          <span style={{ fontSize: 11, color: 'var(--text3)', fontVariantNumeric: 'tabular-nums' }}>
+            {fmtSize(u.loaded)} / {fmtSize(u.size)}
+          </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DemosPage() {
   const { lang } = useLang()
   const [demos, setDemos] = useState<DemoEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
+  const [uploads, setUploads] = useState<UploadItem[]>([])
   const [drag, setDrag] = useState(false)
-  const [uploadErr, setUploadErr] = useState('')
   const [filterOpen, setFilterOpen] = useState(false)
   const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS)
   const [sortKey, setSortKey] = useState<SortKey>('date')
@@ -341,28 +393,42 @@ export default function DemosPage() {
   const DEMO_EXTS = ['.dem', '.dem.zst', '.zst', '.dem.gz', '.gz']
   const isDemoFile = (name: string) => DEMO_EXTS.some(ext => name.toLowerCase().endsWith(ext))
 
-  async function uploadFile(file: File) {
-    if (!isDemoFile(file.name)) { setUploadErr(t('onlyDemFiles')); return }
-    setUploadErr('')
-    setUploading(true)
-    try {
-      await api.upload(file)
-      refresh()
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      if (msg.includes('fetch') || msg.includes('ALPN') || msg.includes('network')) {
-        setUploadErr(t('uploadErrorArchive'))
-      } else {
-        setUploadErr(t('uploadErrorGeneric') + ': ' + msg)
+  const uploadKeyRef = useRef(0)
+  const uploading = uploads.some(u => !u.error)
+
+  async function uploadFiles(files: File[]) {
+    if (!files.length) return
+    const items: UploadItem[] = files.map(f => ({
+      key: ++uploadKeyRef.current,
+      name: f.name,
+      size: f.size,
+      loaded: 0,
+      error: isDemoFile(f.name) ? undefined : t('onlyDemFiles'),
+    }))
+    setUploads(prev => [...prev, ...items])
+    // sequential: the backend reads each upload fully into memory
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i]
+      if (!isDemoFile(f.name)) continue
+      const key = items[i].key
+      try {
+        await api.upload(f, loaded =>
+          setUploads(prev => prev.map(u => (u.key === key ? { ...u, loaded } : u))))
+        setUploads(prev => prev.filter(u => u.key !== key))
+        refresh()
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e)
+        const err = msg.includes('fetch') || msg.includes('ALPN') || msg.includes('network')
+          ? t('uploadErrorArchive')
+          : t('uploadErrorGeneric') + ': ' + msg
+        setUploads(prev => prev.map(u => (u.key === key ? { ...u, error: err } : u)))
       }
-    } finally { setUploading(false) }
+    }
   }
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault(); setDrag(false)
-    const f = e.dataTransfer.files[0]
-    if (!f) { setUploadErr(t('uploadErrorArchive')); return }
-    uploadFile(f)
+    uploadFiles(Array.from(e.dataTransfer.files))
   }
 
   // collect all unique maps for filter
@@ -445,8 +511,12 @@ export default function DemosPage() {
           <button className="btn-primary" onClick={() => fileRef.current?.click()} disabled={uploading}>
             {uploading ? <span className="spinner" /> : t('upload')}
           </button>
-          <input ref={fileRef} type="file" accept=".dem,.dem.zst,.zst,.dem.gz,.gz" style={{ display: 'none' }}
-            onChange={e => { const f = e.target.files?.[0]; if (f) uploadFile(f); e.target.value = '' }} />
+          <input ref={fileRef} type="file" accept=".dem,.dem.zst,.zst,.dem.gz,.gz" multiple style={{ display: 'none' }}
+            onChange={e => {
+              const files = e.target.files ? Array.from(e.target.files) : []
+              if (files.length) uploadFiles(files)
+              e.target.value = ''
+            }} />
         </div>
       </div>
 
@@ -461,7 +531,19 @@ export default function DemosPage() {
         {t('dropHere')} <span style={{ color: 'var(--accent)' }}>{t('chooseFile')}</span>
       </div>
 
-      {uploadErr && <div style={{ color: 'var(--red)', marginBottom: 12, fontSize: 13 }}>{uploadErr}</div>}
+      {uploads.length > 0 && (
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6, padding: '0 2px' }}>
+            {t('demos:uploadsTitle')}
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {uploads.map(u => (
+              <UploadCard key={u.key} u={u}
+                onDismiss={() => setUploads(prev => prev.filter(x => x.key !== u.key))} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <FilterDrawer open={filterOpen} onClose={() => setFilterOpen(false)} filters={filters} onChange={setFilters} allMaps={allMaps} />
 
