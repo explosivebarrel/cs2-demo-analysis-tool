@@ -86,6 +86,7 @@ export default function HeatmapsPage() {
   const [ground, setGround] = useState(true)
   const [mapAlpha, setMapAlpha] = useState(0.65)
   const [contrast, setContrast] = useState(true)
+  const [shadesNum, setShadesNum] = useState<number | null>(null)  // null = artifact default
   const view3dRef = useRef(false)
   useEffect(() => { view3dRef.current = view3d }, [view3d])
 
@@ -243,6 +244,7 @@ export default function HeatmapsPage() {
                   map={analysis.meta.map} players={analysis.players}
                   selected={selectedPlayers.size > 0 ? selectedPlayers : null}
                   alpha={pointAlpha} mapAlpha={mapAlpha} contrast={contrast}
+                  shades={shadesNum ?? hm3d.shades ?? 8}
                   shift={resShift} showGround={ground} level={level}
                   width={cell.w} height={cell.h} />
               ) : (
@@ -361,6 +363,16 @@ export default function HeatmapsPage() {
                           <input type="checkbox" checked={contrast} onChange={e => setContrast(e.target.checked)} />
                           {t('heatmaps:map3dContrast')}
                         </label>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
+                            {t('heatmaps:map3dShades')}
+                            <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{shadesNum ?? hm3d?.shades ?? 8}</span>
+                          </div>
+                          <input type="range" min={1} max={32} step={1}
+                            value={shadesNum ?? hm3d?.shades ?? 8}
+                            onChange={e => setShadesNum(Number(e.target.value))}
+                            style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                        </div>
                         <div>
                           <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
                             {t('heatmaps:map3dMapOpacity')}

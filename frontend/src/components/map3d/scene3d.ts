@@ -192,14 +192,15 @@ export function drawDensityPlane(
   const p: [number, number, number] = [0, 0, 0]
   for (const i of order) {
     const t = Math.log1p(plane.counts[i]) / logMax
-    const a = alpha * (0.15 + 0.85 * t)
-    if (a < 0.008) continue
+    if (alpha * (0.15 + 0.85 * t) < 0.008) continue
     const bucket = Math.min(buckets - 1, Math.floor(t * buckets))
     let path = paths[bucket]
     if (!path) {
+      // deterministic per-bucket alpha, evenly spread from 0.4 to 1.0 — low
+      // shades (3-4) still produce clearly visible steps
       path = new Path2D()
       paths[bucket] = path
-      alphas[bucket] = a
+      alphas[bucket] = alpha * (0.4 + 0.6 * ((bucket + 1) / buckets))
     }
     const cxw = plane.xs[i] + plane.cell / 2, cyw = plane.ys[i] + plane.cell / 2
     // viewport cull with a cell-size margin

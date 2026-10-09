@@ -21,7 +21,8 @@ interface Props {
   selected: Set<number> | null  // analysis.players indices; null = all
   alpha: number                 // point opacity (shared with 2D)
   mapAlpha: number              // density plane + radar ground opacity (3D)
-  contrast: boolean             // tint the radar opposite to the layer color
+  contrast: boolean             // density tiles use the hue opposite to points
+  shades: number                // density shading levels (tiles)
   shift: number                 // resolution merge 0/1/2
   showGround: boolean
   level: string                 // map level filter (same semantics as 2D)
@@ -29,8 +30,34 @@ interface Props {
   height: number
 }
 
+// 'r,g,b' -> hue in degrees
+function rgbHue(rgb: string): number {
+  const [r, g, b] = rgb.split(',').map(Number)
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b)
+  const d = mx - mn
+  if (d <= 0) return 0
+  let h: number
+  if (mx === r) h = ((g - b) / d) % 6
+  else if (mx === g) h = (b - r) / d + 2
+  else h = (r - g) / d + 4
+  return ((h * 60) + 360) % 360
+}
+
+// hue -> 'r,g,b' triplet at fixed saturation/lightness (tile fill color)
+function hslTriplet(hue: number, sat = 0.45, light = 0.55): string {
+  const c = (1 - Math.abs(2 * light - 1)) * sat
+  const x = c * (1 - Math.abs(((hue / 60) % 2) - 1))
+  const m = light - c / 2
+  const seg = Math.floor(hue / 60) % 6
+  const table: [number, number, number][] = [
+    [c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x],
+  ]
+  const [r, g, b] = table[seg]
+  return `${Math.round((r + m) * 255)},${Math.round((g + m) * 255)},${Math.round((b + m) * 255)}`
+}
+
 export default function Heatmap3DCanvas({
-  heatmap, hm3d, layer, overview, map, players, selected, alpha, mapAlpha, contrast, shift, showGround, level, width, height,
+  heatmap, hm3d, layer, overview, map, players, selected, alpha, mapAlpha, contrast, shades, shift, showGround, level, width, height,
 }: Props) {
   useLang()
   const groundZ = hm3d.minZ
@@ -85,27 +112,17 @@ export default function Heatmap3DCanvas({
     return bb ?? { minX: hm3d.minX, minY: hm3d.minY, minZ: hm3d.minZ, maxX: hm3d.minX + 1024, maxY: hm3d.minY + 1024, maxZ: hm3d.minZ + 128 }
   }, [hm3d])
 
+  // tiles take the hue opposite to the points so both stay readable
+  const tileColor = useMemo(() => {
+    const base = LAYER_COLORS[layer] ?? '255,255,255'
+    return contrast ? hslTriplet((rgbHue(base) + 180) % 360) : base
+  }, [contrast, layer])
+
   const onDraw = useCallback((ctx: CanvasRenderingContext2D, cam: Cam, w: number, h: number) => {
-    drawDensityPlane(ctx, plane, cam, w, h, LAYER_COLORS[layer] ?? '255,255,255', mapAlpha, hm3d.shades ?? 8)
+    drawDensityPlane(ctx, plane, cam, w, h, tileColor, mapAlpha, shades)
     const radius = Math.max(2, Math.min(5, w / 300))
     drawPoints3D(ctx, pts, cam, w, h, LAYER_COLORS[layer] ?? '255,255,255', alpha * 0.9, radius)
-  }, [plane, pts, layer, alpha, mapAlpha, hm3d])
-
-  // hue opposite to the layer color, for the contrast radar tint
-  const groundTint = useMemo(() => {
-    if (!contrast) return undefined
-    const [r, g, b] = (LAYER_COLORS[layer] ?? '255,255,255').split(',').map(Number)
-    const mx = Math.max(r, g, b), mn = Math.min(r, g, b)
-    const d = mx - mn
-    let hue = 0
-    if (d > 0) {
-      if (mx === r) hue = ((g - b) / d) % 6
-      else if (mx === g) hue = (b - r) / d + 2
-      else hue = (r - g) / d + 4
-    }
-    hue = Math.round(((hue * 60) + 180) % 360)
-    return `hsl(${hue}, 40%, 50%)`
-  }, [contrast, layer])
+  }, [plane, pts, tileColor, layer, alpha, mapAlpha, shades, hm3d])
 
   return (
     <div style={{ position: 'absolute', inset: 8, userSelect: 'none' }}>
@@ -113,7 +130,7 @@ export default function Heatmap3DCanvas({
         width={width} height={height} bbox={bbox}
         groundUrl={showGround ? api.radarUrl(map) : undefined}
         groundAnchor={overview} groundZ={groundZ}
-        groundAlpha={mapAlpha} groundTint={groundTint}
+        groundAlpha={mapAlpha}
         onDraw={onDraw} />
       <div style={{ position: 'absolute', bottom: 4, right: 8, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none', textAlign: 'right' }}>
         <div>{t('heatmaps:map3dSamples', { n: pts.length / 3, cell: Math.round(hm3d.cell * (1 << shift)) })}</div>
