@@ -125,7 +125,21 @@ export interface HalfData { from: number; to: number; sideTeam0: string; score0:
 
 export interface HeatmapData {
   layers: Record<string, HeatPoint[]>
+  // steamid per layer pIdx (FrameBuilder order); absent in legacy artifacts
+  players?: string[]
   rounds: { n: number; f: number; e: number; s0: string; w: number; plant?: number }[]
+}
+
+// voxel position heatmap: 32u cells in the horizontal plane, 32u vertical steps
+export interface Map3DData {
+  cell: number
+  zStep: number
+  minX: number
+  minY: number
+  minZ: number
+  samples: number
+  players: string[]
+  cells: number[][]  // [ix, iy, iz, count per player...]
 }
 
 export interface HeatPoint {
@@ -440,6 +454,7 @@ export const api = {
   },
   analysis: (id: string): Promise<AnalysisData> => cached(`analysis:${id}`, () => req(`/demos/${id}/analysis`)),
   heatmap: (id: string): Promise<HeatmapData> => cached(`heatmap:${id}`, () => req(`/demos/${id}/heatmap`)),
+  heatmap3d: (id: string): Promise<Map3DData> => cached(`heatmap3d:${id}`, () => req(`/demos/${id}/heatmap3d`)),
   replay: (id: string): Promise<ReplayData> => cached(`replay:${id}`, () => req(`/demos/${id}/replay`)),
   mapOverview: (map: string): Promise<MapOverview> => cached(`overview:${map}`, () => req(`/maps/${map}/overview`)),
   radarUrl: (map: string, level?: string) =>

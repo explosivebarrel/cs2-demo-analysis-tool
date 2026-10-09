@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, NavLink } from 'react-router-dom'
-import { api, AnalysisData, HeatmapData, MapOverview } from '../api'
+import { api, AnalysisData, HeatmapData, Map3DData, MapOverview } from '../api'
 import { worldToCanvas, zOnLevel, lowerLevelNames } from '../lib/coords'
 import { t } from '../i18n'
 import { useLang } from '../App'
 import MatchNav from '../components/MatchNav'
+import Map3DCanvas from '../components/map3d/Map3DCanvas'
 
 const LAYER_COLORS: Record<string, string> = {
   kills: '255,80,80', deaths: '80,160,255', damage: '255,160,40',
@@ -111,6 +112,20 @@ export default function HeatmapsPage() {
   const [selectedPlayers, setSelectedPlayers] = useState<Set<number>>(new Set())
   const [pointAlpha, setPointAlpha] = useState(0.35)
   const [error, setError] = useState('')
+  const [view3d, setView3d] = useState(false)
+  const [hm3d, setHm3d] = useState<Map3DData | null>(null)
+  const [hm3dMissing, setHm3dMissing] = useState(false)
+  const [resShift, setResShift] = useState(1)  // merge factor 0/1/2 -> 32/64/128 u cells
+  const [ground, setGround] = useState(true)
+  const view3dRef = useRef(false)
+  useEffect(() => { view3dRef.current = view3d }, [view3d])
+
+  function enable3d() {
+    setView3d(true)
+    if (!hm3d && !hm3dMissing && id) {
+      api.heatmap3d(id).then(setHm3d).catch(() => setHm3dMissing(true))
+    }
+  }
 
   // pan/zoom
   const [scale, setScale] = useState(1)
@@ -153,15 +168,25 @@ export default function HeatmapsPage() {
     const img = new Image()
     img.onload = () => { cv.getContext('2d')!.drawImage(img, 0, 0, cv.width, cv.height) }
     img.src = api.radarUrl(analysis.meta.map, level)
-  }, [analysis, overview, SIZE, level])
+    // view3d in deps: canvases unmount while 3D is on, so 2D needs a redraw on return
+  }, [analysis, overview, SIZE, level, view3d])
 
   useEffect(() => {
     const cv = canvasRef.current
     if (!cv || !heatmap || !overview || SIZE < 2) return
     const raw = (heatmap.layers[layer] ?? []) as unknown as number[][]
-    const playerFilter = selectedPlayers.size > 0 ? selectedPlayers : null
+    // layer pIdx values follow heatmap.players order; translate the selected
+    // analysis.players indices into that space (legacy artifacts have no
+    // players header — fall back to raw indices)
+    let playerFilter: Set<number> | null = null
+    if (selectedPlayers.size > 0) {
+      const selSids = new Set([...selectedPlayers].map(i => analysis?.players[i]?.steamid))
+      playerFilter = heatmap.players
+        ? new Set(heatmap.players.flatMap((sid, i) => (selSids.has(sid) ? [i] : [])))
+        : new Set(selectedPlayers)
+    }
     drawHeatmap(cv, raw, layer, overview, playerFilter, pointAlpha, level)
-  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, SIZE, level])
+  }, [heatmap, layer, overview, selectedPlayers, pointAlpha, SIZE, level, analysis, view3d])
 
   const togglePlayer = useCallback((idx: number) => {
     setSelectedPlayers(prev => {
@@ -184,6 +209,7 @@ export default function HeatmapsPage() {
     const el = containerRef.current
     if (!el) return
     function onWheel(e: WheelEvent) {
+      if (view3dRef.current) return
       e.preventDefault()
       const rect = el!.getBoundingClientRect()
       const b = Math.min(rect.width, rect.height)
@@ -203,11 +229,11 @@ export default function HeatmapsPage() {
   }, [])
 
   function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-    if (e.button !== 0) return
+    if (view3d || e.button !== 0) return
     dragRef.current = { sx: e.clientX, sy: e.clientY, ox: offsetRef.current.x, oy: offsetRef.current.y }
   }
   function onMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    if (!dragRef.current) return
+    if (view3d || !dragRef.current) return
     const rect = containerRef.current!.getBoundingClientRect()
     const b = Math.min(rect.width, rect.height)
     const c = clamp(scaleRef.current, dragRef.current.ox + e.clientX - dragRef.current.sx, dragRef.current.oy + e.clientY - dragRef.current.sy, b)
@@ -230,11 +256,29 @@ export default function HeatmapsPage() {
         <div className="card" style={{ padding: 8, position: 'relative', overflow: 'hidden', boxSizing: 'border-box', minHeight: 0 }}>
           <div
             ref={containerRef}
-            style={{ position: 'absolute', inset: 8, cursor: scale > 1 ? 'grab' : 'default', userSelect: 'none' }}
+            style={{ position: 'absolute', inset: 8, cursor: view3d ? 'default' : scale > 1 ? 'grab' : 'default', userSelect: 'none' }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
           >
             {loading && <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 4 }} />}
-            {!loading && (
+            {!loading && view3d && (
+              hm3dMissing ? (
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, color: 'var(--text2)', fontSize: 13 }}>
+                  {t('heatmaps:map3dNeedReanalyze')}
+                  <button className="btn-primary" style={{ fontSize: 12, padding: '6px 14px' }}
+                    onClick={() => id && api.analyze(id)}>
+                    {t('reAnalyze')}
+                  </button>
+                </div>
+              ) : hm3d && overview && analysis ? (
+                <Map3DCanvas data={hm3d} overview={overview} map={analysis.meta.map}
+                  players={analysis.players} selected={selectedPlayers.size > 0 ? selectedPlayers : null}
+                  alpha={pointAlpha} shift={resShift} showGround={ground}
+                  width={cell.w} height={cell.h} />
+              ) : (
+                <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 4 }} />
+              )
+            )}
+            {!loading && !view3d && (
               <div style={{
                 transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`, transformOrigin: '0 0',
                 position: 'absolute', width: SIZE, height: SIZE,
@@ -247,7 +291,7 @@ export default function HeatmapsPage() {
               </div>
             )}
           </div>
-          {!loading && (
+          {!loading && !view3d && (
             <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none' }}>
               {scale > 1
                 ? `${scale.toFixed(1)}× · ${t('zoomReset')}`
@@ -288,44 +332,64 @@ export default function HeatmapsPage() {
                 const layers = Object.keys(heatmap.layers).filter(k => (heatmap.layers[k] as unknown as number[][]).length > 0)
                 const lowerLevels = lowerLevelNames(overview)
                 const hasLevels = lowerLevels.length > 0
+                const seg = (active: boolean): React.CSSProperties => ({
+                  flex: 1,
+                  background: active ? 'var(--accent)' : 'var(--bg3)',
+                  color: active ? '#fff' : 'var(--text)',
+                  border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
+                })
                 return (
                   <>
-                    {hasLevels && (
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button onClick={() => setView3d(false)} style={seg(!view3d)}>{t('heatmaps:view2d')}</button>
+                      <button onClick={enable3d} style={seg(view3d)}>{t('heatmaps:view3d')}</button>
+                    </div>
+                    {!view3d && hasLevels && (
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('mapLevel')}</div>
                         <div style={{ display: 'flex', gap: 4 }}>
-                          <button onClick={() => setLevel('default')} style={{
-                            flex: 1,
-                            background: level === 'default' ? 'var(--accent)' : 'var(--bg3)',
-                            color: level === 'default' ? '#fff' : 'var(--text)',
-                            border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
-                          }}>{t('levelUpper')}</button>
+                          <button onClick={() => setLevel('default')} style={seg(level === 'default')}>{t('levelUpper')}</button>
                           {lowerLevels.map(sec => (
-                            <button key={sec} onClick={() => setLevel(sec)} style={{
-                              flex: 1,
-                              background: level === sec ? 'var(--accent)' : 'var(--bg3)',
-                              color: level === sec ? '#fff' : 'var(--text)',
-                              border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', fontSize: 12,
-                            }}>{t('levelLower')}</button>
+                            <button key={sec} onClick={() => setLevel(sec)} style={seg(level === sec)}>{t('levelLower')}</button>
                           ))}
                         </div>
                       </div>
                     )}
-                    <div>
-                      <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {layers.map(l => (
-                          <button key={l} onClick={() => setLayer(l)} style={{
-                            background: layer === l ? 'var(--accent)' : 'var(--bg3)',
-                            color: layer === l ? '#fff' : 'var(--text)',
-                            border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
-                          }}>
-                            {layerLabel(l)}
-                            <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
-                          </button>
-                        ))}
+                    {!view3d && (
+                      <div>
+                        <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {layers.map(l => (
+                            <button key={l} onClick={() => setLayer(l)} style={{
+                              background: layer === l ? 'var(--accent)' : 'var(--bg3)',
+                              color: layer === l ? '#fff' : 'var(--text)',
+                              border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                            }}>
+                              {layerLabel(l)}
+                              <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
+                    {view3d && (
+                      <>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('heatmaps:map3dDetail')}</div>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {[0, 1, 2].map(s => (
+                              <button key={s} onClick={() => setResShift(s)} style={seg(resShift === s)}>
+                                {Math.round((hm3d?.cell ?? 32) * (1 << s))} u
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                          <input type="checkbox" checked={ground} onChange={e => setGround(e.target.checked)} />
+                          {t('heatmaps:map3dGround')}
+                        </label>
+                      </>
+                    )}
 
                     <div>
                       <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>

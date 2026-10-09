@@ -77,6 +77,12 @@ def analyze_demo(demo_path: str, did: str, progress=None):
 
     trk.enter("heatmaps")
     hm = build_heatmap(ctx, rb, players, fb, replay)
+    from .heatmap3d import build_heatmap3d
+    try:
+        hm3d = build_heatmap3d(ctx, rb, fb.players)
+    except Exception as hm3d_err:
+        print(f"[{did}] heatmap3d failed: {hm3d_err}", flush=True)
+        hm3d = None
 
     trk.enter("analytics")
     from .playeranalytics import build_player_analytics, build_moments
@@ -111,6 +117,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     }
     heatmap_payload = {
         "layers": hm,
+        # player index order used by every layer's pIdx (FrameBuilder order)
+        "players": list(fb.players),
         "rounds": [{"n": r["n"], "f": r["freezeEndTick"], "e": r["endTick"],
                     "s0": r["sideTeam0"], "w": r["winnerTeam"],
                     "plant": r.get("plantTick")} for r in rb.rounds],
@@ -121,6 +129,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "analysis.json.gz"), analysis)
     _gz_write(os.path.join(out_dir, "replay.json.gz"), replay_payload)
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
+    if hm3d is not None:
+        _gz_write(os.path.join(out_dir, "heatmap3d.json.gz"), hm3d)
     _gz_write(os.path.join(out_dir, "player_analytics.json.gz"), pa)
     _gz_write(os.path.join(out_dir, "chat.json.gz"), chat_messages)
 

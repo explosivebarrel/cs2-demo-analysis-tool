@@ -378,6 +378,12 @@ def heatmap(did: str):
     return _read_artifact(did, "heatmap.json.gz")
 
 
+@app.get("/api/demos/{did}/heatmap3d")
+def heatmap3d(did: str):
+    _find_demo(did)
+    return _read_artifact(did, "heatmap3d.json.gz")
+
+
 @app.get("/api/demos/{did}/replay")
 def replay(did: str):
     _find_demo(did)
