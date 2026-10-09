@@ -2,19 +2,11 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, NavLink } from 'react-router-dom'
 import { api, AnalysisData, HeatmapData, Map3DData, MapOverview } from '../api'
 import { worldToCanvas, zOnLevel, lowerLevelNames } from '../lib/coords'
+import { decodePoint, LAYER_COLORS } from '../lib/heatmapLayers'
 import { t } from '../i18n'
 import { useLang } from '../App'
 import MatchNav from '../components/MatchNav'
-import Map3DCanvas from '../components/map3d/Map3DCanvas'
-
-const LAYER_COLORS: Record<string, string> = {
-  kills: '255,80,80', deaths: '80,160,255', damage: '255,160,40',
-  damage_taken: '200,80,255', shots: '200,200,200', flash_throws: '255,240,80',
-  flash_hits: '255,200,20', smokes: '100,200,150', molotovs: '255,100,30',
-  hes: '200,255,80', plants: '255,120,30', defuses: '80,255,200',
-  opening_duels: '255,80,200', clutches: '255,200,80', holds: '100,180,255',
-  positions: '150,150,255',
-}
+import Heatmap3DCanvas from '../components/map3d/Heatmap3DCanvas'
 
 function layerLabel(key: string): string {
   const map: Record<string, string> = {
@@ -30,32 +22,7 @@ function layerLabel(key: string): string {
 }
 
 // Decode compact array → {x, y, v?, dur?, pIdx, tick}
-// Schema docs in backend/app/pipeline/heatmaps.py
-function decodePoint(layer: string, arr: number[]): { x: number; y: number; z?: number; v?: number; dur?: number; pIdx: number; tick: number } {
-  switch (layer) {
-    case 'kills': case 'deaths': case 'opening_duels':
-      // [ax, ay, vx, vy, pIdx, tick, flags]
-      return { x: arr[0], y: arr[1], pIdx: arr[4], tick: arr[5] }
-    case 'damage': case 'damage_taken':
-      // [x, y, dmg, pIdx, tick]
-      return { x: arr[0], y: arr[1], v: arr[2], pIdx: arr[3], tick: arr[4] }
-    case 'flash_hits':
-      // [x, y, blindSec, throwerIdx, tick]
-      return { x: arr[0], y: arr[1], v: arr[2], pIdx: arr[3], tick: arr[4] }
-    case 'holds':
-      // [x, y, durSec, pIdx, roundStartTick, round]
-      return { x: arr[0], y: arr[1], dur: arr[2], pIdx: arr[3], tick: arr[4] }
-    case 'clutches':
-      // [x, y, enemies, pIdx, tick, won]
-      return { x: arr[0], y: arr[1], v: arr[2], pIdx: arr[3], tick: arr[4] }
-    case 'positions':
-      // [x, y, z, round, pIdx]
-      return { x: arr[0], y: arr[1], z: arr[2], pIdx: arr[4], tick: 0 }
-    default:
-      // shots, flash_throws, smokes, hes, molotovs, plants, defuses: [x, y, pIdx, tick]
-      return { x: arr[0], y: arr[1], pIdx: arr[2], tick: arr[3] }
-  }
-}
+// (decoder moved to lib/heatmapLayers.ts — shared with the 3D view)
 
 function drawHeatmap(
   canvas: HTMLCanvasElement,
@@ -270,9 +237,10 @@ export default function HeatmapsPage() {
                   </button>
                 </div>
               ) : hm3d && overview && analysis ? (
-                <Map3DCanvas data={hm3d} overview={overview} map={analysis.meta.map}
-                  players={analysis.players} selected={selectedPlayers.size > 0 ? selectedPlayers : null}
-                  alpha={pointAlpha} shift={resShift} showGround={ground}
+                <Heatmap3DCanvas heatmap={heatmap} hm3d={hm3d} layer={layer} overview={overview}
+                  map={analysis.meta.map} players={analysis.players}
+                  selected={selectedPlayers.size > 0 ? selectedPlayers : null}
+                  alpha={pointAlpha} shift={resShift} showGround={ground} level={level}
                   width={cell.w} height={cell.h} />
               ) : (
                 <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 4 }} />
@@ -344,7 +312,7 @@ export default function HeatmapsPage() {
                       <button onClick={() => setView3d(false)} style={seg(!view3d)}>{t('heatmaps:view2d')}</button>
                       <button onClick={enable3d} style={seg(view3d)}>{t('heatmaps:view3d')}</button>
                     </div>
-                    {!view3d && hasLevels && (
+                    {hasLevels && (
                       <div>
                         <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('mapLevel')}</div>
                         <div style={{ display: 'flex', gap: 4 }}>
@@ -355,23 +323,21 @@ export default function HeatmapsPage() {
                         </div>
                       </div>
                     )}
-                    {!view3d && (
-                      <div>
-                        <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                          {layers.map(l => (
-                            <button key={l} onClick={() => setLayer(l)} style={{
-                              background: layer === l ? 'var(--accent)' : 'var(--bg3)',
-                              color: layer === l ? '#fff' : 'var(--text)',
-                              border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
-                            }}>
-                              {layerLabel(l)}
-                              <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
-                            </button>
-                          ))}
-                        </div>
+                    <div>
+                      <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('layer')}</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {layers.map(l => (
+                          <button key={l} onClick={() => setLayer(l)} style={{
+                            background: layer === l ? 'var(--accent)' : 'var(--bg3)',
+                            color: layer === l ? '#fff' : 'var(--text)',
+                            border: 'none', borderRadius: 4, padding: '5px 10px', cursor: 'pointer', textAlign: 'left', fontSize: 12,
+                          }}>
+                            {layerLabel(l)}
+                            <span style={{ float: 'right', opacity: 0.6, fontSize: 11 }}>{(heatmap.layers[l] as unknown as number[][]).length}</span>
+                          </button>
+                        ))}
                       </div>
-                    )}
+                    </div>
                     {view3d && (
                       <>
                         <div>
