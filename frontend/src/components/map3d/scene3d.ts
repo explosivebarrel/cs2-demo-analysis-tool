@@ -63,8 +63,10 @@ export interface BBox {
   maxX: number; maxY: number; maxZ: number
 }
 
-// Fit the whole bbox into the viewport with a small margin.
-export function fitCam(bbox: BBox, w: number, h: number, yaw = 0, pitch = 0.95): Cam {
+// Fit the whole bbox into the viewport with a small margin. Default view is
+// the classic isometric angle (45° yaw, ~35.26° pitch) so vertical structure
+// is visible right away.
+export function fitCam(bbox: BBox, w: number, h: number, yaw = Math.PI / 4, pitch = Math.atan(1 / Math.SQRT2)): Cam {
   const cam: Cam = {
     yaw, pitch: clampPitch(pitch), zoom: 1,
     cx: (bbox.minX + bbox.maxX) / 2,
@@ -108,6 +110,7 @@ export function groundMatrix(
 export interface DensityPlane {
   xs: Float64Array      // cell min corner, world
   ys: Float64Array
+  zs: Float64Array      // cell BOTTOM face height (voxels keep their real z)
   counts: Float64Array
   maxCount: number
   cell: number          // merged cell size (world units)
@@ -126,9 +129,9 @@ export function buildDensityPlane(
   data: { cell: number; zStep: number; minX: number; minY: number; minZ: number; cells: number[][] },
   opts: PlaneOpts,
 ): DensityPlane {
-  const nCols = data.cells.length ? data.cells[0].length - 3 : 0
+  const nCols = data.cells.length ? data.cells[0].length - 3 : opts.filterCols?.size || 0
   const step = 1 << opts.shift
-  const acc = new Map<string, [number, number, number]>()
+  const acc = new Map<string, [number, number, number, number]>()
   for (const row of data.cells) {
     let c = 0
     for (let i = 0; i < nCols; i++) {
@@ -136,20 +139,22 @@ export function buildDensityPlane(
       c += row[3 + i]
     }
     if (c <= 0) continue
-    const key = `${row[0] >> opts.shift},${row[1] >> opts.shift}`
+    const key = `${row[0] >> opts.shift},${row[1] >> opts.shift},${row[2] >> opts.shift}`
     const v = acc.get(key)
     if (v) v[2] += c
-    else acc.set(key, [row[0] >> opts.shift, row[1] >> opts.shift, c])
+    else acc.set(key, [row[0] >> opts.shift, row[1] >> opts.shift, c, row[2] >> opts.shift])
   }
   const m = acc.size
   const plane: DensityPlane = {
-    xs: new Float64Array(m), ys: new Float64Array(m), counts: new Float64Array(m),
-    maxCount: 0, cell: data.cell * step, groundZ: opts.groundZ,
+    xs: new Float64Array(m), ys: new Float64Array(m), zs: new Float64Array(m),
+    counts: new Float64Array(m), maxCount: 0,
+    cell: data.cell * step, groundZ: opts.groundZ,
   }
   let i = 0
-  for (const [ix, iy, c] of acc.values()) {
+  for (const [ix, iy, c, iz] of acc.values()) {
     plane.xs[i] = data.minX + ix * plane.cell
     plane.ys[i] = data.minY + iy * plane.cell
+    plane.zs[i] = data.minZ + iz * data.zStep * step
     plane.counts[i] = c
     if (c > plane.maxCount) plane.maxCount = c
     i++
@@ -159,7 +164,8 @@ export function buildDensityPlane(
 
 const ALPHA_BUCKETS = 8
 
-// Flat density cells on the ground plane: bottom faces of the voxel grid.
+// Density cells drawn as the BOTTOM faces of the voxel grid — every cell sits
+// at its own z, so balconies/floors of multi-level maps read as steps.
 // Alpha is quantized into buckets so each bucket is a single path + fill.
 export function drawDensityPlane(
   ctx: CanvasRenderingContext2D, plane: DensityPlane, cam: Cam, w: number, h: number,
@@ -169,45 +175,45 @@ export function drawDensityPlane(
   if (!m || plane.maxCount <= 0) return
   const b = camBasis(cam)
   const logMax = Math.log1p(plane.maxCount)
-  const half = plane.cell / 2
 
   const order = new Int32Array(m)
   const depths = new Float64Array(m)
   for (let i = 0; i < m; i++) {
     order[i] = i
-    depths[i] = depth([plane.xs[i], plane.ys[i], plane.groundZ], cam, b)
+    depths[i] = depth([plane.xs[i], plane.ys[i], plane.zs[i]], cam, b)
   }
   // far -> near; index sort keeps per-frame work allocation-free
   order.sort((a, c) => depths[c] - depths[a])
 
   const paths: Path2D[] = []
   const alphas: number[] = []
-  const r: [number, number, number] = [0, 0, 0]
+  const p: [number, number, number] = [0, 0, 0]
   for (const i of order) {
     const t = Math.log1p(plane.counts[i]) / logMax
     const a = alpha * (0.15 + 0.85 * t)
     if (a < 0.008) continue
-    let bucket = Math.min(ALPHA_BUCKETS - 1, Math.floor(t * ALPHA_BUCKETS))
+    const bucket = Math.min(ALPHA_BUCKETS - 1, Math.floor(t * ALPHA_BUCKETS))
     let path = paths[bucket]
     if (!path) {
       path = new Path2D()
       paths[bucket] = path
       alphas[bucket] = a
     }
-    const cxw = plane.xs[i] + half, cyw = plane.ys[i] + half
+    const cxw = plane.xs[i] + plane.cell / 2, cyw = plane.ys[i] + plane.cell / 2
     // viewport cull with a cell-size margin
-    r[0] = cxw; r[1] = cyw; r[2] = plane.groundZ
-    const [ccx, ccy] = project(r, cam, b, w, h)
+    p[0] = cxw; p[1] = cyw; p[2] = plane.zs[i]
+    const [ccx, ccy] = project(p, cam, b, w, h)
     const reach = plane.cell * cam.zoom
     if (ccx < -reach || ccx > w + reach || ccy < -reach || ccy > h + reach) continue
+    const z = plane.zs[i]
     const corners: [number, number, number][] = [
-      [plane.xs[i], plane.ys[i], plane.groundZ],
-      [plane.xs[i] + plane.cell, plane.ys[i], plane.groundZ],
-      [plane.xs[i] + plane.cell, plane.ys[i] + plane.cell, plane.groundZ],
-      [plane.xs[i], plane.ys[i] + plane.cell, plane.groundZ],
+      [plane.xs[i], plane.ys[i], z],
+      [plane.xs[i] + plane.cell, plane.ys[i], z],
+      [plane.xs[i] + plane.cell, plane.ys[i] + plane.cell, z],
+      [plane.xs[i], plane.ys[i] + plane.cell, z],
     ]
-    corners.forEach((p, k) => {
-      const [sx, sy] = project(p, cam, b, w, h)
+    corners.forEach((c, k) => {
+      const [sx, sy] = project(c, cam, b, w, h)
       if (k === 0) path.moveTo(sx, sy); else path.lineTo(sx, sy)
     })
     path.closePath()

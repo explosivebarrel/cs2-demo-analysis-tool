@@ -45,7 +45,7 @@ def test_frame_pos_stride13():
     fr1 = [[111, 222, 0, 0, 100, 0, 1, 0, 0, 3, 0, 0, 0], _row(0, 0, 0)]
     data = [v for fr in (fr0, fr1) for r in fr for v in r]
     assert len(data) == 2 * 2 * 13
-    assert heatmaps.frame_pos(fb, {"ticks": [100, 200], "data": data}, 0, 200) == (111, 222)
+    assert heatmaps.frame_pos(fb, {"ticks": [100, 200], "data": data}, 0, 200) == (111, 222, 0)
 
 
 def test_winprob_post_plant_overrides():

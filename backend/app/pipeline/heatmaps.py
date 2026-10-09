@@ -3,17 +3,20 @@
 Every point is a compact float list so the client can filter by player /
 side / half / round-phase on its own. Layer schemas (indices):
 
-kills/deaths/opening_duels: [ax, ay, vx, vy, pIdx, tick, flags]
+kills/deaths/opening_duels: [ax, ay, vx, vy, pIdx, tick, flags, az, vz]
     flags: 1 headshot, 2 penetrated, 4 thrusmoke, 8 noscore,
-           16 won-duel (opening_duels)
-damage/damage_taken: [x, y, dmg, pIdx, tick]
-shots:            [x, y, pIdx, tick]
-flash_throws/smokes/hes/molotovs: [x, y, pIdx, tick]
-flash_hits:       [x, y, blindSec, throwerIdx, tick]
-plants/defuses:   [x, y, pIdx, tick]
-clutches:         [x, y, enemies, pIdx, tick, won]
-holds:            [x, y, durSec, pIdx, roundStartTick, round]
-positions:        [x, y, z, round, pIdx]
+           16 won-duel (opening_duels); az/vz = attacker/victim eye-ish Z
+damage/damage_taken:        [x, y, dmg, pIdx, tick, z]
+shots:                      [x, y, pIdx, tick, z]
+flash_throws/smokes/hes/molotovs: [x, y, pIdx, tick, z]
+flash_hits:                 [x, y, blindSec, throwerIdx, tick, z]
+plants/defuses:             [x, y, pIdx, tick, z]
+clutches:                   [x, y, enemies, pIdx, tick, won, z]
+holds:                      [x, y, durSec, pIdx, roundStartTick, round]  (no z)
+positions:                  [x, y, z, round, pIdx]
+
+z is appended at the END of each tuple so pre-z artifacts stay readable
+(the frontend falls back to the ground plane when the field is missing).
 """
 import numpy as np
 
@@ -53,16 +56,19 @@ def build_heatmap(ctx, rb, players, fb, replay):
             flags = (1 if k.get("headshot") else 0) | (2 if k.get("penetrated") else 0) \
                     | (4 if k.get("thrusmoke") else 0) | (8 if k.get("noscope") else 0)
             add("kills", k.get("attacker_X"), k.get("attacker_Y"),
-                k.get("user_X"), k.get("user_Y"), sid_i(a), t, flags)
+                k.get("user_X"), k.get("user_Y"), sid_i(a), t, flags,
+                k.get("attacker_Z"), k.get("user_Z"))
             add("deaths", k.get("user_X"), k.get("user_Y"),
-                k.get("attacker_X"), k.get("attacker_Y"), sid_i(v), t, flags)
+                k.get("attacker_X"), k.get("attacker_Y"), sid_i(v), t, flags,
+                k.get("user_Z"), k.get("attacker_Z"))
             ri = int(np.searchsorted(fe, t, side="right")) - 1
             if ri >= 0 and open_by_round.get(rb.rounds[ri]["n"]) and \
                     open_by_round[rb.rounds[ri]["n"]]["tick"] == t:
                 okd = open_by_round[rb.rounds[ri]["n"]]
                 won = 1 if okd.get("attackerTeam") == rb.rounds[ri]["winnerTeam"] else 0
                 add("opening_duels", k.get("attacker_X"), k.get("attacker_Y"),
-                    k.get("user_X"), k.get("user_Y"), sid_i(a), t, flags | (16 if won else 0))
+                    k.get("user_X"), k.get("user_Y"), sid_i(a), t, flags | (16 if won else 0),
+                    k.get("attacker_Z"), k.get("user_Z"))
 
     hurt = ctx.ev("player_hurt")
     if len(hurt):
@@ -71,8 +77,10 @@ def build_heatmap(ctx, rb, players, fb, replay):
             if not (_ok(a) and _ok(v)):
                 continue
             dmg = float(h.get("dmg_health", 0) or 0)
-            add("damage", h.get("attacker_X"), h.get("attacker_Y"), dmg, sid_i(a), int(h["tick"]))
-            add("damage_taken", h.get("user_X"), h.get("user_Y"), dmg, sid_i(v), int(h["tick"]))
+            add("damage", h.get("attacker_X"), h.get("attacker_Y"), dmg, sid_i(a), int(h["tick"]),
+                h.get("attacker_Z"))
+            add("damage_taken", h.get("user_X"), h.get("user_Y"), dmg, sid_i(v), int(h["tick"]),
+                h.get("user_Z"))
 
     shots = ctx.ev("weapon_fire")
     if len(shots):
@@ -80,7 +88,8 @@ def build_heatmap(ctx, rb, players, fb, replay):
             a = s.get("user_steamid")
             if not _ok(a):
                 continue
-            add("shots", s.get("user_X"), s.get("user_Y"), sid_i(a), int(s["tick"]))
+            add("shots", s.get("user_X"), s.get("user_Y"), sid_i(a), int(s["tick"]),
+                s.get("user_Z"))
 
     for ev_name, layer in (("flashbang_detonate", "flash_throws"),
                            ("smokegrenade_detonate", "smokes"),
@@ -88,7 +97,8 @@ def build_heatmap(ctx, rb, players, fb, replay):
                            ("inferno_startburn", "molotovs")):
         ev = ctx.ev(ev_name)
         for _, e in ev.iterrows():
-            add(layer, e.get("x"), e.get("y"), sid_i(e.get("user_steamid")), int(e["tick"]))
+            add(layer, e.get("x"), e.get("y"), sid_i(e.get("user_steamid")), int(e["tick"]),
+                e.get("z"))
 
     blinds = ctx.ev("player_blind")
     if len(blinds):
@@ -97,12 +107,15 @@ def build_heatmap(ctx, rb, players, fb, replay):
             if dur < 0.5:
                 continue
             add("flash_hits", b.get("user_X"), b.get("user_Y"), dur,
-                sid_i(b.get("attacker_steamid")), int(b["tick"]))
+                sid_i(b.get("attacker_steamid")), int(b["tick"]),
+                b.get("user_Z"))
 
     for _, p in ctx.ev("bomb_planted").iterrows():
-        add("plants", p.get("user_X"), p.get("user_Y"), sid_i(p.get("user_steamid")), int(p["tick"]))
+        add("plants", p.get("user_X"), p.get("user_Y"), sid_i(p.get("user_steamid")), int(p["tick"]),
+            p.get("user_Z"))
     for _, p in ctx.ev("bomb_defused").iterrows():
-        add("defuses", p.get("user_X"), p.get("user_Y"), sid_i(p.get("user_steamid")), int(p["tick"]))
+        add("defuses", p.get("user_X"), p.get("user_Y"), sid_i(p.get("user_steamid")), int(p["tick"]),
+            p.get("user_Z"))
 
     # clutches: clutch player position at clutch start (from replay frames)
     for c in fb.clutch.attempts:
@@ -111,7 +124,7 @@ def build_heatmap(ctx, rb, players, fb, replay):
             continue
         pos = frame_pos(fb, replay, idx, c["t0"])
         add("clutches", pos[0], pos[1], c.get("maxEnemies", 0), idx, int(c["t0"]),
-            1 if c.get("won") else 0)
+            1 if c.get("won") else 0, pos[2])
 
     # long holds: [x, y, durSec, pIdx, roundStartTick, round]
     rounds_by_n = {r["n"]: r for r in rb.rounds}
@@ -139,4 +152,4 @@ def frame_pos(fb, replay, idx, tick):
     if fi < 0:
         fi = 0
     base = fi * fb.n * 13
-    return (data[base + idx * 13], data[base + idx * 13 + 1])
+    return (data[base + idx * 13], data[base + idx * 13 + 1], data[base + idx * 13 + 2])
