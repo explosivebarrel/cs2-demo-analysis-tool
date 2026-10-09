@@ -13,6 +13,8 @@
   "view3d": "3D",
   "map3dDetail": "Detail",
   "map3dGround": "Map overlay",
+  "map3dContrast": "Contrast overlay",
+  "map3dMapOpacity": "Map opacity",
   "map3dSamples": "{{n}} samples · {{cell}} u cell",
   "map3dHint": "drag — orbit · Shift — pan · wheel — zoom · dblclick — reset",
   "map3dNeedReanalyze": "The demo needs to be re-analyzed for the 3D view",

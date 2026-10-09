@@ -19,7 +19,9 @@ interface Props {
   map: string
   players: AnalysisData['players']
   selected: Set<number> | null  // analysis.players indices; null = all
-  alpha: number
+  alpha: number                 // point opacity (shared with 2D)
+  mapAlpha: number              // density plane + radar ground opacity (3D)
+  contrast: boolean             // tint the radar opposite to the layer color
   shift: number                 // resolution merge 0/1/2
   showGround: boolean
   level: string                 // map level filter (same semantics as 2D)
@@ -28,7 +30,7 @@ interface Props {
 }
 
 export default function Heatmap3DCanvas({
-  heatmap, hm3d, layer, overview, map, players, selected, alpha, shift, showGround, level, width, height,
+  heatmap, hm3d, layer, overview, map, players, selected, alpha, mapAlpha, contrast, shift, showGround, level, width, height,
 }: Props) {
   useLang()
   const groundZ = hm3d.minZ
@@ -84,10 +86,26 @@ export default function Heatmap3DCanvas({
   }, [hm3d])
 
   const onDraw = useCallback((ctx: CanvasRenderingContext2D, cam: Cam, w: number, h: number) => {
-    drawDensityPlane(ctx, plane, cam, w, h, LAYER_COLORS[layer] ?? '255,255,255', alpha)
+    drawDensityPlane(ctx, plane, cam, w, h, LAYER_COLORS[layer] ?? '255,255,255', mapAlpha, hm3d.shades ?? 8)
     const radius = Math.max(2, Math.min(5, w / 300))
     drawPoints3D(ctx, pts, cam, w, h, LAYER_COLORS[layer] ?? '255,255,255', alpha * 0.9, radius)
-  }, [plane, pts, layer, alpha])
+  }, [plane, pts, layer, alpha, mapAlpha, hm3d])
+
+  // hue opposite to the layer color, for the contrast radar tint
+  const groundTint = useMemo(() => {
+    if (!contrast) return undefined
+    const [r, g, b] = (LAYER_COLORS[layer] ?? '255,255,255').split(',').map(Number)
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b)
+    const d = mx - mn
+    let hue = 0
+    if (d > 0) {
+      if (mx === r) hue = ((g - b) / d) % 6
+      else if (mx === g) hue = (b - r) / d + 2
+      else hue = (r - g) / d + 4
+    }
+    hue = Math.round(((hue * 60) + 180) % 360)
+    return `hsl(${hue}, 40%, 50%)`
+  }, [contrast, layer])
 
   return (
     <div style={{ position: 'absolute', inset: 8, userSelect: 'none' }}>
@@ -95,6 +113,7 @@ export default function Heatmap3DCanvas({
         width={width} height={height} bbox={bbox}
         groundUrl={showGround ? api.radarUrl(map) : undefined}
         groundAnchor={overview} groundZ={groundZ}
+        groundAlpha={mapAlpha} groundTint={groundTint}
         onDraw={onDraw} />
       <div style={{ position: 'absolute', bottom: 4, right: 8, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)', pointerEvents: 'none', textAlign: 'right' }}>
         <div>{t('heatmaps:map3dSamples', { n: pts.length / 3, cell: Math.round(hm3d.cell * (1 << shift)) })}</div>

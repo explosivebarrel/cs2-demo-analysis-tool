@@ -16,6 +16,9 @@ for _d in (BASE_DIR, STORE_DIR, UPLOADS_DIR, ANALYSES_DIR, STATUS_DIR, RADARS_DI
 MAX_UPLOAD_BYTES = int(os.environ.get("CS2_MAX_UPLOAD_MB", "1200")) * 1024 * 1024
 # 0 = unlimited (default): local tool — parallel analyses are allowed
 MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "0"))
+# 3D density-plane shading levels (quantized alpha buckets); applied when the
+# heatmap3d artifact is SERVED, so changing it only needs a backend restart
+HM3D_SHADES = max(1, min(32, int(os.environ.get("CS2_HM3D_SHADES", "8"))))
 
 # --------------------------------------------------------------- auto-import
 # Watch folders: os.pathsep-separated list of dirs scanned for new demos

@@ -162,17 +162,19 @@ export function buildDensityPlane(
   return plane
 }
 
-const ALPHA_BUCKETS = 8
+const ALPHA_BUCKETS_MAX = 32
 
 // Density cells drawn as the BOTTOM faces of the voxel grid — every cell sits
 // at its own z, so balconies/floors of multi-level maps read as steps.
-// Alpha is quantized into buckets so each bucket is a single path + fill.
+// Density is quantized into `shades` log-spaced buckets (one path+fill each);
+// the count comes from CS2_HM3D_SHADES via the heatmap3d payload.
 export function drawDensityPlane(
   ctx: CanvasRenderingContext2D, plane: DensityPlane, cam: Cam, w: number, h: number,
-  color: string, alpha: number,
+  color: string, alpha: number, shades = 8,
 ) {
   const m = plane.counts.length
   if (!m || plane.maxCount <= 0) return
+  const buckets = Math.max(1, Math.min(ALPHA_BUCKETS_MAX, Math.round(shades)))
   const b = camBasis(cam)
   const logMax = Math.log1p(plane.maxCount)
 
@@ -192,7 +194,7 @@ export function drawDensityPlane(
     const t = Math.log1p(plane.counts[i]) / logMax
     const a = alpha * (0.15 + 0.85 * t)
     if (a < 0.008) continue
-    const bucket = Math.min(ALPHA_BUCKETS - 1, Math.floor(t * ALPHA_BUCKETS))
+    const bucket = Math.min(buckets - 1, Math.floor(t * buckets))
     let path = paths[bucket]
     if (!path) {
       path = new Path2D()
@@ -219,7 +221,7 @@ export function drawDensityPlane(
     path.closePath()
   }
   const [cr, cg, cb] = color.split(',').map(Number)
-  for (let k = 0; k < ALPHA_BUCKETS; k++) {
+  for (let k = 0; k < buckets; k++) {
     if (!paths[k]) continue
     ctx.fillStyle = `rgba(${cr}, ${cg}, ${cb}, ${alphas[k]})`
     ctx.fill(paths[k])

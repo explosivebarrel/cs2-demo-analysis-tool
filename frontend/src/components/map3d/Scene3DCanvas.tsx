@@ -18,10 +18,13 @@ interface Props {
   // world anchor of the 1024x1024 radar image (overview pos/scale)
   groundAnchor?: { pos_x: number; pos_y: number; scale: number }
   groundZ: number
+  groundAlpha?: number
+  // optional CSS color to retint the radar image (contrast to point colors)
+  groundTint?: string
   onDraw: (ctx: CanvasRenderingContext2D, cam: Cam, w: number, h: number) => void
 }
 
-export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAnchor, groundZ, onDraw }: Props) {
+export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAnchor, groundZ, groundAlpha = 1, groundTint, onDraw }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const camRef = useRef<Cam | null>(null)
   const fitZoomRef = useRef(1)
@@ -56,7 +59,15 @@ export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAn
       const m = groundMatrix(cam, b, width, height, groundAnchor, groundZ)
       ctx.save()
       ctx.setTransform(dpr * m[0], dpr * m[1], dpr * m[2], dpr * m[3], dpr * m[4], dpr * m[5])
+      ctx.globalAlpha = groundAlpha
       ctx.drawImage(groundImg, 0, 0)
+      if (groundTint) {
+        // 'color' composite keeps the image's lightness and replaces hue/sat
+        ctx.globalCompositeOperation = 'color'
+        ctx.globalAlpha = groundAlpha
+        ctx.fillStyle = groundTint
+        ctx.fillRect(0, 0, 1024, 1024)
+      }
       ctx.restore()
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     }

@@ -140,6 +140,7 @@ export interface Map3DData {
   samples: number
   players: string[]
   cells: number[][]  // [ix, iy, iz, count per player...]
+  shades?: number    // density shading levels (runtime env CS2_HM3D_SHADES)
 }
 
 export interface HeatPoint {

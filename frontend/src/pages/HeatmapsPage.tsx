@@ -84,6 +84,8 @@ export default function HeatmapsPage() {
   const [hm3dMissing, setHm3dMissing] = useState(false)
   const [resShift, setResShift] = useState(1)  // merge factor 0/1/2 -> 32/64/128 u cells
   const [ground, setGround] = useState(true)
+  const [mapAlpha, setMapAlpha] = useState(0.65)
+  const [contrast, setContrast] = useState(true)
   const view3dRef = useRef(false)
   useEffect(() => { view3dRef.current = view3d }, [view3d])
 
@@ -240,7 +242,8 @@ export default function HeatmapsPage() {
                 <Heatmap3DCanvas heatmap={heatmap} hm3d={hm3d} layer={layer} overview={overview}
                   map={analysis.meta.map} players={analysis.players}
                   selected={selectedPlayers.size > 0 ? selectedPlayers : null}
-                  alpha={pointAlpha} shift={resShift} showGround={ground} level={level}
+                  alpha={pointAlpha} mapAlpha={mapAlpha} contrast={contrast}
+                  shift={resShift} showGround={ground} level={level}
                   width={cell.w} height={cell.h} />
               ) : (
                 <div className="skeleton" style={{ position: 'absolute', inset: 0, borderRadius: 4 }} />
@@ -354,6 +357,20 @@ export default function HeatmapsPage() {
                           <input type="checkbox" checked={ground} onChange={e => setGround(e.target.checked)} />
                           {t('heatmaps:map3dGround')}
                         </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                          <input type="checkbox" checked={contrast} onChange={e => setContrast(e.target.checked)} />
+                          {t('heatmaps:map3dContrast')}
+                        </label>
+                        <div>
+                          <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>
+                            {t('heatmaps:map3dMapOpacity')}
+                            <span style={{ float: 'right', fontVariantNumeric: 'tabular-nums' }}>{Math.round(mapAlpha * 100)}%</span>
+                          </div>
+                          <input type="range" min={5} max={100} step={5}
+                            value={Math.round(mapAlpha * 100)}
+                            onChange={e => setMapAlpha(Number(e.target.value) / 100)}
+                            style={{ width: '100%', accentColor: 'var(--accent)' }} />
+                        </div>
                       </>
                     )}
 
