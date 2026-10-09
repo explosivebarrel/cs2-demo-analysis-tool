@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { DuelEpisode, DuelFrame, MapOverview, ReplayData } from '../../api'
 import { api } from '../../api'
 import { t, getLang } from '../../i18n'
 import { F_ALIVE, F_X, F_Y, fieldsOf } from '../../lib/replay'
 import drawFrame from '../replay/drawFrame'
+import drawReplay3D from '../map3d/drawReplay3D'
+import Scene3DCanvas from '../map3d/Scene3DCanvas'
+import type { Cam } from '../map3d/scene3d'
 import WeaponIcon from '../WeaponIcon'
 
 const ERROR_META: Record<string, { key: string; color: string; icon: string }> = {
@@ -83,7 +86,7 @@ function frameFloatForTick(replay: ReplayData, tick: number): number {
 }
 
 // ── episode minimap: zoomed radar, camera on the duel participants' barycenter ──
-function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size }: {
+function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size, view3d, mapName }: {
   replay: ReplayData
   ov: MapOverview
   radarImg: HTMLImageElement | null
@@ -92,17 +95,20 @@ function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size }:
   tLoTick: number
   tHiTick: number
   size: number
+  view3d: boolean
+  mapName: string
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  // camera fits both participants over the whole episode (world bbox → base px)
-  const cam = useMemo(() => {
+  // world bbox of both participants over the whole episode (2D camera + 3D fit)
+  const geo = useMemo(() => {
     const fields = fieldsOf(replay)
     const n = replay.players.length
     const iA = replay.players.findIndex(p => p.steamid === duel.attacker)
     const iV = replay.players.findIndex(p => p.steamid === duel.victim)
     if (iA < 0 && iV < 0) return null
     let minx = Infinity, maxx = -Infinity, miny = Infinity, maxy = -Infinity
+    let minz = Infinity, maxz = -Infinity
     for (let fi = 0; fi < replay.ticks.length; fi++) {
       const tk = replay.ticks[fi]
       if (tk < tLoTick || tk > tHiTick) continue
@@ -110,32 +116,63 @@ function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size }:
         if (pi < 0) continue
         const base = fi * n * fields + pi * fields
         if (!replay.data[base + F_ALIVE]) continue
-        const x = replay.data[base + F_X], y = replay.data[base + F_Y]
+        const x = replay.data[base + F_X], y = replay.data[base + F_Y], z = replay.data[base + 2]
         if (x < minx) minx = x
         if (x > maxx) maxx = x
         if (y < miny) miny = y
         if (y > maxy) maxy = y
+        if (z < minz) minz = z
+        if (z > maxz) maxz = z
       }
     }
     if (!isFinite(minx)) return null
     const pad = 140
-    minx -= pad; maxx += pad; miny -= pad; maxy += pad
+    return { minx: minx - pad, maxx: maxx + pad, miny: miny - pad, maxy: maxy + pad, minz: minz - 16, maxz: maxz + 120 }
+  }, [replay, ov, duel, tLoTick, tHiTick])
+
+  const frameFloat = useMemo(
+    () => frameFloatForTick(replay, duel.tick + tMs / 1000 * replay.tickrate),
+    [replay, duel, tMs])
+
+  // camera fits both participants over the whole episode (world bbox → base px)
+  const cam = useMemo(() => {
+    if (!geo) return null
+    const { minx, maxx, miny, maxy } = geo
     const k = 1 / ov.scale / 1024 * size
     const halfSpan = Math.max(maxx - minx, maxy - miny) * k / 2
     const Z = Math.max(0.8, Math.min(8, size / 2 / Math.max(8, halfSpan)))
     const bx = ((minx + maxx) / 2 - ov.pos_x) * k
     const by = (ov.pos_y - (miny + maxy) / 2) * k
     return { scale: Z, ox: size / 2 - bx * Z, oy: size / 2 - by * Z }
-  }, [replay, ov, duel, size, tLoTick, tHiTick])
+  }, [geo, ov, size])
+
+  const onDraw3d = useCallback((ctx: CanvasRenderingContext2D, c3: Cam, w: number, h: number) => {
+    drawReplay3D(ctx, w, h, c3, replay, frameFloat, { ov, groundZ: geo?.minz ?? 0 })
+  }, [replay, frameFloat, ov, geo])
 
   useEffect(() => {
     const cv = canvasRef.current
-    if (!cv || !cam) return
-    const tick = duel.tick + tMs / 1000 * replay.tickrate
-    drawFrame(cv, frameFloatForTick(replay, tick), replay, ov, radarImg, cam)
-  }, [tMs, cam, radarImg, ov, replay, duel])
+    if (!cv || !cam || view3d) return
+    drawFrame(cv, frameFloat, replay, ov, radarImg, cam)
+  }, [frameFloat, cam, radarImg, ov, replay, view3d])
 
-  if (!cam) return <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>—</div>
+  if (!geo || !cam) return <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>—</div>
+  if (view3d) {
+    // wider padding than the 2D camera so the ground plane stays in frame
+    const pad3 = 320
+    return (
+      <div style={{ width: size, height: size, borderRadius: 8, overflow: 'hidden', background: '#1a1c20', position: 'relative' }}>
+        <Scene3DCanvas width={size} height={size}
+          bbox={{
+            minX: geo.minx - pad3, minY: geo.miny - pad3, minZ: geo.minz - 140,
+            maxX: geo.maxx + pad3, maxY: geo.maxy + pad3, maxZ: geo.maxz + 160,
+          }}
+          groundUrl={mapName ? api.radarUrl(mapName) : undefined}
+          groundAnchor={ov} groundZ={geo.minz}
+          onDraw={onDraw3d} />
+      </div>
+    )
+  }
   return <canvas ref={canvasRef} width={size} height={size} style={{ display: 'block', borderRadius: 8, background: '#1a1c20' }} />
 }
 
@@ -291,6 +328,7 @@ export default function EpisodeDrillDown({ duel, playerNames, onClose, isTeamKil
   const [radarImg, setRadarImg] = useState<HTMLImageElement | null>(null)
   const [mapName, setMapName] = useState('')
   const [tMs, setTMs] = useState(Math.min(0, tMax))
+  const [ep3d, setEp3d] = useState(false)
 
   // replay + overview load lazily on first drilldown (both are client-cached)
   useEffect(() => {
@@ -455,9 +493,22 @@ export default function EpisodeDrillDown({ duel, playerNames, onClose, isTeamKil
           {/* top row: episode minimap + slider | event log */}
           <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
             <div style={{ flexShrink: 0 }}>
+              <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                <button onClick={() => setEp3d(false)} style={{
+                  flex: 1, background: ep3d ? 'var(--bg3)' : 'var(--accent)',
+                  color: ep3d ? 'var(--text)' : '#fff',
+                  border: 'none', borderRadius: 4, padding: '3px 0', cursor: 'pointer', fontSize: 11,
+                }}>{t('heatmaps:view2d')}</button>
+                <button onClick={() => setEp3d(true)} style={{
+                  flex: 1, background: ep3d ? 'var(--accent)' : 'var(--bg3)',
+                  color: ep3d ? '#fff' : 'var(--text)',
+                  border: 'none', borderRadius: 4, padding: '3px 0', cursor: 'pointer', fontSize: 11,
+                }}>{t('heatmaps:view3d')}</button>
+              </div>
               {replay && ov ? (
                 <EpisodeMap replay={replay} ov={ov} radarImg={radarImg}
-                  duel={duel} tMs={tMs} tLoTick={tLoTick} tHiTick={tHiTick} size={MAP_SIZE} />
+                  duel={duel} tMs={tMs} tLoTick={tLoTick} tHiTick={tHiTick} size={MAP_SIZE}
+                  view3d={ep3d} mapName={mapName} />
               ) : (
                 <div className="skeleton" style={{ width: MAP_SIZE, height: MAP_SIZE, borderRadius: 8 }} />
               )}

@@ -10,6 +10,7 @@ function hotkeys(): { key: string; desc: string }[] {
     { key: 'H', desc: t('replay:hotUi') },
     { key: 'F', desc: t('replay:hotFullscreen') },
     { key: '0', desc: t('replay:hotReset') },
+    { key: '3', desc: t('replay:view3dHotkey') },
     { key: 'Scroll', desc: t('replay:hotZoom') },
     { key: 'Drag', desc: t('replay:hotPan') },
   ]

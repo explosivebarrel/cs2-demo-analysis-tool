@@ -1,9 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api, AnalysisData, MapOverview, ReplayData, RoundData } from '../../api'
 import { lowerLevelNames } from '../../lib/coords'
-import { findRoundForTick, Transform } from '../../lib/replay'
+import { F_ALIVE, fieldsOf, findRoundForTick, Transform } from '../../lib/replay'
 import { t } from '../../i18n'
 import drawFrame, { NadeTrailMode, preloadWeaponIcons } from './drawFrame'
+import Scene3DCanvas from '../map3d/Scene3DCanvas'
+import drawReplay3D from '../map3d/drawReplay3D'
+import type { BBox, Cam } from '../map3d/scene3d'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 10
@@ -12,10 +15,11 @@ const MAX_SCALE = 10
  * Central map player: radar canvas with free zoom (0.1x..10x), pan, pinch, overlays.
  * The canvas fills its container at any aspect ratio; the map itself is drawn in a
  * centered square (base = min(w, h)) so scale=1 always means "the whole map fits".
+ * view3d swaps the flat canvas for the shared orbit scene (drawReplay3D).
  */
 export default function MapCanvas({
   replay, analysis, overview, frameIdx, tx, setTx,
-  nadeTrailMode, nadeFilter, level, setLevel,
+  nadeTrailMode, nadeFilter, level, setLevel, view3d,
 }: {
   replay: ReplayData
   analysis: AnalysisData | null
@@ -27,6 +31,7 @@ export default function MapCanvas({
   nadeFilter: Set<number> | null
   level: string
   setLevel: (l: string) => void
+  view3d: boolean
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const radarRef = useRef<HTMLImageElement>(null)
@@ -52,6 +57,36 @@ export default function MapCanvas({
   const cw = Math.max(1, Math.floor(size.w))
   const ch = Math.max(1, Math.floor(size.h))
   const base = Math.min(cw, ch)
+
+  // 3D scene: ground level = lowest alive player z across the match (sampled);
+  // camera fits the whole radar square
+  const groundZ = useMemo(() => {
+    const n = replay.players.length
+    const FIELDS = fieldsOf(replay)
+    let minZ = Infinity
+    for (let f = 0; f < replay.ticks.length; f += 16) {
+      const fb = f * n * FIELDS
+      if (fb + n * FIELDS > replay.data.length) break
+      for (let i = 0; i < n; i++) {
+        if (!replay.data[fb + i * FIELDS + F_ALIVE]) continue
+        const z = replay.data[fb + i * FIELDS + 2]
+        if (z < minZ) minZ = z
+      }
+    }
+    return Number.isFinite(minZ) ? minZ : 0
+  }, [replay])
+
+  const bbox3d = useMemo<BBox>(() => {
+    const ext = 1024 * overview.scale
+    return {
+      minX: overview.pos_x, minY: overview.pos_y - ext, minZ: groundZ - 16,
+      maxX: overview.pos_x + ext, maxY: overview.pos_y, maxZ: groundZ + 320,
+    }
+  }, [overview, groundZ])
+
+  const onDraw3d = useCallback((ctx: CanvasRenderingContext2D, cam: Cam, w: number, h: number) => {
+    drawReplay3D(ctx, w, h, cam, replay, frameIdx, { ov: overview, level, nadeFilter, groundZ })
+  }, [replay, overview, frameIdx, level, nadeFilter, groundZ])
 
   const lowerLevels = lowerLevelNames(overview)
   const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
@@ -178,13 +213,19 @@ export default function MapCanvas({
     <div ref={rootRef} className="card" style={{ padding: 0, position: 'relative', overflow: 'hidden', width: '100%', height: '100%', minWidth: 0, minHeight: 0 }}>
       <img ref={radarRef} src={api.radarUrl(analysis?.meta.map ?? '', level)} alt="" style={{ display: 'none' }}
         onLoad={() => { if (canvasRef.current) drawFrame(canvasRef.current, frameIdx, replay, overview, radarRef.current, txRef.current, nadeTrailMode, level, nadeFilter) }} />
-      <canvas
-        ref={canvasRef} width={cw} height={ch}
-        style={{ display: 'block', cursor, width: '100%', height: '100%' }}
-        onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
-        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-        onDoubleClick={() => setTx(clamp({ scale: 1, ox: 0, oy: 0 }))}
-      />
+      {view3d ? (
+        <Scene3DCanvas width={cw} height={ch} bbox={bbox3d}
+          groundUrl={api.radarUrl(analysis?.meta.map ?? '', level)}
+          groundAnchor={overview} groundZ={groundZ} onDraw={onDraw3d} />
+      ) : (
+        <canvas
+          ref={canvasRef} width={cw} height={ch}
+          style={{ display: 'block', cursor, width: '100%', height: '100%' }}
+          onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+          onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+          onDoubleClick={() => setTx(clamp({ scale: 1, ox: 0, oy: 0 }))}
+        />
+      )}
       {(currentRound || inKnife) && (
         <div style={{ position: 'absolute', top: 12, left: 12, background: 'rgba(0,0,0,.7)', padding: '3px 10px', borderRadius: 4, fontSize: 12 }}>
           {inKnife ? t('replay:rounds.knife') : <>{t('replay:roundShort')}{currentRound!.n} · {currentRound!.scoreTeam0}:{currentRound!.scoreTeam1}
@@ -212,10 +253,16 @@ export default function MapCanvas({
           ))}
         </div>
       )}
-      {(tx.scale > 1.01 || tx.scale < 0.99) && (
+      {view3d ? (
         <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)' }}>
-          {tx.scale.toFixed(1)}x · [0] {t('zoomReset')}
+          {t('heatmaps:map3dHint')}
         </div>
+      ) : (
+        (tx.scale > 1.01 || tx.scale < 0.99) && (
+          <div style={{ position: 'absolute', bottom: 12, right: 12, background: 'rgba(0,0,0,.6)', padding: '2px 8px', borderRadius: 4, fontSize: 11, color: 'var(--text2)' }}>
+            {tx.scale.toFixed(1)}x · [0] {t('zoomReset')}
+          </div>
+        )
       )}
     </div>
   )

@@ -41,6 +41,7 @@ export default function ReplayScreen() {
   const [nadeTrailMode, setNadeTrailMode] = useState<NadeTrailMode>('trail')
   const [nadeOff, setNadeOff] = useState<Set<number>>(new Set())
   const [level, setLevel] = useState('default')
+  const [view3d, setView3d] = useState(() => localStorage.getItem('replay3d') === '1')
   const [leftTab, setLeftTab] = useState<DrawerTab>('events')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -191,6 +192,7 @@ export default function ReplayScreen() {
       else if (e.key === ',') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.max(0, i - 1)] })
       else if (e.key === '.') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.min(SPEEDS.length - 1, i + 1)] })
       else if (e.key === '0') setTx({ scale: 1, ox: 0, oy: 0 })
+      else if (e.key === '3') setView3d(v => { localStorage.setItem('replay3d', v ? '0' : '1'); return !v })
       else if (e.key === 'ArrowLeft') { e.preventDefault(); seekSec(-5) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); seekSec(5) }
       else if (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р') setChromeHidden(v => !v)
@@ -272,7 +274,8 @@ export default function ReplayScreen() {
     }}>
       {hasChrome && (
         <TopBar backTo={backTo} onHotkeys={() => setHotkeysOpen(true)}
-          onHideUi={() => setChromeHidden(true)} onFullscreen={toggleFullscreen}>
+          onHideUi={() => setChromeHidden(true)} onFullscreen={toggleFullscreen}
+          view3d={view3d} onToggle3d={() => setView3d(v => { localStorage.setItem('replay3d', v ? '0' : '1'); return !v })}>
           {rounds.length > 0 && (
             <RoundSwitcher
               rounds={rounds}
@@ -305,7 +308,7 @@ export default function ReplayScreen() {
             replay={replay} analysis={analysis} overview={overview}
             frameIdx={frameIdx} tx={tx} setTx={setTx}
             nadeTrailMode={nadeTrailMode} nadeFilter={nadeOff}
-            level={level} setLevel={setLevel}
+            level={level} setLevel={setLevel} view3d={view3d}
           />
         </div>
 

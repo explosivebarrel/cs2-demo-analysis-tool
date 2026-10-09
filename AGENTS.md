@@ -62,8 +62,9 @@ Leaflet) не установлен и не используется. Не имп
 | `pages/OverviewPage.tsx` | счёт, скорборд, раунды |
 | `pages/PlayerPage.tsx` | 6 вкладок игрока (компоненты в `components/player/`) |
 | `pages/MetricsPage.tsx` | 21 подстраница aim/duel-метрик (switch по `:key`) |
-| `pages/HeatmapsPage.tsx` | canvas-хитмапы, `decodePoint()` послойно |
-| `pages/ReplayScreen.tsx` | полноэкранный реплей-плеер: layout TopBar/драверы/MapCanvas/BottomBar, playback, хоткеи, fullscreen; компоненты в `components/replay/` (drawFrame, MapCanvas, RoundSwitcher, WinProbGraph, EventLog, LeftDrawer, RightDrawer, NadeDropdown, HotkeysModal), константы кадров и helpers — `lib/replay.ts` |
+| `pages/HeatmapsPage.tsx` | canvas-хитмапы (2D) + переключатель 2D\|3D; декодер точек и цвета слоёв — `lib/heatmapLayers.ts` |
+| `components/map3d/` | 3D-режим (свой canvas-рендер без зависимостей): `scene3d.ts` — ортографическая orbit-камера, проекция, аффинный groundMatrix радара, плоскость плотности + облако точек; `Scene3DCanvas.tsx` — общий орбитальный канвас (хитмапы/реплей/эпизоды); `Heatmap3DCanvas.tsx` — 3D-хитмапа (точки слоя + плоскость из `heatmap3d.json.gz`); `drawReplay3D.ts` — 3D-сцена реплея (боксы игроков, дуги гранат, трассеры, бомба), зеркалит выбор элементов drawFrame |
+| `pages/ReplayScreen.tsx` | полноэкранный реплей-плеер: layout TopBar/драверы/MapCanvas/BottomBar, playback, хоткеи (3 — 3D), fullscreen; компоненты в `components/replay/` (drawFrame, MapCanvas — 2D/3D, RoundSwitcher, WinProbGraph, EventLog, LeftDrawer, RightDrawer, NadeDropdown, HotkeysModal), константы кадров и helpers — `lib/replay.ts` |
 | `benchmarkUtils.ts` | тиры метрик из `/api/benchmarks` |
 
 Маршруты: `/`, `/match/:id`, `/match/:id/player/:steamid[/metrics/:key]`,
@@ -171,6 +172,13 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
     `max(3, min(preSec, 12))` с (SEEK_BACK_SEC) + автозапуск playback; `momentsAround`
     должна получать тот же lookahead (SEEK_BACK_SEC), иначе свежепрыгнутый момент
     считается «next» и кнопка »/« застревает на нём же. Клик по раунду/скраб — пауза.
+18. **3D-режим** (`components/map3d/`): геометрия сцены (плоскость плотности, массивы
+    точек) пересобирается ТОЛЬКО при смене режима/плотности/фильтров; движение камеры —
+    только перепроецирование (никаких пересборок/пересчётов агрегатов в onDraw).
+    Радар-подложка в 3D — аффинный `groundMatrix` (ортопроекция плоскости линейна),
+    якорь — overview pos_x/pos_y/scale, изображение 1024×1024. drawReplay3D зеркалит
+    выбор элементов drawFrame (те же окна/фейды) — менять синхронно. UI при
+    переключении 2D↔3D не меняется (слои/уровень/игроки общие).
 
 ## Стиль работы
 
