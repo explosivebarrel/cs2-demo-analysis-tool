@@ -12,7 +12,7 @@ flash_throws/smokes/hes/molotovs: [x, y, pIdx, tick, z]
 flash_hits:                 [x, y, blindSec, throwerIdx, tick, z]
 plants/defuses:             [x, y, pIdx, tick, z]
 clutches:                   [x, y, enemies, pIdx, tick, won, z]
-holds:                      [x, y, durSec, pIdx, roundStartTick, round]  (no z)
+holds:                      [x, y, durSec, pIdx, roundStartTick, round, z]
 positions:                  [x, y, z, round, pIdx]
 
 z is appended at the END of each tuple so pre-z artifacts stay readable
@@ -126,13 +126,13 @@ def build_heatmap(ctx, rb, players, fb, replay):
         add("clutches", pos[0], pos[1], c.get("maxEnemies", 0), idx, int(c["t0"]),
             1 if c.get("won") else 0, pos[2])
 
-    # long holds: [x, y, durSec, pIdx, roundStartTick, round]
+    # long holds: [x, y, durSec, pIdx, roundStartTick, round, z]
     rounds_by_n = {r["n"]: r for r in rb.rounds}
     for sid, p in players.items():
-        for (x, y, dur, rnd) in p.holds:
+        for (x, y, dur, rnd, z) in p.holds:
             rr = rounds_by_n.get(rnd)
             if rr:
-                add("holds", x, y, dur, pidx.get(sid, -1), rr["freezeEndTick"], rnd)
+                add("holds", x, y, dur, pidx.get(sid, -1), rr["freezeEndTick"], rnd, z)
 
     # movement density (already downsampled by FrameBuilder)
     for sid, p in players.items():

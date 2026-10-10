@@ -31,8 +31,9 @@ export function decodePoint(layer: string, arr: number[]): DecodedPoint {
       return { x: arr[0], y: arr[1], v: arr[2], pIdx: arr[3], tick: arr[4],
                z: arr.length > 5 ? arr[5] : undefined }
     case 'holds':
-      // [x, y, durSec, pIdx, roundStartTick, round]
-      return { x: arr[0], y: arr[1], dur: arr[2], pIdx: arr[3], tick: arr[4] }
+      // [x, y, durSec, pIdx, roundStartTick, round, z?]
+      return { x: arr[0], y: arr[1], dur: arr[2], pIdx: arr[3], tick: arr[4],
+               z: arr.length > 6 ? arr[6] : undefined }
     case 'clutches':
       // [x, y, enemies, pIdx, tick, won, z?]
       return { x: arr[0], y: arr[1], v: arr[2], pIdx: arr[3], tick: arr[4],

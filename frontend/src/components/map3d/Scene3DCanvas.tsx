@@ -102,13 +102,15 @@ export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAn
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     d.x = e.clientX; d.y = e.clientY
     if (d.pan) {
-      const b = camBasis(cam)
+      // ground-plane pan: horizontal drag along camera-right, vertical drag
+      // along the ground projection of the view direction — pivot height (cz)
+      // never changes
       const k = 1 / cam.zoom
-      cam.cx += (-dx * b.right[0] + dy * b.up[0]) * k
-      cam.cy += (-dx * b.right[1] + dy * b.up[1]) * k
-      cam.cz += (-dx * b.right[2] + dy * b.up[2]) * k
+      const cyw = Math.cos(cam.yaw), syw = Math.sin(cam.yaw)
+      cam.cx += (dx * syw - dy * cyw) * k
+      cam.cy += (-dx * cyw - dy * syw) * k
     } else {
-      cam.yaw += dx * 0.005
+      cam.yaw -= dx * 0.005
       cam.pitch = clampPitch(cam.pitch + dy * 0.005)
     }
     schedule()

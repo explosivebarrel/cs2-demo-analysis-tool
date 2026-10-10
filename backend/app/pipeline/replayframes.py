@@ -297,14 +297,14 @@ class FrameBuilder:
     def _hold_feed(self, idx, pos):
         hs = self.hold_state[idx]
         if hs is None:
-            self.hold_state[idx] = {"x": pos[0], "y": pos[1],
+            self.hold_state[idx] = {"x": pos[0], "y": pos[1], "z": pos[2],
                                     "t0": self.cur_tick, "t": self.cur_tick}
             return
         hs["t"] = self.cur_tick
         d = ((pos[0] - hs["x"]) ** 2 + (pos[1] - hs["y"]) ** 2) ** 0.5
         if d > config.HOLD_RADIUS_UNITS:
             self._close_hold_idx(idx)
-            self.hold_state[idx] = {"x": pos[0], "y": pos[1],
+            self.hold_state[idx] = {"x": pos[0], "y": pos[1], "z": pos[2],
                                     "t0": self.cur_tick, "t": self.cur_tick}
 
     def _close_hold_idx(self, idx):
@@ -314,7 +314,8 @@ class FrameBuilder:
         dur = (hs["t"] - hs["t0"]) / self.ctx.tickrate
         if dur >= config.HOLD_MIN_SECONDS and self.cur_round is not None:
             self.stats[self.players[idx]]["holds"].append(
-                (round(hs["x"], 1), round(hs["y"], 1), round(dur, 1), self.cur_round["n"]))
+                (round(hs["x"], 1), round(hs["y"], 1), round(dur, 1),
+                 self.cur_round["n"], round(hs["z"], 1)))
         self.hold_state[idx] = None
 
     def _close_all_holds(self):
