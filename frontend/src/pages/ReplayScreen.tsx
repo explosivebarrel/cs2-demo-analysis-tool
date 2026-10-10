@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { api, AnalysisData, MapOverview, Moment, ReplayData, RoundData } from '../api'
+import { api, AnalysisData, Map3DData, MapOverview, Moment, ReplayData, RoundData } from '../api'
 import { useLang } from '../App'
 import { frameForTickMinus, momentsAround } from '../components/replay/MomentsPanel'
 import LeftDrawer, { DrawerTab } from '../components/replay/LeftDrawer'
@@ -42,6 +42,8 @@ export default function ReplayScreen() {
   const [nadeOff, setNadeOff] = useState<Set<number>>(new Set())
   const [level, setLevel] = useState('default')
   const [view3d, setView3d] = useState(() => localStorage.getItem('replay3d') === '1')
+  const [hm3d, setHm3d] = useState<Map3DData | null>(null)
+  const hm3dAsked = useRef(false)
   const [leftTab, setLeftTab] = useState<DrawerTab>('events')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -70,6 +72,13 @@ export default function ReplayScreen() {
       .then(setOverview)
       .catch(e => setErr(e.message))
   }, [id])
+
+  // 3D voxel map surface loads lazily, only when the 3D view is actually used
+  useEffect(() => {
+    if (!view3d || !id || hm3dAsked.current) return
+    hm3dAsked.current = true
+    api.heatmap3d(id).then(setHm3d).catch(() => {})
+  }, [view3d, id])
 
   // jump to round from ?round=N URL param once replay is loaded
   useEffect(() => {
@@ -308,7 +317,7 @@ export default function ReplayScreen() {
             replay={replay} analysis={analysis} overview={overview}
             frameIdx={frameIdx} tx={tx} setTx={setTx}
             nadeTrailMode={nadeTrailMode} nadeFilter={nadeOff}
-            level={level} setLevel={setLevel} view3d={view3d}
+            level={level} setLevel={setLevel} view3d={view3d} hm3d={hm3d}
           />
         </div>
 

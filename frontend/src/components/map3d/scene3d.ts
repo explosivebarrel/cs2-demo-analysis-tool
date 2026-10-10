@@ -252,39 +252,62 @@ export function drawPoints3D(
   }
 }
 
-// Painter for a single axis-aligned box (replay players). Faces: top + the
-// side faces facing the camera; k shades them for a fake lighting.
-export function drawBox3D(
+// Painter for a vertical capsule (Unity-primitive style: cylinder + two
+// hemispheres). Body strips and hemisphere rings are back-face culled (the
+// shape is convex, so culled quads never need per-quad sorting) and shaded by
+// their normal vs the view direction.
+export function drawCapsule3D(
   ctx: CanvasRenderingContext2D,
-  x0: number, y0: number, z0: number, x1: number, y1: number, z1: number,
+  x: number, y: number, z: number,      // feet center, world
+  radius: number, height: number,
   cam: Cam, w: number, h: number, color: string, alpha: number,
-  strokeColor?: string,
 ) {
   const b = camBasis(cam)
-  const P = (p: [number, number, number]): [number, number] => project(p, cam, b, w, h)
-  const faces: { pts: [number, number, number][]; k: number }[] = []
-  if (b.fwd[0] < 0) faces.push({ pts: [[x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]], k: 0.8 })
-  if (b.fwd[0] > 0) faces.push({ pts: [[x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]], k: 0.8 })
-  if (b.fwd[1] < 0) faces.push({ pts: [[x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]], k: 0.62 })
-  if (b.fwd[1] > 0) faces.push({ pts: [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]], k: 0.62 })
-  faces.push({ pts: [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]], k: 1 })
-  // draw sides far-first so overlapping side faces stack correctly
-  faces.sort((a, c) => depth(c.pts[0], cam, b) - depth(a.pts[0], cam, b))
-  const [cr, cg, cb2] = color.split(',').map(Number)
-  for (const f of faces) {
+  const P = (px: number, py: number, pz: number): [number, number] => project([px, py, pz], cam, b, w, h)
+  const zCyl0 = z + radius, zCyl1 = z + height - radius
+  const SEGS = 10, RINGS = 3
+  const [cr, cg, cb] = color.split(',').map(Number)
+
+  const quad = (p: [number, number, number][], nx: number, ny: number, nz: number) => {
+    const face = -(nx * b.fwd[0] + ny * b.fwd[1] + nz * b.fwd[2])
+    if (face <= 0.04) return
+    const k = 0.45 + 0.55 * face
     ctx.beginPath()
-    f.pts.forEach((p, i) => {
-      const [sx, sy] = P(p)
+    p.forEach((q, i) => {
+      const [sx, sy] = P(q[0], q[1], q[2])
       if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
     })
     ctx.closePath()
-    ctx.fillStyle = `rgba(${cr * f.k}, ${cg * f.k}, ${cb2 * f.k}, ${alpha})`
+    ctx.fillStyle = `rgba(${cr * k}, ${cg * k}, ${cb * k}, ${alpha})`
     ctx.fill()
-    if (strokeColor) {
-      const [sr, sg, sb] = strokeColor.split(',').map(Number)
-      ctx.strokeStyle = `rgba(${sr}, ${sg}, ${sb}, ${Math.min(1, alpha + 0.2)})`
-      ctx.lineWidth = 1.5
-      ctx.stroke()
+  }
+
+  for (let s = 0; s < SEGS; s++) {
+    const a0 = (s / SEGS) * Math.PI * 2, a1 = ((s + 1) / SEGS) * Math.PI * 2
+    quad([
+      [x + Math.cos(a0) * radius, y + Math.sin(a0) * radius, zCyl0],
+      [x + Math.cos(a1) * radius, y + Math.sin(a1) * radius, zCyl0],
+      [x + Math.cos(a1) * radius, y + Math.sin(a1) * radius, zCyl1],
+      [x + Math.cos(a0) * radius, y + Math.sin(a0) * radius, zCyl1],
+    ], Math.cos((a0 + a1) / 2), Math.sin((a0 + a1) / 2), 0)
+  }
+  // hemisphere rings: ring r spans latitudes [r/M, (r+1)/M] * 90°
+  for (let sign of [1, -1]) {
+    const zc = sign > 0 ? zCyl1 : zCyl0
+    for (let ring = 0; ring < RINGS; ring++) {
+      const p0 = (ring / RINGS) * Math.PI / 2, p1 = ((ring + 1) / RINGS) * Math.PI / 2
+      const c0 = Math.cos(p0), c1 = Math.cos(p1)
+      const s0 = sign * Math.sin(p0), s1 = sign * Math.sin(p1)
+      for (let s = 0; s < SEGS; s++) {
+        const a0 = (s / SEGS) * Math.PI * 2, a1 = ((s + 1) / SEGS) * Math.PI * 2
+        const am = (a0 + a1) / 2, cap = Math.cos((p0 + p1) / 2)
+        quad([
+          [x + Math.cos(a0) * radius * c0, y + Math.sin(a0) * radius * c0, zc + radius * s0],
+          [x + Math.cos(a1) * radius * c0, y + Math.sin(a1) * radius * c0, zc + radius * s0],
+          [x + Math.cos(a1) * radius * c1, y + Math.sin(a1) * radius * c1, zc + radius * s1],
+          [x + Math.cos(a0) * radius * c1, y + Math.sin(a0) * radius * c1, zc + radius * s1],
+        ], Math.cos(am) * cap, Math.sin(am) * cap, sign * Math.sin((p0 + p1) / 2))
+      }
     }
   }
 }

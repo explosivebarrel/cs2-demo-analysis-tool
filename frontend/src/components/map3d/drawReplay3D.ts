@@ -1,20 +1,27 @@
-// 3D replay scene: players as team-colored boxes, grenade trails as 3D arcs,
-// shot rays, smoke/fire zones and the planted bomb on the ground plane.
+// 3D replay scene: voxel-map density plane, players as team-colored capsules
+// with a view-sector band, grenade trails as 3D arcs, shot rays, smoke/fire
+// zones and the planted bomb on the ground plane.
 // Element selection mirrors drawFrame.ts (2D) — same time windows and fade
 // rules — so both views stay consistent. Camera/projection come from scene3d.
 import { MapOverview, ReplayData } from '../../api'
 import { zOnLevel } from '../../lib/coords'
-import { F_ALIVE, F_TEAM, F_YAW, fieldsOf, TEAM_COLORS } from '../../lib/replay'
-import { TRAIL_COLORS } from '../replay/drawFrame'
-import { Cam, camBasis, depth, drawBox3D, drawGroundDisc, drawPolyline3D, project } from './scene3d'
+import { F_ALIVE, F_TEAM, F_WID, F_YAW, fieldsOf, playerSpeedAt, TEAM_COLORS } from '../../lib/replay'
+import { TRAIL_COLORS, weaponIcon } from '../replay/drawFrame'
+import { Cam, camBasis, depth, drawCapsule3D, drawDensityPlane, drawGroundDisc, drawPolyline3D, project } from './scene3d'
+import type { DensityPlane } from './scene3d'
 
 const ZONE_COLORS: Record<string, string> = {
   sm: '100,200,150', fr: '255,100,30', fd: '255,240,80', hd: '255,160,80',
 }
 // world-unit radii (2D uses screen px on the map square; 3D works in world)
 const ZONE_RADIUS: Record<string, number> = { sm: 170, fr: 130, fd: 60, hd: 75 }
-const BOX_HALF = 16
-const BOX_TALL = 72
+const CAPSULE_R = 16
+const CAPSULE_H = 72
+// view sector: arc band at capsule mid-height, radii in capsule-radius units
+const SECTOR_HALF = Math.PI / 6
+const SECTOR_R_IN = 1.1 * CAPSULE_R
+const SECTOR_R_OUT = 1.3 * CAPSULE_R
+const SECTOR_SEGS = 6
 const EYE = 48
 const RAY_LEN = 300
 
@@ -29,6 +36,8 @@ export interface Replay3DOpts {
   level?: string
   nadeFilter?: Set<number> | null
   groundZ: number
+  plane?: DensityPlane | null
+  shades?: number
 }
 
 export default function drawReplay3D(
@@ -45,6 +54,10 @@ export default function drawReplay3D(
   const b = camBasis(cam)
   const P = (x: number, y: number, z: number): [number, number] => project([x, y, z], cam, b, w, h)
   const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
+
+  // voxel map surface (positions density), drawn under everything else
+  if (opts.plane && opts.plane.counts.length)
+    drawDensityPlane(ctx, opts.plane, cam, w, h, '150,150,255', 0.32, opts.shades ?? 8)
 
   // current round boundaries (round markers carry freezeEndTick + endTick)
   let roundStartT = 0
@@ -220,7 +233,8 @@ export default function drawReplay3D(
     drawGroundDisc(ctx, planted.x, planted.y, 26, gz, cam, w, h, '255,80,80', pulse)
   }
 
-  // players: team-colored boxes with a yaw notch, numbered labels + hp bars
+  // players: team-colored capsules with a view sector, weapon icon + number
+  // above, speed with movement direction to the right, hp bar below
   const teamCount: Record<number, number> = {}
   const playerNum: number[] = new Array(n)
   for (let i = 0; i < n; i++) {
@@ -229,55 +243,166 @@ export default function drawReplay3D(
     playerNum[i] = teamCount[team]
   }
 
-  const boxes: { i: number; x: number; y: number; z: number; d: number }[] = []
+  // view sector: arc band drawn as small world-space polygons; pieces beyond
+  // the capsule axis depth render before it, the rest after
+  function capArc(x: number, y: number, zMid: number, a: number, outward: number): [number, number, number][] {
+    const capR = (SECTOR_R_OUT - SECTOR_R_IN) / 2
+    const rm = (SECTOR_R_OUT + SECTOR_R_IN) / 2
+    const pts: [number, number, number][] = []
+    for (let s = 0; s <= 4; s++) {
+      const phi = (s / 4) * Math.PI
+      const rr = rm + Math.cos(phi) * capR
+      const at = a + outward * Math.sin(phi) * (capR / rm)
+      pts.push([x + Math.cos(at) * rr, y + Math.sin(at) * rr, zMid])
+    }
+    return pts
+  }
+  function sectorPiece(x: number, y: number, zMid: number, a0: number, a1: number, cap0: boolean, cap1: boolean): [number, number, number][] {
+    const pts: [number, number, number][] = []
+    const push = (a: number, r: number) => pts.push([x + Math.cos(a) * r, y + Math.sin(a) * r, zMid])
+    for (let s = 0; s <= SECTOR_SEGS; s++) push(a0 + (a1 - a0) * (s / SECTOR_SEGS), SECTOR_R_OUT)
+    if (cap1) pts.push(...capArc(x, y, zMid, a1, 1))
+    else push(a1, SECTOR_R_IN)
+    for (let s = SECTOR_SEGS; s >= 0; s--) push(a0 + (a1 - a0) * (s / SECTOR_SEGS), SECTOR_R_IN)
+    // the inner arc ends at inner(a0): the start cap must run inner -> outer,
+    // otherwise the outline self-intersects and nonzero fill paints nothing
+    if (cap0) pts.push(...capArc(x, y, zMid, a0, -1).reverse())
+    return pts
+  }
+  const fillPoly = (pts: [number, number, number][], rgb: string, alpha: number) => {
+    ctx.beginPath()
+    pts.forEach((p, i) => {
+      const [sx, sy] = P(p[0], p[1], p[2])
+      if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
+    })
+    ctx.closePath()
+    ctx.fillStyle = `rgba(${rgb},${alpha})`
+    ctx.fill()
+  }
+
+  const capsules: { i: number; x: number; y: number; z: number; yaw: number; d: number }[] = []
   for (let i = 0; i < n; i++) {
     const base = frameBase + i * FIELDS
     if (!aliveAt(base)) continue
     const [x, y, z] = playerPos(i)
-    boxes.push({ i, x, y, z, d: depth([x, y, z], cam, b) })
-  }
-  boxes.sort((p, q) => q.d - p.d)  // far first
-
-  ctx.textAlign = 'center'
-  for (const bx of boxes) {
-    const base = frameBase + bx.i * FIELDS
-    const bn = nextBaseAll < 0 ? -1 : nextBaseAll + bx.i * FIELDS
-    const teamByte = replay.data[base + F_TEAM] ?? 0
-    const rgb = hexRgb(TEAM_COLORS[teamByte] ?? '#ffffff')
+    const bn = nextBaseAll < 0 ? -1 : nextBaseAll + i * FIELDS
     const yaw0 = replay.data[base + F_YAW] ?? 0
     const yaw1 = bn >= 0 ? (replay.data[bn + F_YAW] ?? yaw0) : yaw0
-    const yaw = yaw0 + (((yaw1 - yaw0 + 540) % 360) - 180) * frac
-    const onLevel = zOnLevel(bx.z, ov, level)
-    const alpha = (onLevel ? 0.9 : 0.25)
+    const yaw = ((yaw0 + (((yaw1 - yaw0 + 540) % 360) - 180) * frac) * Math.PI) / 180
+    capsules.push({ i, x, y, z, yaw, d: depth([x, y, z], cam, b) })
+  }
+  capsules.sort((p, q) => q.d - p.d)  // far first
+
+  ctx.textAlign = 'center'
+  for (const c of capsules) {
+    const base = frameBase + c.i * FIELDS
+    const teamByte = replay.data[base + F_TEAM] ?? 0
+    const rgb = hexRgb(TEAM_COLORS[teamByte] ?? '#ffffff')
+    const onLevel = zOnLevel(c.z, ov, level)
+    const alpha = onLevel ? 0.92 : 0.25
     const hasBomb = ((replay.data[base + 8] ?? 0) & 1) === 1
-    drawBox3D(ctx,
-      bx.x - BOX_HALF, bx.y - BOX_HALF, bx.z, bx.x + BOX_HALF, bx.y + BOX_HALF, bx.z + BOX_TALL,
-      cam, w, h, rgb, alpha, hasBomb ? '255,255,255' : undefined)
+    const zMid = c.z + CAPSULE_H / 2
 
-    // yaw notch on the top face (forward = (cos yaw, sin yaw) in world)
-    const rad = (yaw * Math.PI) / 180
-    const fx = Math.cos(rad), fy = Math.sin(rad)
-    const px = -fy, py = fx
-    const tipX = bx.x + fx * (BOX_HALF + 4), tipY = bx.y + fy * (BOX_HALF + 4)
-    const notch: [number, number, number][] = [
-      [tipX, tipY, bx.z + BOX_TALL + 1],
-      [bx.x - px * 7, bx.y - py * 7, bx.z + BOX_TALL + 1],
-      [bx.x + px * 7, bx.y + py * 7, bx.z + BOX_TALL + 1],
-    ]
-    drawPolyline3D(ctx, [notch[0], notch[1], notch[2], notch[0]], cam, w, h, '255,255,255', alpha, 1.5)
+    if (hasBomb) {
+      // bomb carrier: white ring on the ground under the capsule
+      const ring: [number, number, number][] = []
+      for (let s = 0; s <= 16; s++) {
+        const a = (s / 16) * Math.PI * 2
+        ring.push([c.x + Math.cos(a) * (CAPSULE_R + 5), c.y + Math.sin(a) * (CAPSULE_R + 5), c.z + 0.5])
+      }
+      ctx.beginPath()
+      ring.forEach((p, i) => {
+        const [sx, sy] = P(p[0], p[1], p[2])
+        if (i === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy)
+      })
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`
+      ctx.lineWidth = 1.5
+      ctx.stroke()
+    }
 
-    // label: team number + hp bar, screen-space above the box
-    const [lx, ly] = P(bx.x, bx.y, bx.z + BOX_TALL + 30)
-    if (lx > -40 && lx < w + 40 && ly > -40 && ly < h + 40) {
+    // view sector behind the capsule body — white: same-hue fill would melt
+    // into the capsule
+    const dPlayer = depth([c.x, c.y, zMid], cam, b)
+    const back: { pts: [number, number, number][]; d: number }[] = []
+    const front: { pts: [number, number, number][]; d: number }[] = []
+    for (let s = 0; s < SECTOR_SEGS; s++) {
+      const a0 = c.yaw - SECTOR_HALF + (2 * SECTOR_HALF) * (s / SECTOR_SEGS)
+      const a1 = c.yaw - SECTOR_HALF + (2 * SECTOR_HALF) * ((s + 1) / SECTOR_SEGS)
+      const pts = sectorPiece(c.x, c.y, zMid, a0, a1, s === 0, s === SECTOR_SEGS - 1)
+      const am = (a0 + a1) / 2, rm = (SECTOR_R_IN + SECTOR_R_OUT) / 2
+      const d = depth([c.x + Math.cos(am) * rm, c.y + Math.sin(am) * rm, zMid], cam, b)
+      ;(d > dPlayer ? back : front).push({ pts, d })
+    }
+    for (const p of back) fillPoly(p.pts, '255,255,255', alpha * 0.7)
+
+    drawCapsule3D(ctx, c.x, c.y, c.z, CAPSULE_R, CAPSULE_H, cam, w, h, rgb, alpha)
+
+    // sector pieces in front of the body
+    front.sort((p, q) => q.d - p.d)
+    for (const p of front) fillPoly(p.pts, '255,255,255', alpha * 0.7)
+
+    // labels: weapon icon + team number above the capsule, hp bar below,
+    // speed + movement arrow to the right (mirrors drawFrame)
+    const [lx, ly] = P(c.x, c.y, c.z + CAPSULE_H)
+    const [fx, fy] = P(c.x, c.y, c.z)
+    const [mx, my] = P(c.x, c.y, zMid)
+    if (lx > -60 && lx < w + 60 && ly > -60 && ly < h + 60) {
       const hp = replay.data[base + 4] ?? 0
+      const wid = replay.data[base + F_WID] ?? 0
+      const winfo = replay.weapons[wid]
+      const weapKey = winfo?.key ?? (winfo?.raw ?? '').replace(/^weapon_/, '').toLowerCase()
+      const icon = weapKey ? weaponIcon(weapKey) : null
+      let iconH = 0
+      if (icon) {
+        iconH = 13
+        const iw = iconH * (icon.naturalWidth / icon.naturalHeight || 1)
+        ctx.globalAlpha = alpha
+        ctx.drawImage(icon, lx - iw / 2, ly - iconH - 4, iw, iconH)
+        ctx.globalAlpha = 1
+      }
       ctx.font = 'bold 11px system-ui, sans-serif'
       ctx.fillStyle = `rgba(255,255,255,${alpha})`
-      ctx.fillText(String(playerNum[bx.i]), lx, ly)
-      ctx.fillStyle = `rgba(0,0,0,0.5)`
-      ctx.fillRect(lx - 11, ly + 4, 22, 3)
+      ctx.fillText(String(playerNum[c.i]), lx, ly - iconH - 9)
+
+      ctx.fillStyle = 'rgba(0,0,0,0.5)'
+      ctx.fillRect(fx - 11, fy + 5, 22, 3)
       const hpr = hp > 50 ? '76,175,125' : hp > 25 ? '245,197,66' : '224,82,82'
       ctx.fillStyle = `rgba(${hpr},${alpha})`
-      ctx.fillRect(lx - 11, ly + 4, 22 * Math.max(0, Math.min(100, hp)) / 100, 3)
+      ctx.fillRect(fx - 11, fy + 5, 22 * Math.max(0, Math.min(100, hp)) / 100, 3)
+
+      const vel = playerSpeedAt(replay, c.i, fi)
+      if (onLevel && vel > 5) {
+        const pb = Math.max(0, fi - 1) * n * FIELDS + c.i * FIELDS
+        const dxv = replay.data[base] - replay.data[pb]
+        const dyv = replay.data[base + 1] - replay.data[pb + 1]
+        const vx = mx + CAPSULE_R * cam.zoom + 6
+        ctx.fillStyle = 'rgba(255,255,255,0.7)'
+        ctx.textAlign = 'left'
+        ctx.font = '10px monospace'
+        ctx.fillText(String(vel), vx, my + 4)
+        ctx.font = '7px monospace'
+        const numW = ctx.measureText(String(vel)).width
+        const ux = vx + numW + 2
+        const uw = ctx.measureText('u/s').width
+        ctx.fillText('u/s', ux, my + 4)
+        // atan2(dy, dx): the tip formula already applies the canvas
+        // y-inversion (-sin), inverting dy here too would mirror the arrow
+        const ang = Math.atan2(dyv, dxv)
+        const acx = ux + uw / 2, acy = my - 3
+        const alen = 6, hl = 3, ha = Math.PI / 6
+        const tipX = acx + Math.cos(ang) * alen / 2, tipY = acy - Math.sin(ang) * alen / 2
+        const backX = acx - Math.cos(ang) * alen / 2, backY = acy + Math.sin(ang) * alen / 2
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'
+        ctx.lineWidth = 1
+        ctx.beginPath(); ctx.moveTo(backX, backY); ctx.lineTo(tipX, tipY); ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - hl * Math.cos(ang - ha), tipY + hl * Math.sin(ang - ha))
+        ctx.moveTo(tipX, tipY)
+        ctx.lineTo(tipX - hl * Math.cos(ang + ha), tipY + hl * Math.sin(ang + ha))
+        ctx.stroke()
+        ctx.textAlign = 'center'
+      }
     }
   }
 }

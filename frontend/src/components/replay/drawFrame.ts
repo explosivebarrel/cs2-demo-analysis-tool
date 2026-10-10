@@ -31,7 +31,7 @@ const WEAPON_ICON_ALIAS: Record<string, string> = {
 }
 const weaponIconCache = new Map<string, HTMLImageElement>()
 
-function weaponIcon(key: string): HTMLImageElement | null {
+export function weaponIcon(key: string): HTMLImageElement | null {
   const id = WEAPON_ICON_ALIAS[key] ?? key
   let img = weaponIconCache.get(id)
   if (!img) {

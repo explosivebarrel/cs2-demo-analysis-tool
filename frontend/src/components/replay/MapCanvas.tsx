@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { api, AnalysisData, MapOverview, ReplayData, RoundData } from '../../api'
+import { api, AnalysisData, Map3DData, MapOverview, ReplayData, RoundData } from '../../api'
 import { lowerLevelNames } from '../../lib/coords'
 import { F_ALIVE, fieldsOf, findRoundForTick, Transform } from '../../lib/replay'
 import { t } from '../../i18n'
 import drawFrame, { NadeTrailMode, preloadWeaponIcons } from './drawFrame'
 import Scene3DCanvas from '../map3d/Scene3DCanvas'
 import drawReplay3D from '../map3d/drawReplay3D'
-import type { BBox, Cam } from '../map3d/scene3d'
+import { buildDensityPlane } from '../map3d/scene3d'
+import type { BBox, Cam, DensityPlane } from '../map3d/scene3d'
 
 const MIN_SCALE = 0.1
 const MAX_SCALE = 10
@@ -19,7 +20,7 @@ const MAX_SCALE = 10
  */
 export default function MapCanvas({
   replay, analysis, overview, frameIdx, tx, setTx,
-  nadeTrailMode, nadeFilter, level, setLevel, view3d,
+  nadeTrailMode, nadeFilter, level, setLevel, view3d, hm3d,
 }: {
   replay: ReplayData
   analysis: AnalysisData | null
@@ -32,6 +33,7 @@ export default function MapCanvas({
   level: string
   setLevel: (l: string) => void
   view3d: boolean
+  hm3d: Map3DData | null
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const radarRef = useRef<HTMLImageElement>(null)
@@ -84,9 +86,18 @@ export default function MapCanvas({
     }
   }, [overview, groundZ])
 
+  // voxel map surface for the 3D view; built once per payload (perf invariant:
+  // geometry rebuilds only on mode/density/filter changes, never on camera moves)
+  const plane3d = useMemo<DensityPlane | null>(() => {
+    if (!hm3d) return null
+    return buildDensityPlane(hm3d, { shift: 1, filterCols: null, groundZ: hm3d.minZ })
+  }, [hm3d])
+
   const onDraw3d = useCallback((ctx: CanvasRenderingContext2D, cam: Cam, w: number, h: number) => {
-    drawReplay3D(ctx, w, h, cam, replay, frameIdx, { ov: overview, level, nadeFilter, groundZ })
-  }, [replay, overview, frameIdx, level, nadeFilter, groundZ])
+    drawReplay3D(ctx, w, h, cam, replay, frameIdx, {
+      ov: overview, level, nadeFilter, groundZ, plane: plane3d, shades: hm3d?.shades ?? 8,
+    })
+  }, [replay, overview, frameIdx, level, nadeFilter, groundZ, plane3d, hm3d])
 
   const lowerLevels = lowerLevelNames(overview)
   const curTick = replay.ticks[Math.floor(frameIdx)] ?? 0
