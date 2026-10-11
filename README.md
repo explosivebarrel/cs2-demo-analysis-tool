@@ -4,13 +4,14 @@ A self-hosted web application for analyzing CS2 (Counter-Strike 2) demo files. U
 
 ## Features
 
-- **Match Overview** — score, round timeline, team aggregates, economy, win probability
-- **Player Stats** — Rating 2.0, RWS, KAST, IMP, K/D/A, ADR, opening duels, multikills, clutches, utility, hitgroups, weapons, movement
-- **Aim & Duel Metrics** — 20+ per-player metrics (reaction time, TTK, counter-strafe errors, crosshair placement, ideal strafes, overshoot, angle control…) with tier benchmarks (weak / avg / good / elite) and clickable duel episodes: minimap replay, WASD timelines, velocity graph, event log
-- **Moments** — auto-detected highlights (clutches, multikills, opening duels, mistakes, swings); click one and the replay jumps in and plays the episode
-- **Heatmaps** — kills, deaths, damage, shots, flashes, smokes, molotovs, openings, clutches, holds, and more; per-player, per-side, per-phase filtering
-- **Replay viewer** — interpolated smooth playback at 0.5x–8x, pan/zoom, aim arrows, shot tracers, grenade trails and paths per type, weapon icons, win probability curve, event log, round switcher, hotkeys, fullscreen
-- **Auto-import** — watch folders and/or FACEIT match history polling; new demos are probed and analyzed automatically
+- **Match Overview** — score, round timeline, team aggregates, economy, win probability, teamkill log
+- **Player Stats** — Rating 2.1 (approx), RWS, KAST, IMP, K/D/A, ADR, opening duels, multikills, clutches, teamkills, utility, hitgroups, weapons, movement, match history with trends
+- **Aim & Duel Metrics** — 20+ per-player metrics (time to first shot on peek, TTK, shots while moving, real crosshair placement, ideal strafes, excellent contacts, overshoot…) with tier benchmarks (weak / avg / good / elite) and clickable duel episodes: minimap replay (2D and 3D), WASD timelines, velocity graph, event log
+- **Moments** — auto-detected highlights (clutches, multikills, opening duels, mistakes, teamkills, swings); click one and the replay jumps in and plays the episode
+- **Heatmaps** — kills, deaths, damage, shots, flashes, smokes, molotovs, openings, clutches, holds, and more — every point carries its Z; **3D view** with an orbit camera: voxel map surface, point cloud at real heights, contrast tiles, adjustable tile shades
+- **Replay viewer** — interpolated smooth playback at 0.5x–8x, pan/zoom, aim sectors, shot tracers, grenade trails and paths per type, weapon icons, flash-blind pies, win probability curve, event log, round switcher, hotkeys, fullscreen; **3D view**: voxel map surface, capsule players with view sector, weapon/number overlays, speed with movement direction
+- **Batch upload** — drop multiple demo files at once, per-file progress rows
+- **Auto-import** — watch folders and/or FACEIT match history polling (with an import window and "download & analyze" suggestions); new demos are probed and analyzed automatically
 - **Uploads** — `.dem`, `.dem.zst` and `.gz` with content-based deduplication
 - **i18n** — Russian and English UI
 
@@ -18,12 +19,12 @@ A self-hosted web application for analyzing CS2 (Counter-Strike 2) demo files. U
 
 | Metric | Description |
 |--------|-------------|
-| **Rating 2.0** | HLTV-style performance rating: `0.0073·KAST + 0.3591·KPR − 0.5329·DPR + 0.2372·Impact + 0.0032·ADR + 0.1587` |
+| **Rating 2.1 (approx)** | own approximation of the HLTV rating: weighted kill / survival / damage / KAST / impact sub-scores, normalized to 1.00 per match |
 | **RWS** | Round Win Share — avg damage share in won rounds |
 | **KAST** | % of rounds with a Kill, Assist, Survival, or Trade |
 | **IMP** | Per-round impact score based on opening duels, multikills, clutches, saves |
 
-Every rating-family metric also drives the benchmark tiers used across player pages. The [About page](http://localhost:8080/about) of a running instance documents all formulas and methodology.
+Every rating-family metric also drives the benchmark tiers used across player pages. The [About page](http://localhost:8080/about) of a running instance documents all formulas and methodology; `METRICS.md` / `METRICS_SPEC.md` in the repo hold the engineering and semantic specs.
 
 ## Stack
 
@@ -73,11 +74,16 @@ All settings are optional environment variables of the `backend` container: copy
 | `CS2_MAX_UPLOAD_MB` | `1200` | Upload size cap (unpacked for archives) |
 | `CS2_MAX_CONCURRENT_ANALYZES` | `0` | Parallel analysis limit; `0` = unlimited |
 | `CS2_FRAME_SECONDS` | `0.125` | Replay timeline sample step (~8 frames/sec) |
+| `CS2_HM3D_SHADES` | `8` | Default tile shade levels (1–32) for the 3D heatmap surface; applied live at fetch time, no re-analysis needed; also adjustable from the UI |
+| `CS2_PROGRESS_WEIGHTS` | *(auto)* | JSON `{stage: seconds}` pinning the progress bar distribution; by default the bar maps to measured per-stage medians |
 | `CS2_WATCH_DIRS` | *(empty)* | ':'-separated watch folders for auto-import |
 | `CS2_WATCH_POLL_SEC` | `20` | Watch folder scan interval |
 | `CS2_FACEIT_API_KEY` | *(empty)* | FACEIT API key (enables FACEIT auto-import together with the player id) |
 | `CS2_FACEIT_PLAYER_ID` | *(empty)* | Your FACEIT profile GUID |
 | `CS2_FACEIT_POLL_SEC` | `300` | FACEIT match history polling interval |
+| `CS2_IMPORT_WINDOW_HOURS` | `12` | Auto-import window: matches older than this become "download & analyze" suggestions instead of being fetched automatically |
+
+Most of the auto-import settings can also be changed at runtime on the `/settings` page (stored in `store/settings.json`, overriding the env defaults).
 
 ## Development
 
