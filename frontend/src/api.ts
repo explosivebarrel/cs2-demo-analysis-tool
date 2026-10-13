@@ -77,7 +77,7 @@ export interface PlayerData {
   dmgTaken: number; utilDmg: number; postPlantDmg: number
   rating: number; ratingParts: Record<string, number>
   opening: { kills: number; deaths: number; attempts: number; success: number | null }
-  trades: { tradeKills: number; tradedDeaths: number }
+  trades: { tradeKills: number; tradedDeaths: number; unpunishedDeaths?: number; unpunishedDeathPct?: number }
   multiKills: { '2k': number; '3k': number; '4k': number; '5k': number; rounds: number }
   clutches: { played: number; won: number; byX: Record<string, { played: number; won: number }>; list: ClutchEntry[] }
   flashes: { thrown: number; enemiesFlashed: number; blindSec: number; effective: number; friendly: number }
@@ -88,6 +88,7 @@ export interface PlayerData {
   hitgroups: Record<string, number>
   killDist: { avgM: number | null; maxM: number | null; buckets: Record<string, number> }
   teamDmg: number
+  teamKills?: number
   weapons: WeaponRow[]
   bySide: { T: SideSummary; CT: SideSummary }
   series: SeriesPoint[]
@@ -167,7 +168,7 @@ export interface ReplayData {
   invWeapons?: Record<string, InvWeaponInfo>
   bomb: (number | null)[][]
   events: ReplayEvent[]
-  shots: number[][]  // compact: [tick, playerIdx, x, y, yaw]
+  shots: number[][]  // compact: [tick, playerIdx, x, y, yaw, pitch?]
   weapons: Record<number, WeaponInfo>
   winprob?: number[]  // ct win probability per frame [0.05, 0.95]
 }
@@ -178,7 +179,7 @@ export interface ReplayEvent {
 }
 
 export interface ShotEvent {
-  tick: number; pidx: number; x: number; y: number; yaw: number
+  tick: number; pidx: number; x: number; y: number; yaw: number; pitch?: number
 }
 
 export interface StatusData {
@@ -307,6 +308,10 @@ export interface PlayerMetrics {
   reactionDeltas: number[]
   reactionDeltasHit: number[]
   passiveAngleCount: number
+  unpunishedDeaths?: number
+  unpunishedDeathPct?: number
+  killDistAvgM?: number | null
+  killDistMaxM?: number | null
 }
 
 export interface PlayerImpact {

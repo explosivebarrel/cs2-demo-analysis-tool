@@ -37,7 +37,13 @@
     "decoy": "Фейк",
     "attempts": "Попытки",
     "kit": "Кит",
-    "alivePerRound": "Жив/раунд (с)"
+    "alivePerRound": "Жив/раунд (с)",
+    "dmgTaken": "Получено урона",
+    "adrTaken": "ADR урона",
+    "unpunishedDeaths": "Без размена",
+    "combatDist": "Дистанция боя",
+    "avgDist": "Средняя",
+    "maxDist": "Максимальная"
   },
   "overview": {
     "mainIssue": "Главная проблема",
@@ -50,6 +56,8 @@
     "tradeKillsSub": "% убийств — трейд",
     "tradedDeaths": "Трейд-смерти",
     "tradedDeathsSub": "% смертей отомщены",
+    "unpunishedDeaths": "Безнаказанные смерти",
+    "unpunishedDeathsSub": "смертей без размена",
     "lostDuels": "Проигранные дуэли",
     "lostDuelsSub": "смертей в дуэлях",
     "teamKills": "Тимкиллы",
@@ -79,14 +87,18 @@
     "excellentContactsSub": "килов: стоял + первая пуля попала",
     "crosshairPlacement": "Прицел на голове",
     "crosshairPlacementSub": "% первых попаданий — в голову",
-    "missedFirst": "Неточный 1-й выстрел",
-    "missedFirstSub": "% побед без точного 1-го выстрела",
+    "missedFirst": "Дожим спреем",
+    "missedFirstSub": "% побед после промаха 1-й пули",
     "passiveAngle": "Пассивный угол",
     "passiveAngleSub": "раз стоял без движения перед выстрелом",
     "shiftPeeks": "Шифт-пики",
     "isolatedPlays": "Игра в изоляции",
     "shotWhileMoving": "Движение при стрельбе",
-    "msValue": "{{value}} мс"
+    "msValue": "{{value}} мс",
+    "avgKillDist": "Дистанция боя",
+    "avgKillDistSub": "ср. дистанция килов (м)",
+    "killDist": "Дистанция боя",
+    "killDistSub": "макс."
   },
   "impact": {
     "contributionTitle": "Вклад в победу",

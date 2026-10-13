@@ -316,7 +316,8 @@ export default function ReplayScreen() {
           <MapCanvas
             replay={replay} analysis={analysis} overview={overview}
             frameIdx={frameIdx} tx={tx} setTx={setTx}
-            nadeTrailMode={nadeTrailMode} nadeFilter={nadeOff}
+            nadeTrailMode={nadeTrailMode} onTrailMode={setNadeTrailMode}
+            nadeFilter={nadeOff} onToggleNade={toggleNade}
             level={level} setLevel={setLevel} view3d={view3d} hm3d={hm3d}
           />
         </div>
@@ -347,8 +348,6 @@ export default function ReplayScreen() {
           hasMoments={(analysis.moments?.length ?? 0) > 0} onMoment={jumpToMoment}
           time={fmtTime(Math.floor(frameIdx))} duration={fmtTime(totalFrames - 1)}
           speed={speed} onSpeed={setSpeed}
-          nadeFilter={nadeOff} onToggleNade={toggleNade}
-          trailMode={nadeTrailMode} onTrailMode={setNadeTrailMode}
         >
           {winprob.length > 0 ? (
             <div style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
@@ -383,7 +382,7 @@ export default function ReplayScreen() {
         </BottomBar>
       )}
 
-      {hotkeysOpen && <HotkeysModal onClose={() => setHotkeysOpen(false)} />}
+      {hotkeysOpen && <HotkeysModal onClose={() => setHotkeysOpen(false)} initialMode={view3d ? '3d' : '2d'} />}
     </div>
   )
 }

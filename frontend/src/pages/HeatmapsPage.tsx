@@ -77,14 +77,14 @@ export default function HeatmapsPage() {
   const [layer, setLayer] = useState('kills')
   const [level, setLevel] = useState('default')
   const [selectedPlayers, setSelectedPlayers] = useState<Set<number>>(new Set())
-  const [pointAlpha, setPointAlpha] = useState(0.35)
+  const [pointAlpha, setPointAlpha] = useState(0.75)
   const [error, setError] = useState('')
   const [view3d, setView3d] = useState(false)
   const [hm3d, setHm3d] = useState<Map3DData | null>(null)
   const [hm3dMissing, setHm3dMissing] = useState(false)
   const [resShift, setResShift] = useState(1)  // merge factor 0/1/2 -> 32/64/128 u cells
   const [ground, setGround] = useState(true)
-  const [mapAlpha, setMapAlpha] = useState(0.65)
+  const [mapAlpha, setMapAlpha] = useState(0.35)
   const [contrast, setContrast] = useState(true)
   const [shadesNum, setShadesNum] = useState<number | null>(null)  // null = artifact default
   const view3dRef = useRef(false)
@@ -348,11 +348,18 @@ export default function HeatmapsPage() {
                         <div>
                           <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 6, textTransform: 'uppercase' }}>{t('heatmaps:map3dDetail')}</div>
                           <div style={{ display: 'flex', gap: 4 }}>
-                            {[0, 1, 2].map(s => (
-                              <button key={s} onClick={() => setResShift(s)} style={seg(resShift === s)}>
-                                {Math.round((hm3d?.cell ?? 32) * (1 << s))} u
-                              </button>
-                            ))}
+                            {(() => {
+                              const baseCell = hm3d?.cell ?? 16
+                              const targets = [16, 32, 64, 128].filter(u => u >= baseCell)
+                              return targets.map(target => {
+                                const s = Math.max(0, Math.round(Math.log2(target / baseCell)))
+                                return (
+                                  <button key={target} onClick={() => setResShift(s)} style={seg(resShift === s)}>
+                                    {target} u
+                                  </button>
+                                )
+                              })
+                            })()}
                           </div>
                         </div>
                         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>

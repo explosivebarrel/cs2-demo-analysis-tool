@@ -5,6 +5,8 @@ services:
     volumes:
       - ./demo-examples:/data/inbox:ro
       - cs2_store:/data/store
+      # local CS2 match demos (downloaded via the in-game Watch tab)
+      - "G:/SteamLibrary/steamapps/common/Counter-Strike Global Offensive/game/csgo/replays:/watch-cs2:ro"
       # auto-import watch dir: mount your folder and set CS2_WATCH_DIRS=/watch
       # - C:/Users/you/cs2-demos:/watch:ro
     expose:

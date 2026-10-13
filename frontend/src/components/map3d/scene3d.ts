@@ -131,6 +131,9 @@ export function buildDensityPlane(
 ): DensityPlane {
   const nCols = data.cells.length ? data.cells[0].length - 3 : opts.filterCols?.size || 0
   const step = 1 << opts.shift
+  // Accumulate by integer key: merge horizontal indices by shift, preserve vertical iz exactly!
+  // Key packing: ((ix << 14) ^ iy) * 4096 + iz or Map with string/bigint if coordinates exceed.
+  // Using string key with 3 components (ix, iy, iz) but with exact iz keeps height accurate:
   const acc = new Map<string, [number, number, number, number]>()
   for (const row of data.cells) {
     let c = 0
@@ -139,10 +142,16 @@ export function buildDensityPlane(
       c += row[3 + i]
     }
     if (c <= 0) continue
-    const key = `${row[0] >> opts.shift},${row[1] >> opts.shift},${row[2] >> opts.shift}`
+    const mix = row[0] >> opts.shift
+    const miy = row[1] >> opts.shift
+    const iz = row[2] // Z index is preserved without bit shift!
+    const key = `${mix},${miy},${iz}`
     const v = acc.get(key)
-    if (v) v[2] += c
-    else acc.set(key, [row[0] >> opts.shift, row[1] >> opts.shift, c, row[2] >> opts.shift])
+    if (v) {
+      v[2] += c
+    } else {
+      acc.set(key, [mix, miy, c, iz])
+    }
   }
   const m = acc.size
   const plane: DensityPlane = {
@@ -154,7 +163,7 @@ export function buildDensityPlane(
   for (const [ix, iy, c, iz] of acc.values()) {
     plane.xs[i] = data.minX + ix * plane.cell
     plane.ys[i] = data.minY + iy * plane.cell
-    plane.zs[i] = data.minZ + iz * data.zStep * step
+    plane.zs[i] = data.minZ + iz * data.zStep
     plane.counts[i] = c
     if (c > plane.maxCount) plane.maxCount = c
     i++
@@ -187,6 +196,15 @@ export function drawDensityPlane(
   // far -> near; index sort keeps per-frame work allocation-free
   order.sort((a, c) => depths[c] - depths[a])
 
+  // In orthographic projection, stepping along world X and world Y by cell size
+  // produces a constant 2D canvas delta for all cells:
+  // dx_x = cell * b.right[0] * zoom, dy_x = -cell * b.up[0] * zoom
+  // dx_y = cell * b.right[1] * zoom, dy_y = -cell * b.up[1] * zoom
+  const dxx = plane.cell * b.right[0] * cam.zoom
+  const dyx = -plane.cell * b.up[0] * cam.zoom
+  const dxy = plane.cell * b.right[1] * cam.zoom
+  const dyy = -plane.cell * b.up[1] * cam.zoom
+
   const paths: Path2D[] = []
   const alphas: number[] = []
   const p: [number, number, number] = [0, 0, 0]
@@ -208,17 +226,18 @@ export function drawDensityPlane(
     const [ccx, ccy] = project(p, cam, b, w, h)
     const reach = plane.cell * cam.zoom
     if (ccx < -reach || ccx > w + reach || ccy < -reach || ccy > h + reach) continue
-    const z = plane.zs[i]
-    const corners: [number, number, number][] = [
-      [plane.xs[i], plane.ys[i], z],
-      [plane.xs[i] + plane.cell, plane.ys[i], z],
-      [plane.xs[i] + plane.cell, plane.ys[i] + plane.cell, z],
-      [plane.xs[i], plane.ys[i] + plane.cell, z],
-    ]
-    corners.forEach((c, k) => {
-      const [sx, sy] = project(c, cam, b, w, h)
-      if (k === 0) path.moveTo(sx, sy); else path.lineTo(sx, sy)
-    })
+
+    // Project top-left base corner [xs, ys, z] and compute remaining 3 corners via constant deltas
+    p[0] = plane.xs[i]; p[1] = plane.ys[i]
+    const [s0x, s0y] = project(p, cam, b, w, h)
+    const s1x = s0x + dxx, s1y = s0y + dyx
+    const s2x = s1x + dxy, s2y = s1y + dyy
+    const s3x = s0x + dxy, s3y = s0y + dyy
+
+    path.moveTo(s0x, s0y)
+    path.lineTo(s1x, s1y)
+    path.lineTo(s2x, s2y)
+    path.lineTo(s3x, s3y)
     path.closePath()
   }
   const [cr, cg, cb] = color.split(',').map(Number)

@@ -19,6 +19,8 @@ MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "0")
 # 3D density-plane shading levels (quantized alpha buckets); applied when the
 # heatmap3d artifact is SERVED, so changing it only needs a backend restart
 HM3D_SHADES = max(1, min(32, int(os.environ.get("CS2_HM3D_SHADES", "8"))))
+HM3D_CELL = float(os.environ.get("CS2_HM3D_CELL", "16.0"))
+HM3D_Z_STEP = float(os.environ.get("CS2_HM3D_Z_STEP", "8.0"))
 
 # --------------------------------------------------------------- auto-import
 # Watch folders: os.pathsep-separated list of dirs scanned for new demos

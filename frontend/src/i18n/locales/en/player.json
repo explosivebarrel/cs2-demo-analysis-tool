@@ -37,7 +37,13 @@
     "decoy": "Decoy",
     "attempts": "Attempts",
     "kit": "Kit",
-    "alivePerRound": "Alive/R (s)"
+    "alivePerRound": "Alive/R (s)",
+    "dmgTaken": "Damage Taken",
+    "adrTaken": "ADR Taken",
+    "unpunishedDeaths": "Unpunished",
+    "combatDist": "Combat Distance",
+    "avgDist": "Average",
+    "maxDist": "Maximum"
   },
   "overview": {
     "mainIssue": "Main issue",
@@ -50,6 +56,8 @@
     "tradeKillsSub": "% of kills are trades",
     "tradedDeaths": "Traded Deaths",
     "tradedDeathsSub": "% deaths avenged",
+    "unpunishedDeaths": "Unpunished Deaths",
+    "unpunishedDeathsSub": "deaths not traded",
     "lostDuels": "Lost Duels",
     "lostDuelsSub": "deaths in duels",
     "teamKills": "Team Kills",
@@ -79,14 +87,18 @@
     "excellentContactsSub": "kills: stopped + first bullet hit",
     "crosshairPlacement": "Crosshair placement",
     "crosshairPlacementSub": "% first-bullet hits to head",
-    "missedFirst": "Missed 1st shot",
-    "missedFirstSub": "% wins w/o accurate 1st shot",
+    "missedFirst": "Spray conversion",
+    "missedFirstSub": "% wins after missing 1st shot",
     "passiveAngle": "Passive angle",
     "passiveAngleSub": "times stood still before shooting",
     "shiftPeeks": "Shift peeks",
     "isolatedPlays": "Isolated plays",
     "shotWhileMoving": "Shot while moving",
-    "msValue": "{{value}} ms"
+    "msValue": "{{value}} ms",
+    "avgKillDist": "Combat distance",
+    "avgKillDistSub": "avg kill distance (m)",
+    "killDist": "Duel Distance",
+    "killDistSub": "max"
   },
   "impact": {
     "contributionTitle": "Impact contribution",

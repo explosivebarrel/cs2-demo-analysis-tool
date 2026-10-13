@@ -1,6 +1,6 @@
 import { MapOverview, ReplayData } from '../../api'
 import { worldToCanvas, zOnLevel } from '../../lib/coords'
-import { F_ALIVE, F_FLAGS, F_HP, F_TEAM, F_WID, F_X, F_Y, F_YAW, FLAG_FLASHED, TEAM_COLORS, Transform, fieldsOf } from '../../lib/replay'
+import { F_ALIVE, F_FLAGS, F_HP, F_TEAM, F_WID, F_X, F_Y, F_YAW, FLAG_FLASHED, TEAM_COLORS, Transform, fieldsOf, resolveActiveBomb } from '../../lib/replay'
 
 // ── grenade zone visuals ─────────────────────────────────────────────────────
 const NADE_COLORS: Record<string, string> = {
@@ -45,7 +45,7 @@ export function weaponIcon(key: string): HTMLImageElement | null {
 /** Decode every weapon icon the match uses; resolve when all are ready so the
  *  next drawFrame pass renders icons instead of the text fallback. */
 export function preloadWeaponIcons(replay: ReplayData): Promise<unknown> {
-  const keys = new Set<string>()
+  const keys = new Set<string>(['c4', 'planted_c4'])
   for (const w of Object.values(replay.weapons ?? {})) {
     const k = w?.key ?? (w?.raw ?? '').replace(/^weapon_/, '').toLowerCase()
     if (k) keys.add(WEAPON_ICON_ALIAS[k] ?? k)
@@ -273,16 +273,15 @@ export default function drawFrame(
     // tr keeps sampling after landing (static tail), so clamp the drawn arc
     // to the actual flight; progress maps onto flight points only
     const flightPts = Math.min(nPts, Math.max(2, Math.ceil((detonateTick - throwTick) / ticksPerSeg) + 1))
-    // 'path' keeps the full flight arc until the round ends; 'trail' shows a
-    // moving tail during flight and fades out after detonation
-    const aliveUntil = nadeTrailMode === 'path' ? roundEndT : detonateTick + TRAIL_FADE_TICKS
+    // both trail and path fade out over TRAIL_FADE_TICKS after detonation
+    const aliveUntil = detonateTick + TRAIL_FADE_TICKS
     if (curTick < throwTick || curTick > aliveUntil) continue
 
     const flightDur = Math.max(1, detonateTick - throwTick)
     const progressTick = Math.min(curTick, detonateTick) - throwTick
     const progress = progressTick / flightDur
     const visiblePts = Math.max(2, Math.min(flightPts, Math.ceil(progress * flightPts + 1)))
-    const detFade = nadeTrailMode === 'trail' && curTick > detonateTick
+    const detFade = curTick > detonateTick
       ? Math.max(0, 1 - (curTick - detonateTick) / TRAIL_FADE_TICKS)
       : 1
 
@@ -298,7 +297,7 @@ export default function drawFrame(
       const [cx0, cy0] = worldToCanvas(x0, y0, ov, SZ, SZ)
       const [cx1, cy1] = worldToCanvas(x1, y1, ov, SZ, SZ)
       const segFrac = (pi - startPt) / Math.max(1, endPt - startPt - 1)
-      const alpha = (nadeTrailMode === 'trail' ? 0.2 + segFrac * 0.7 : 0.5) * detFade
+      const alpha = (nadeTrailMode === 'trail' ? 0.2 + segFrac * 0.7 : 0.6) * detFade
       ctx.beginPath()
       ctx.moveTo(cx0, cy0)
       ctx.lineTo(cx1, cy1)
@@ -306,37 +305,20 @@ export default function drawFrame(
       ctx.lineWidth = 2 * dotScale
       ctx.stroke()
     }
-    const headPt = Math.min(endPt - 1, nPts - 1)
-    const hx = tr[headPt * 3], hy = tr[headPt * 3 + 1]
-    const [hcx, hcy] = worldToCanvas(hx, hy, ov, SZ, SZ)
-    ctx.beginPath()
-    ctx.arc(hcx, hcy, 4 * dotScale, 0, Math.PI * 2)
-    ctx.globalAlpha = detFade
-    ctx.fillStyle = color
-    ctx.fill()
-    ctx.globalAlpha = 1
+    if (curTick <= detonateTick) {
+      const headPt = Math.min(endPt - 1, nPts - 1)
+      const hx = tr[headPt * 3], hy = tr[headPt * 3 + 1]
+      const [hcx, hcy] = worldToCanvas(hx, hy, ov, SZ, SZ)
+      ctx.beginPath()
+      ctx.arc(hcx, hcy, 3.5 * dotScale, 0, Math.PI * 2)
+      ctx.fillStyle = color
+      ctx.fill()
+    }
     ctx.restore()
   }
 
-  // planted bomb: pulsing marker at the plant spot until defused/exploded.
-  // bomb events are appended per-type (not tick order), so sort before replaying
-  let planted: { x: number; y: number } | null = null
-  {
-    const bombEv: { ty: string; t: number; x: number; y: number }[] = []
-    for (const ev of replay.events) {
-      const e = ev as Record<string, unknown>
-      if (e.ty === 'bp' || e.ty === 'bf' || e.ty === 'bx')
-        bombEv.push({ ty: e.ty as string, t: e.t as number, x: (e.x as number) ?? 0, y: (e.y as number) ?? 0 })
-    }
-    bombEv.sort((a, b) => a.t - b.t)
-    let plantedTick = 0
-    for (const ev of bombEv) {
-      if (ev.t > curTick) break
-      if (ev.ty === 'bp') { planted = { x: ev.x, y: ev.y }; plantedTick = ev.t }
-      else { planted = null; plantedTick = 0 }
-    }
-    if (planted && (plantedTick < roundStartT || curTick > roundEndActual)) planted = null
-  }
+  // active bomb on ground (planted or dropped)
+  const bomb = resolveActiveBomb(replay, frameIdx, curTick, roundStartT, roundEndActual)
 
   // players
   const n = replay.players.length
@@ -534,27 +516,52 @@ export default function drawFrame(
     ctx.globalAlpha = 1
   }
 
-  // planted bomb marker: pulsing glow, light red <-> darker red
-  if (planted) {
-    const [px2, py2] = worldToCanvas(planted.x, planted.y, ov, SZ, SZ)
-    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 160)
-    const cr = Math.round(255 - 70 * pulse)
-    const cg = Math.round(90 - 60 * pulse)
-    const glow = ctx.createRadialGradient(px2, py2, 0, px2, py2, 26 * dotScale)
-    glow.addColorStop(0, `rgba(${cr},${cg},${cg},${(0.4 + 0.25 * pulse).toFixed(3)})`)
-    glow.addColorStop(1, 'rgba(160,0,0,0)')
-    ctx.beginPath(); ctx.arc(px2, py2, 26 * dotScale, 0, Math.PI * 2)
-    ctx.fillStyle = glow; ctx.fill()
-    const img = weaponIcon('planted_c4')
-    if (img) {
-      const h = 15 * dotScale
-      const w = h * (img.naturalWidth / img.naturalHeight || 1)
-      ctx.drawImage(img, px2 - w / 2, py2 - h / 2, w, h)
+  // active bomb marker: planted (pulsing red glow) or dropped (amber glow + c4 icon)
+  if (bomb) {
+    const onLevel = zOnLevel(bomb.z, ov, level)
+    ctx.globalAlpha = onLevel ? 1 : 0.3
+    const [px2, py2] = worldToCanvas(bomb.x, bomb.y, ov, SZ, SZ)
+    const isPlanted = bomb.state === 'planted'
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / (isPlanted ? 160 : 380))
+
+    if (isPlanted) {
+      const cr = Math.round(255 - 70 * pulse)
+      const cg = Math.round(90 - 60 * pulse)
+      const glow = ctx.createRadialGradient(px2, py2, 0, px2, py2, 26 * dotScale)
+      glow.addColorStop(0, `rgba(${cr},${cg},${cg},${(0.4 + 0.25 * pulse).toFixed(3)})`)
+      glow.addColorStop(1, 'rgba(160,0,0,0)')
+      ctx.beginPath(); ctx.arc(px2, py2, 26 * dotScale, 0, Math.PI * 2)
+      ctx.fillStyle = glow; ctx.fill()
+      const img = weaponIcon('planted_c4')
+      if (img) {
+        const h = 15 * dotScale
+        const w = h * (img.naturalWidth / img.naturalHeight || 1)
+        ctx.drawImage(img, px2 - w / 2, py2 - h / 2, w, h)
+      } else {
+        ctx.beginPath(); ctx.arc(px2, py2, 5 * dotScale, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,60,60,${(0.6 + 0.4 * pulse).toFixed(3)})`
+        ctx.fill()
+      }
     } else {
-      ctx.beginPath(); ctx.arc(px2, py2, 5 * dotScale, 0, Math.PI * 2)
-      ctx.fillStyle = `rgba(255,60,60,${(0.6 + 0.4 * pulse).toFixed(3)})`
-      ctx.fill()
+      // dropped bomb: amber glow + c4 icon
+      const glow = ctx.createRadialGradient(px2, py2, 0, px2, py2, 22 * dotScale)
+      glow.addColorStop(0, `rgba(255,180,40,${(0.45 + 0.2 * pulse).toFixed(3)})`)
+      glow.addColorStop(0.6, `rgba(220,130,20,${(0.2 + 0.1 * pulse).toFixed(3)})`)
+      glow.addColorStop(1, 'rgba(180,90,0,0)')
+      ctx.beginPath(); ctx.arc(px2, py2, 22 * dotScale, 0, Math.PI * 2)
+      ctx.fillStyle = glow; ctx.fill()
+      const img = weaponIcon('c4')
+      if (img) {
+        const h = 13 * dotScale
+        const w = h * (img.naturalWidth / img.naturalHeight || 1.3)
+        ctx.drawImage(img, px2 - w / 2, py2 - h / 2, w, h)
+      } else {
+        ctx.beginPath(); ctx.arc(px2, py2, 4.5 * dotScale, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(255,170,30,${(0.7 + 0.3 * pulse).toFixed(3)})`
+        ctx.fill()
+      }
     }
+    ctx.globalAlpha = 1
   }
 
   ctx.restore()

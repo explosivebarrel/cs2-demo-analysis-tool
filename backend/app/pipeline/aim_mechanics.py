@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     pass
 
 # ── Tuning constants ─────────────────────────────────────────────────────────
-SHOOT_THRESHOLD = 50.0       # u/s — velocity above this = "moving while shooting"
+SHOOT_THRESHOLD = 50.0       # u/s — velocity above this = "moving while shooting" (rifles/snipers)
+SHOOT_THRESHOLD_PISTOL = 170.0 # u/s — velocity threshold for pistols and smgs (run-and-gun)
 RELOAD_SAFE_BULLETS = 5      # reloads with more bullets left than this = error
 ANGLE_HOLD_SEC = 2.0         # min seconds stationary to count as angle control
 ANGLE_MOVE_THRESHOLD = 30.0  # u/s — below this counts as "not moving"
@@ -183,12 +184,16 @@ def _compute_strafe_metrics(
         prev = st
 
     duel_start_set = set(duel_starts)
+    from ..weapons import canon
 
     for _, row in my_wf.iterrows():
         tick = int(row["tick"])
         vel = _vel_at(vel_index, tick, steamid)
+        wname = str(row.get("weapon", ""))
+        _, _, cls = canon(wname)
+        thresh = SHOOT_THRESHOLD_PISTOL if cls in ("pistol", "smg") else SHOOT_THRESHOLD
 
-        if vel > SHOOT_THRESHOLD:
+        if vel > thresh:
             errors += 1
 
         # duel-opening shots that resulted in a kill within the duel window
@@ -196,7 +201,7 @@ def _compute_strafe_metrics(
             for kt in kill_ticks:
                 if 0 <= kt - tick <= merge_ticks:
                     ideal_total += 1
-                    if vel <= SHOOT_THRESHOLD:
+                    if vel <= thresh:
                         ideal_count += 1
                     break
 
@@ -316,7 +321,8 @@ def _compute_ttk(
             delta_ms = round((kt - first_shot) / tickrate * 1000, 1)
             deltas.append(delta_ms)
 
-    return round(sum(deltas) / len(deltas), 1) if deltas else 0.0
+    import numpy as _np
+    return round(float(_np.median(deltas)), 1) if deltas else 0.0
 
 
 # ── Reload errors ────────────────────────────────────────────────────────────

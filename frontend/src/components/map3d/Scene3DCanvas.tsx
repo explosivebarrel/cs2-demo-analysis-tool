@@ -19,10 +19,16 @@ interface Props {
   groundAnchor?: { pos_x: number; pos_y: number; scale: number }
   groundZ: number
   groundAlpha?: number
+  resetTrigger?: number
+  interactive?: boolean
+  externalCam?: Partial<Cam> | null
+  onCamChange?: (cam: Cam, fitZoom: number) => void
   onDraw: (ctx: CanvasRenderingContext2D, cam: Cam, w: number, h: number) => void
 }
 
-export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAnchor, groundZ, groundAlpha = 1, onDraw }: Props) {
+export default function Scene3DCanvas({
+  width, height, bbox, groundUrl, groundAnchor, groundZ, groundAlpha = 0.55, resetTrigger, interactive = true, externalCam, onCamChange, onDraw,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const camRef = useRef<Cam | null>(null)
   const fitZoomRef = useRef(1)
@@ -30,17 +36,36 @@ export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAn
   bboxRef.current = bbox
   const onDrawRef = useRef(onDraw)
   onDrawRef.current = onDraw
+  const onCamChangeRef = useRef(onCamChange)
+  onCamChangeRef.current = onCamChange
   const rafRef = useRef(0)
   const rafDeadRef = useRef(false)
   const dragRef = useRef<{ x: number; y: number; pan: boolean } | null>(null)
   const [groundImg, setGroundImg] = useState<HTMLImageElement | null>(null)
 
+  const notifyCam = (cam: Cam) => {
+    onCamChangeRef.current?.(cam, fitZoomRef.current)
+  }
+
   const draw = () => {
     const cv = canvasRef.current
     if (!cv || width < 2 || height < 2) return
     if (!camRef.current) {
-      camRef.current = fitCam(bboxRef.current, width, height)
-      fitZoomRef.current = camRef.current.zoom
+      const fitted = fitCam(bboxRef.current, width, height)
+      fitZoomRef.current = fitted.zoom
+      if (externalCam) {
+        camRef.current = {
+          ...fitted,
+          ...externalCam,
+          cx: externalCam.cx ?? fitted.cx,
+          cy: externalCam.cy ?? fitted.cy,
+          cz: externalCam.cz ?? fitted.cz,
+          zoom: externalCam.zoom ?? fitted.zoom,
+        }
+      } else {
+        camRef.current = fitted
+      }
+      notifyCam(camRef.current)
     }
     const cam = camRef.current
     const dpr = window.devicePixelRatio || 1
@@ -74,6 +99,36 @@ export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAn
   // redraw after every commit (ground image arrival, prop changes)
   useEffect(() => { draw() })
 
+  const userInteractedRef = useRef(false)
+
+  // reset camera view when external trigger changes
+  useEffect(() => {
+    if (resetTrigger === undefined) return
+    userInteractedRef.current = false
+    camRef.current = fitCam(bboxRef.current, width, height)
+    fitZoomRef.current = camRef.current.zoom
+    if (camRef.current) notifyCam(camRef.current)
+    schedule()
+  }, [resetTrigger, width, height])
+
+  // apply external camera sync if provided
+  useEffect(() => {
+    if (!externalCam) return
+    const fitted = fitCam(bboxRef.current, width, height)
+    fitZoomRef.current = fitted.zoom
+    const cur = camRef.current ?? fitted
+    camRef.current = {
+      ...cur,
+      ...externalCam,
+      cx: externalCam.cx ?? cur.cx,
+      cy: externalCam.cy ?? cur.cy,
+      cz: externalCam.cz ?? cur.cz,
+      zoom: externalCam.zoom ?? cur.zoom,
+    }
+    notifyCam(camRef.current)
+    schedule()
+  }, [externalCam, width, height])
+
   // probe once: if rAF never fires, gesture redraws fall back to direct draw
   useEffect(() => {
     const t = window.setTimeout(() => { rafDeadRef.current = true }, 400)
@@ -86,19 +141,26 @@ export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAn
     const img = new Image()
     img.onload = () => setGroundImg(img)
     img.src = groundUrl
+    if (img.complete && img.naturalWidth > 0) {
+      setGroundImg(img)
+    }
   }, [groundUrl])
 
   // orbit (LMB drag), pan (Shift/RMB drag), zoom (wheel), dblclick refits
   function onMouseDown(e: React.MouseEvent) {
+    if (!interactive) return
     const pan = e.shiftKey || e.button === 2
     if (!pan && e.button !== 0) return
     e.preventDefault()
+    userInteractedRef.current = true
     dragRef.current = { x: e.clientX, y: e.clientY, pan }
   }
   function onMouseMove(e: React.MouseEvent) {
+    if (!interactive) return
     const d = dragRef.current
     const cam = camRef.current
     if (!d || !cam) return
+    userInteractedRef.current = true
     const dx = e.clientX - d.x, dy = e.clientY - d.y
     d.x = e.clientX; d.y = e.clientY
     if (d.pan) {
@@ -113,26 +175,36 @@ export default function Scene3DCanvas({ width, height, bbox, groundUrl, groundAn
       cam.yaw -= dx * 0.005
       cam.pitch = clampPitch(cam.pitch + dy * 0.005)
     }
+    notifyCam(cam)
     schedule()
   }
   function onMouseUp() { dragRef.current = null }
   function onWheel(e: React.WheelEvent) {
+    if (!interactive) return
     e.preventDefault()
+    userInteractedRef.current = true
     const cam = camRef.current
     if (!cam) return
     const next = cam.zoom * (e.deltaY < 0 ? 1.1 : 0.9)
     cam.zoom = Math.max(fitZoomRef.current * 0.2, Math.min(fitZoomRef.current * 15, next))
+    notifyCam(cam)
     schedule()
   }
   function onDoubleClick() {
+    if (!interactive) return
+    userInteractedRef.current = false
     camRef.current = fitCam(bboxRef.current, width, height)
     fitZoomRef.current = camRef.current.zoom
+    if (camRef.current) notifyCam(camRef.current)
     schedule()
   }
 
   return (
     <div
-      style={{ position: 'absolute', inset: 0, userSelect: 'none', cursor: dragRef.current ? 'grabbing' : 'grab' }}
+      style={{
+        position: 'absolute', inset: 0, userSelect: 'none',
+        cursor: !interactive ? 'default' : dragRef.current ? 'grabbing' : 'grab',
+      }}
       onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
       onWheel={onWheel} onDoubleClick={onDoubleClick} onContextMenu={e => e.preventDefault()}
     >

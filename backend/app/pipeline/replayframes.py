@@ -324,18 +324,18 @@ class FrameBuilder:
 
     # bomb state ----------------------------------------------------------
     def finalize_bomb(self, replay, bomb_events):
-        """Fill replay['bomb'] = per frame [state, x, y, carrierIdx].
+        """Fill replay['bomb'] = per frame [state, x, y, z, carrierIdx].
         state: 0 none, 1 carried, 2 dropped, 3 planted, 4 dead."""
         data = replay["data"]
         ticks = replay["ticks"]
         n_frames = len(ticks)
-        states = [[0, 0.0, 0.0, -1] for _ in range(n_frames)]
+        states = [[0, 0.0, 0.0, 0.0, -1] for _ in range(n_frames)]
 
         ev_by_tick = {}
         for e in bomb_events:
             ev_by_tick.setdefault(e["t"], []).append(e)
 
-        state, cx, cy, carrier = 0, 0.0, 0.0, -1
+        state, cx, cy, cz, carrier = 0, 0.0, 0.0, 0.0, -1
         ri = 0
         rounds = sorted(self.rb.rounds, key=lambda r: r["freezeEndTick"])
         for fi, t in enumerate(ticks):
@@ -345,29 +345,43 @@ class FrameBuilder:
             for e in ev_by_tick.get(t, []):
                 ty = e["ty"]
                 if ty == "bo":
-                    state, cx, cy, carrier = 2, e.get("x", cx), e.get("y", cy), -1
+                    state, cx, cy, cz, carrier = (
+                        2,
+                        e.get("x") if e.get("x") is not None else cx,
+                        e.get("y") if e.get("y") is not None else cy,
+                        e.get("z") if e.get("z") is not None else cz,
+                        -1,
+                    )
                 elif ty == "bu":
                     idx = self.player_idx.get(e.get("p", e.get("a", "")), -1)
                     if idx >= 0:
-                        cx, cy = self._pos_of(data, fi, idx)
+                        cx, cy, cz = self._pos_of(data, fi, idx)
                         state, carrier = 1, idx
                 elif ty == "bp":
-                    state, cx, cy, carrier = 3, e.get("x", cx), e.get("y", cy), -1
+                    state, cx, cy, cz, carrier = (
+                        3,
+                        e.get("x") if e.get("x") is not None else cx,
+                        e.get("y") if e.get("y") is not None else cy,
+                        e.get("z") if e.get("z") is not None else cz,
+                        -1,
+                    )
                 elif ty in ("bx", "bf"):
                     state, carrier = 4, -1
             if state in (0, 2):
                 base = fi * self.n * FIELDS
                 for idx in range(self.n):
                     if data[base + idx * FIELDS + 8] & 1:
-                        cx, cy = self._pos_of(data, fi, idx)
+                        cx, cy, cz = self._pos_of(data, fi, idx)
                         state, carrier = 1, idx
                         break
             elif state == 1 and carrier >= 0:
-                cx, cy = self._pos_of(data, fi, carrier)
-            states[fi] = [state, round(cx, 1), round(cy, 1), carrier]
+                cx, cy, cz = self._pos_of(data, fi, carrier)
+            states[fi] = [state, round(cx, 1), round(cy, 1), round(cz, 1), carrier]
         replay["bomb"] = states
         return replay
 
     def _pos_of(self, data, fi, idx):
         base = fi * self.n * FIELDS
-        return data[base + idx * FIELDS], data[base + idx * FIELDS + 1]
+        return (float(data[base + idx * FIELDS]),
+                float(data[base + idx * FIELDS + 1]),
+                float(data[base + idx * FIELDS + 2]))

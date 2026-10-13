@@ -130,5 +130,17 @@
   },
   "footer": {
     "note": "CS2 Demo Analyzer · селф-хостед аналитика демок Counter-Strike 2 · AGPL-3.0"
-  }
+  },
+  "diff": "+/-",
+  "openingDuels": "OK/OD",
+  "ratingBreakdown": "Составляющие рейтинга 2.1",
+  "ratingKill": "Убийства (30%)",
+  "ratingSurvival": "Выживание (25%)",
+  "ratingDamage": "Урон (20%)",
+  "ratingKast": "KAST (15%)",
+  "ratingImpact": "Импакт (10%)",
+  "avgKillDist": "Дистанция боя",
+  "avgKillDistSub": "ср. дистанция килов",
+  "tkBadge": "ТК",
+  "tkTooltip": "Тимкиллов за матч: {{count}}"
 }

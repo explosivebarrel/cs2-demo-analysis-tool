@@ -315,7 +315,12 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
                     "attempts": p.openingKills + p.openingDeaths,
                     "success": round(p.openingKills / (p.openingKills + p.openingDeaths) * 100, 1)
                     if (p.openingKills + p.openingDeaths) else None},
-        "trades": {"tradeKills": p.tradeKills, "tradedDeaths": p.tradedDeaths},
+        "trades": {
+            "tradeKills": p.tradeKills,
+            "tradedDeaths": p.tradedDeaths,
+            "unpunishedDeaths": max(0, deaths - p.tradedDeaths),
+            "unpunishedDeathPct": round(max(0, deaths - p.tradedDeaths) / deaths * 100, 1) if deaths else 0.0,
+        },
         "multiKills": {"2k": p.multiKills[2], "3k": p.multiKills[3],
                        "4k": p.multiKills[4], "5k": p.multiKills[5],
                        "rounds": p.multiKillRounds},
@@ -341,6 +346,7 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
                      "maxM": round(max(p.killDist) * METERS_PER_UNIT, 1) if p.killDist else None,
                      "buckets": _dist_buckets(p.killDist)},
         "teamDmg": int(p.teamDmg),
+        "teamKills": p.teamKills,
         "weapons": weapons,
         "bySide": by_side,
         "series": series,

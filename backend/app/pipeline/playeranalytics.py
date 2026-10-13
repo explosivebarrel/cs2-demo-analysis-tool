@@ -10,6 +10,7 @@ from collections import defaultdict
 from typing import Any
 
 from .. import config
+from ..weapons import canon
 from .aim_mechanics import VelIndex, _build_vel_index, compute_aim_mechanics
 
 def _sid(v) -> str | None:
@@ -270,6 +271,7 @@ def _classify_duel(
     weapon_fire_ticks: list[int],  # weapon_fire ticks for this attacker in this round
     headshot: bool,
     won: bool,
+    weapon: str = "",
 ) -> tuple[list[str], dict]:
     """
     Classify a single duel and return (error_list, context_dict).
@@ -338,8 +340,12 @@ def _classify_duel(
     # error classification (attacker perspective)
     # NOTE: walking (shift peek) is deliberate play, not an error — tracked as
     # a discipline metric via shiftPeekPct, not tagged here.
+    # Moving shot: pistols and SMGs allow run-and-gun (threshold 170 u/s),
+    # rifles and snipers require counter-strafing (threshold 50 u/s).
+    _, _, cls = canon(weapon)
+    shoot_thresh = 170.0 if cls in ("pistol", "smg") else 50.0
     errors: list[str] = []
-    if attacker_vel > 50:
+    if attacker_vel > shoot_thresh:
         errors.append("moving_shot")
     # being the last one alive is a clutch situation, not an isolation mistake
     if near_ally_dist is not None and near_ally_dist > 800 and alive_allies > 0:
@@ -487,6 +493,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                 a_sid, frame_rows, vel_index, tick,
                 wf_ticks.get((steamid, rn), []),
                 headshot, won,
+                weapon=weapon,
             )
             context["victimVel"] = victim_vel
             # per-duel aim direction error: overshoot / undershoot
@@ -508,26 +515,43 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                     if not first_hit and "missed_first" not in errors:
                         errors.append("missed_first")
                     # passive angle: player was stationary for >1.5s before first fire
-                    # (stood still in exposed position without peeking)
-                    PASSIVE_TICKS = int(ctx.tickrate * 1.5)
-                    passive_window_start = max(0, first_fire - PASSIVE_TICKS)
-                    try:
-                        atk_pre = ticks_df[
-                            (ticks_df["steamid"].astype(str) == steamid) &
-                            (ticks_df["tick"] >= passive_window_start) &
-                            (ticks_df["tick"] < first_fire)
-                        ][["tick", "X", "Y"]].sort_values("tick")
-                        if len(atk_pre) >= 3:
-                            xs = atk_pre["X"].values
-                            ys = atk_pre["Y"].values
-                            max_disp = max(
-                                ((xs[i] - xs[0]) ** 2 + (ys[i] - ys[0]) ** 2) ** 0.5
-                                for i in range(1, len(xs))
-                            )
-                            if max_disp < 40 and "passive_angle" not in errors:
-                                errors.append("passive_angle")
-                    except Exception:
-                        pass
+                    # (stood still in exposed position without peeking).
+                    # Legitimate defensive holding is excluded: CT pre-plant and T post-plant
+                    # earn angleControl, they are not penalized with passive_angle.
+                    is_defending = False
+                    if r_info is not None:
+                        player_side = r_info.get("sides", {}).get(steamid)
+                        if not player_side and rb is not None:
+                            try:
+                                player_side = rb.side_of_team(r_info, rb.team_of(steamid))
+                            except Exception:
+                                pass
+                        plant_tick = r_info.get("plantTick")
+                        if player_side == "CT":
+                            is_defending = (plant_tick is None or tick < plant_tick)
+                        elif player_side == "T":
+                            is_defending = (plant_tick is not None and tick >= plant_tick)
+
+                    if not is_defending:
+                        PASSIVE_TICKS = int(ctx.tickrate * 1.5)
+                        passive_window_start = max(0, first_fire - PASSIVE_TICKS)
+                        try:
+                            atk_pre = ticks_df[
+                                (ticks_df["steamid"].astype(str) == steamid) &
+                                (ticks_df["tick"] >= passive_window_start) &
+                                (ticks_df["tick"] < first_fire)
+                            ][["tick", "X", "Y"]].sort_values("tick")
+                            if len(atk_pre) >= 3:
+                                xs = atk_pre["X"].values
+                                ys = atk_pre["Y"].values
+                                max_disp = max(
+                                    ((xs[i] - xs[0]) ** 2 + (ys[i] - ys[0]) ** 2) ** 0.5
+                                    for i in range(1, len(xs))
+                                )
+                                if max_disp < 40 and "passive_angle" not in errors:
+                                    errors.append("passive_angle")
+                        except Exception:
+                            pass
             except Exception:
                 pass
         else:
@@ -582,7 +606,13 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             errors: list[str] = []
             if victim_flash > 1.5:
                 errors.append("flashed")
-            if victim_vel > 50:
+            v_cls = "rifle"
+            if v_row is not None:
+                v_wname = str(v_row.get("active_weapon_name") or "")
+                if v_wname:
+                    v_cls = canon(v_wname)[2]
+            v_thresh = 170.0 if v_cls in ("pistol", "smg") else 50.0
+            if victim_vel > v_thresh:
                 errors.append("moving")
             if alive_enemies > alive_allies + 1:
                 errors.append("outnumbered")
@@ -895,6 +925,13 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
 
     passive_angle_count = sum(1 for d in attacker_duels if "passive_angle" in d["errors"])
 
+    unpunished_deaths = max(0, total_deaths - traded_deaths)
+    unpunished_death_pct = round(unpunished_deaths / total_deaths * 100, 1) if total_deaths else 0.0
+
+    kill_dists = getattr(p, "killDist", []) or []
+    avg_kill_dist_m = round(sum(kill_dists) / len(kill_dists) * 0.01905, 1) if kill_dists else None
+    max_kill_dist_m = round(max(kill_dists) * 0.01905, 1) if kill_dists else None
+
     return {
         "tradeKillPct": trade_kill_pct,
         "tradedDeathPct": traded_death_pct,
@@ -913,6 +950,10 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         "teamKills": team_kill_count,
         "teamKillRounds": team_kill_rounds,
         "teamKillTicks": team_kill_ticks,
+        "unpunishedDeaths": unpunished_deaths,
+        "unpunishedDeathPct": unpunished_death_pct,
+        "killDistAvgM": avg_kill_dist_m,
+        "killDistMaxM": max_kill_dist_m,
     }
 
 

@@ -100,8 +100,8 @@ function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size, v
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  // world bbox of both participants over the whole episode (2D camera + 3D fit)
-  const geo = useMemo(() => {
+  // raw world bounds of both participants over the whole episode
+  const rawBounds = useMemo(() => {
     const fields = fieldsOf(replay)
     const n = replay.players.length
     const iA = replay.players.findIndex(p => p.steamid === duel.attacker)
@@ -126,29 +126,45 @@ function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size, v
       }
     }
     if (!isFinite(minx)) return null
-    const pad = 140
-    return { minx: minx - pad, maxx: maxx + pad, miny: miny - pad, maxy: maxy + pad, minz: minz - 16, maxz: maxz + 120 }
-  }, [replay, ov, duel, tLoTick, tHiTick])
+    return { minx, maxx, miny, maxy, minz, maxz }
+  }, [replay, duel, tLoTick, tHiTick])
 
   const frameFloat = useMemo(
     () => frameFloatForTick(replay, duel.tick + tMs / 1000 * replay.tickrate),
     [replay, duel, tMs])
 
-  // camera fits both participants over the whole episode (world bbox → base px)
+  // 2D camera: fits both participants with comfortable margin (pad = 120u)
   const cam = useMemo(() => {
-    if (!geo) return null
-    const { minx, maxx, miny, maxy } = geo
+    if (!rawBounds) return null
+    const pad = 120
+    const minx = rawBounds.minx - pad, maxx = rawBounds.maxx + pad
+    const miny = rawBounds.miny - pad, maxy = rawBounds.maxy + pad
     const k = 1 / ov.scale / 1024 * size
     const halfSpan = Math.max(maxx - minx, maxy - miny) * k / 2
     const Z = Math.max(0.8, Math.min(8, size / 2 / Math.max(8, halfSpan)))
     const bx = ((minx + maxx) / 2 - ov.pos_x) * k
     const by = (ov.pos_y - (miny + maxy) / 2) * k
     return { scale: Z, ox: size / 2 - bx * Z, oy: size / 2 - by * Z }
-  }, [geo, ov, size])
+  }, [rawBounds, ov, size])
+
+  // 3D camera: tight bbox around the participants' trajectory barycenter
+  // (pad = 45u covers capsule radius 16u + weapon/effects without pushing camera far away)
+  const bbox3d = useMemo(() => {
+    if (!rawBounds) return null
+    const pad = 45
+    return {
+      minX: rawBounds.minx - pad,
+      minY: rawBounds.miny - pad,
+      minZ: rawBounds.minz,
+      maxX: rawBounds.maxx + pad,
+      maxY: rawBounds.maxy + pad,
+      maxZ: rawBounds.maxz + 72, // 72u is capsule height
+    }
+  }, [rawBounds])
 
   const onDraw3d = useCallback((ctx: CanvasRenderingContext2D, c3: Cam, w: number, h: number) => {
-    drawReplay3D(ctx, w, h, c3, replay, frameFloat, { ov, groundZ: geo?.minz ?? 0 })
-  }, [replay, frameFloat, ov, geo])
+    drawReplay3D(ctx, w, h, c3, replay, frameFloat, { ov, groundZ: rawBounds?.minz ?? 0 })
+  }, [replay, frameFloat, ov, rawBounds])
 
   useEffect(() => {
     const cv = canvasRef.current
@@ -156,20 +172,20 @@ function EpisodeMap({ replay, ov, radarImg, duel, tMs, tLoTick, tHiTick, size, v
     drawFrame(cv, frameFloat, replay, ov, radarImg, cam)
   }, [frameFloat, cam, radarImg, ov, replay, view3d])
 
-  if (!geo || !cam) return <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>—</div>
+  if (!rawBounds || !cam || !bbox3d) return <div style={{ width: size, height: size, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text2)', fontSize: 12 }}>—</div>
   if (view3d) {
-    // wider padding than the 2D camera so the ground plane stays in frame
-    const pad3 = 320
     return (
       <div style={{ width: size, height: size, borderRadius: 8, overflow: 'hidden', background: '#1a1c20', position: 'relative' }}>
-        <Scene3DCanvas width={size} height={size}
-          bbox={{
-            minX: geo.minx - pad3, minY: geo.miny - pad3, minZ: geo.minz - 140,
-            maxX: geo.maxx + pad3, maxY: geo.maxy + pad3, maxZ: geo.maxz + 160,
-          }}
+        <Scene3DCanvas
+          width={size} height={size}
+          bbox={bbox3d}
           groundUrl={mapName ? api.radarUrl(mapName) : undefined}
-          groundAnchor={ov} groundZ={geo.minz}
-          onDraw={onDraw3d} />
+          groundAnchor={ov}
+          groundZ={rawBounds.minz}
+          groundAlpha={0.55}
+          interactive={false}
+          onDraw={onDraw3d}
+        />
       </div>
     )
   }

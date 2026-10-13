@@ -17,8 +17,10 @@ Payload schema (heatmap3d.json.gz):
 """
 import numpy as np
 
-CELL = 32.0
-Z_STEP = 32.0
+from app import config
+
+CELL = config.HM3D_CELL
+Z_STEP = config.HM3D_Z_STEP
 
 
 def _empty(steamids):

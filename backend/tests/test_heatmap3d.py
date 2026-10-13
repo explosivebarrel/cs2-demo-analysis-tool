@@ -47,8 +47,8 @@ def test_voxel_indices_and_bounds():
     ctx = _ctx([
         _row(2000, "aaa", 100.0, 200.0, 32.0),
         _row(2100, "aaa", 100.0, 200.0, 32.0),   # same cell -> count 2
-        _row(2200, "bbb", 132.0, 200.0, 32.0),   # next x cell (32 apart)
-        _row(2300, "bbb", 100.0, 200.0, 64.0),   # next z step
+        _row(2200, "bbb", 116.0, 200.0, 32.0),   # next x cell (16 apart)
+        _row(2300, "bbb", 100.0, 200.0, 40.0),   # next z step (8 apart)
     ])
     out = build_heatmap3d(ctx, _RB, SIDS)
     assert out["minX"] == 100.0 and out["minY"] == 200.0 and out["minZ"] == 32.0
