@@ -1,4 +1,6 @@
-"""Compact replay event stream for the web timeline player."""
+from typing import Any
+
+import pandas as pd
 
 from ..weapons import canon, weapon_id
 
@@ -183,15 +185,14 @@ def build_events(ctx, rb, fb):
     hurt = ctx.ev("player_hurt")
     pbh = ctx.ev("player_bullet_hit")
 
-    # build (tick, attacker_slot) -> (victim_pos_x, victim_pos_y) from player_bullet_hit
-    pbh_map: dict[tuple[int, int], tuple[float, float]] = {}
-    if len(pbh) and "attacker_slot" in pbh.columns and "victim_pos_x" in pbh.columns:
+    # build tick -> list of bullet impacts from player_bullet_hit
+    pbh_by_tick: dict[int, list[tuple[float, float, float | None]]] = {}
+    if len(pbh) and "victim_pos_x" in pbh.columns:
+        has_z = "victim_pos_z" in pbh.columns
         for _, row in pbh.iterrows():
-            key = (int(row["tick"]), int(row["attacker_slot"]))
-            pbh_map[key] = (_f(row["victim_pos_x"]), _f(row["victim_pos_y"]))
-
-    # build player slot lookup: steamid -> slot index (position in fb.players)
-    slot_of: dict[str, int] = {str(s): i for i, s in enumerate(fb.players)}
+            t = int(row["tick"])
+            vz = _f(row["victim_pos_z"]) if has_z and pd.notna(row["victim_pos_z"]) else None
+            pbh_by_tick.setdefault(t, []).append((_f(row["victim_pos_x"]), _f(row["victim_pos_y"]), vz))
 
     if len(hurt):
         for _, h in hurt.iterrows():
@@ -199,23 +200,46 @@ def build_events(ctx, rb, fb):
             if not a_sid:
                 continue
             tick = int(h["tick"])
-            # try real impact point first
-            a_slot = slot_of.get(a_sid)
-            impact = pbh_map.get((tick, a_slot)) if a_slot is not None else None
-            if impact is not None:
-                hx, hy = impact
+            # try real impact point from player_bullet_hit on this tick
+            impacts = pbh_by_tick.get(tick)
+            impact = None
+            if impacts:
+                if len(impacts) == 1:
+                    impact = impacts[0]
+                else:
+                    vx, vy = h.get("user_X"), h.get("user_Y")
+                    if vx is not None and vy is not None:
+                        impact = min(impacts, key=lambda p: (p[0] - vx) ** 2 + (p[1] - vy) ** 2)
+                    else:
+                        impact = impacts[0]
+
+            if impact is not None and impact[2] is not None:
+                hx, hy, hz = impact
             else:
-                # fallback: victim centre position
-                hx = h.get("user_X")
-                hy = h.get("user_Y")
+                # fallback: victim position with hitgroup height offset (user_Z is feet)
+                hx = _f(h.get("user_X"))
+                hy = _f(h.get("user_Y"))
+                hz_raw = h.get("user_Z")
                 if hx is None or hy is None:
                     continue
-                hx, hy = _f(hx), _f(hy)
-            events.append({
+                # hitgroup can be int or string ('generic', 'head', etc.)
+                raw_hg = h.get("hitgroup", 0)
+                try:
+                    hg = int(raw_hg or 0)
+                except (ValueError, TypeError):
+                    hg_map = {"head": 1, "chest": 2, "stomach": 3, "left arm": 4, "right arm": 5, "left leg": 6, "right leg": 7}
+                    hg = hg_map.get(str(raw_hg).lower(), 0)
+                hg_offset = {1: 62.0, 2: 45.0, 3: 32.0, 4: 42.0, 5: 42.0, 6: 15.0, 7: 15.0}.get(hg, 40.0)
+                hz = _f(float(hz_raw) + hg_offset) if hz_raw is not None and pd.notna(hz_raw) else None
+
+            hi_ev: dict[str, Any] = {
                 "t": tick, "ty": "hi",
                 "a": idx(a_sid),
                 "x": hx, "y": hy,
-            })
+            }
+            if hz is not None:
+                hi_ev["z"] = hz
+            events.append(hi_ev)
 
     # shots (muzzle flash tracers) --------------------------------------
     wf = ctx.ev("weapon_fire")
@@ -224,39 +248,52 @@ def build_events(ctx, rb, fb):
         m = wf[wcls.isin(GUN_CLASSES)].copy()
         # weapon_fire has no yaw — find nearest tick in ctx.ticks per player
         ticks = ctx.ticks
+        has_pitch = ticks is not None and "pitch" in ticks.columns
         if ticks is not None and "yaw" in ticks.columns and "steamid" in ticks.columns:
-            import pandas as pd
-            yaw_df = ticks[["tick", "steamid", "yaw"]].copy()
+            cols = ["tick", "steamid", "yaw"] + (["pitch"] if has_pitch else [])
+            yaw_df = ticks[cols].copy()
             yaw_df["steamid"] = yaw_df["steamid"].astype(str)
             yaw_df = yaw_df.drop_duplicates(subset=["tick", "steamid"]).sort_values("tick")
             m["user_steamid"] = m["user_steamid"].astype(str)
             m_sorted = m.sort_values("tick")
             # merge_asof per player: for each shot find nearest tick entry
             parts = []
+            merge_cols = ["tick", "yaw"] + (["pitch"] if has_pitch else [])
             for sid, grp in m_sorted.groupby("user_steamid", sort=False):
                 player_yaw = yaw_df[yaw_df["steamid"] == sid].sort_values("tick")
                 if len(player_yaw) == 0:
                     grp = grp.copy()
                     grp["yaw"] = 0
+                    if has_pitch:
+                        grp["pitch"] = 0.0
                 else:
-                    grp = pd.merge_asof(grp, player_yaw[["tick", "yaw"]],
+                    grp = pd.merge_asof(grp, player_yaw[merge_cols],
                                         on="tick", direction="backward")
                 parts.append(grp)
             m = pd.concat(parts) if parts else m
             yaw_col = "yaw"
+            pitch_col = "pitch" if has_pitch else None
         else:
             m["yaw"] = 0
             yaw_col = "yaw"
+            pitch_col = None
         def _yaw(v):
             try:
                 f = float(v)
                 return int(f) % 360 if f == f else 0  # f==f is False for NaN
             except (TypeError, ValueError):
                 return 0
+        def _pitch(v):
+            try:
+                f = float(v)
+                return round(f, 1) if f == f else 0.0
+            except (TypeError, ValueError):
+                return 0.0
         events.append({"ty": "__shots", "rows": [
             [int(row["tick"]), idx(row.get("user_steamid")),
              _f(row.get("user_X")), _f(row.get("user_Y")),
-             _yaw(row.get(yaw_col))]
+             _yaw(row.get(yaw_col)),
+             _pitch(row.get(pitch_col)) if pitch_col else 0.0]
             for _, row in m.iterrows() if row.get("user_steamid") is not None]})
 
     # grenade trails -----------------------------------------------------
@@ -308,14 +345,14 @@ def build_events(ctx, rb, fb):
                    ("hegrenade_detonate", "hd")):
         for _, e in ctx.ev(ev).iterrows():
             events.append({"t": int(e["tick"]), "ty": ty, "x": _f(e.get("x")),
-                           "y": _f(e.get("y")), "p": idx(e.get("user_steamid"))})
+                           "y": _f(e.get("y")), "z": _f(e.get("z")), "p": idx(e.get("user_steamid"))})
     for ev, ty in (("smokegrenade_expired", "sx"), ("inferno_expire", "fx")):
         for _, e in ctx.ev(ev).iterrows():
             events.append({"t": int(e["tick"]), "ty": ty, "x": _f(e.get("x")),
-                           "y": _f(e.get("y"))})
+                           "y": _f(e.get("y")), "z": _f(e.get("z"))})
     for _, e in ctx.ev("inferno_startburn").iterrows():
         events.append({"t": int(e["tick"]), "ty": "fr", "x": _f(e.get("x")),
-                       "y": _f(e.get("y")), "p": idx(e.get("user_steamid"))})
+                       "y": _f(e.get("y")), "z": _f(e.get("z")), "p": idx(e.get("user_steamid"))})
 
     # player blinds: per-victim events with blind duration in seconds ------
     for _, e in ctx.ev("player_blind").iterrows():
@@ -324,14 +361,15 @@ def build_events(ctx, rb, fb):
 
     # bomb -----------------------------------------------------------------
     for _, e in ctx.ev("bomb_dropped").iterrows():
-        events.append({"t": int(e["tick"]), "ty": "bo"})
+        events.append({"t": int(e["tick"]), "ty": "bo", "p": idx(e.get("user_steamid")),
+                       "x": _f(e.get("user_X")), "y": _f(e.get("user_Y")), "z": _f(e.get("user_Z"))})
     for _, e in ctx.ev("bomb_pickup").iterrows():
         events.append({"t": int(e["tick"]), "ty": "bu", "p": idx(e.get("user_steamid"))})
     for _, e in ctx.ev("bomb_beginplant").iterrows():
         events.append({"t": int(e["tick"]), "ty": "bs", "p": idx(e.get("user_steamid"))})
     for _, e in ctx.ev("bomb_planted").iterrows():
         events.append({"t": int(e["tick"]), "ty": "bp", "p": idx(e.get("user_steamid")),
-                       "x": _f(e.get("user_X")), "y": _f(e.get("user_Y")),
+                       "x": _f(e.get("user_X")), "y": _f(e.get("user_Y")), "z": _f(e.get("user_Z")),
                        "site": int(e.get("site", 0) or 0)})
     for _, e in ctx.ev("bomb_begindefuse").iterrows():
         events.append({"t": int(e["tick"]), "ty": "bz", "p": idx(e.get("user_steamid")),

@@ -13,6 +13,7 @@ import PlayerDuels from '../components/player/PlayerDuels'
 import PlayerWeapons from '../components/player/PlayerWeapons'
 import PlayerMap from '../components/player/PlayerMap'
 import PlayerRounds from '../components/player/PlayerRounds'
+import RatingTooltip from '../components/RatingTooltip'
 
 // ------------------------------------------------------------------ tab types
 type Tab = 'overview' | 'impact' | 'duels' | 'weapons' | 'map' | 'rounds' | 'history'
@@ -224,11 +225,40 @@ function MatchBadge({ metricKey, value, allPlayers, lang }: {
 
 function HeaderCard({ p, allPlayers, lang }: { p: PlayerData; allPlayers: PlayerData[]; lang: 'ru' | 'en' }) {
   const [matchMode, setMatchMode] = useState(false)
-  const metrics: { l: string; v: string; benchKey?: string; matchKey?: keyof PlayerData; raw?: number | null; accent?: boolean }[] = [
-    { l: t('rating'), v: p.rating.toFixed(2), benchKey: 'rating', matchKey: 'rating', raw: p.rating, accent: true },
+  const diff = p.kills - p.deaths
+  const metrics: {
+    l: string
+    v: string
+    customVal?: React.ReactNode
+    color?: string
+    benchKey?: string
+    matchKey?: keyof PlayerData
+    raw?: number | null
+    accent?: boolean
+  }[] = [
+    {
+      l: t('rating'),
+      v: p.rating.toFixed(2),
+      customVal: (
+        <RatingTooltip rating={p.rating} parts={p.ratingParts}>
+          <span style={{ color: 'var(--accent)', cursor: 'help', borderBottom: '1px dotted var(--accent)' }}>
+            {p.rating.toFixed(2)}
+          </span>
+        </RatingTooltip>
+      ),
+      benchKey: 'rating',
+      matchKey: 'rating',
+      raw: p.rating,
+      accent: true,
+    },
     { l: 'RWS',       v: p.rws?.toFixed(1) ?? '—' },
     { l: t('impLabel'), v: p.imp != null ? (p.imp > 0 ? '+' : '') + p.imp.toFixed(2) : '—' },
     { l: t('kd'),     v: p.kd.toFixed(2),   benchKey: 'kd',   matchKey: 'kd',   raw: p.kd },
+    {
+      l: t('diff'),
+      v: diff > 0 ? `+${diff}` : String(diff),
+      color: diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : undefined,
+    },
     { l: t('adr'),    v: p.adr.toFixed(1),  benchKey: 'adr',  matchKey: 'adr',  raw: p.adr },
     { l: t('kast'),   v: p.kast.toFixed(1) + '%', benchKey: 'kast', matchKey: 'kast', raw: p.kast },
     { l: 'HS%',       v: p.hsPct != null ? p.hsPct.toFixed(1) + '%' : '—', benchKey: 'hsPct', matchKey: 'hsPct', raw: p.hsPct },
@@ -260,10 +290,12 @@ function HeaderCard({ p, allPlayers, lang }: { p: PlayerData; allPlayers: Player
             >{t('player:mode.match')}</button>
           </div>
           <div className="flex gap-16 wrap" style={{ fontSize: 13 }}>
-            {metrics.map(({ l, v, benchKey, matchKey, raw, accent }) => (
+            {metrics.map(({ l, v, customVal, color, benchKey, matchKey, raw, accent }) => (
               <div key={l} className="kv">
                 <span className="kv-label">{l}</span>
-                <span className="kv-value" style={accent ? { color: 'var(--accent)' } : {}}>{v}</span>
+                <span className="kv-value" style={color ? { color } : accent ? { color: 'var(--accent)' } : {}}>
+                  {customVal ?? v}
+                </span>
                 {matchMode && matchKey && raw != null
                   ? <MatchBadge metricKey={matchKey} value={raw} allPlayers={allPlayers} lang={lang} />
                   : benchKey && <HeaderBadge metricKey={benchKey} value={raw} lang={lang} />
@@ -418,6 +450,8 @@ export default function PlayerPage() {
                     <Kv label={t('dpr')} value={p.dpr.toFixed(2)} />
                     <Kv label="APR" value={p.apr.toFixed(2)} />
                     <Kv label="ADR" value={p.adr.toFixed(1)} />
+                    <Kv label={t('player:stats.dmgTaken')} value={p.dmgTaken} />
+                    <Kv label={t('player:stats.adrTaken')} value={(p.dmgTaken / Math.max(1, p.series.length)).toFixed(1)} />
                   </div>
                 </Section>
 
@@ -427,9 +461,10 @@ export default function PlayerPage() {
                     <Kv label={t('deaths')} value={p.opening.deaths} />
                     <Kv label="Win%" value={p.opening.success !== null ? p.opening.success.toFixed(1) + '%' : '—'} />
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, marginTop: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(80px, 1fr))', gap: 12, marginTop: 12 }}>
                     <Kv label={t('tradeKills')} value={p.trades.tradeKills} />
                     <Kv label={t('tradedDeaths')} value={p.trades.tradedDeaths} />
+                    <Kv label={t('player:stats.unpunishedDeaths')} value={`${p.trades.unpunishedDeaths ?? Math.max(0, p.deaths - p.trades.tradedDeaths)} (${(p.trades.unpunishedDeathPct ?? (p.deaths ? Math.round((p.deaths - p.trades.tradedDeaths) / p.deaths * 100) : 0)).toFixed(0)}%)`} />
                   </div>
                 </Section>
 
@@ -493,6 +528,13 @@ export default function PlayerPage() {
                   </div>
                 </Section>
 
+                <Section title={t('player:stats.combatDist')}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
+                    <Kv label={t('player:stats.avgDist')} value={p.killDist.avgM != null ? `${p.killDist.avgM.toFixed(1)} m` : '—'} />
+                    <Kv label={t('player:stats.maxDist')} value={p.killDist.maxM != null ? `${p.killDist.maxM.toFixed(1)} m` : '—'} />
+                  </div>
+                </Section>
+
                 <Section title={t('bySide')}>
                   {(['T', 'CT'] as const).map(side => {
                     const s = p.bySide[side]
@@ -532,7 +574,7 @@ export default function PlayerPage() {
               {analytics && (
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 16 }}>
                   <PlayerStrengths player={p} metrics={analytics.metrics} lang={lang} />
-                  <PlayerOverview metrics={analytics.metrics} duels={analytics.duels} playerNames={playerNames} lang={lang} />
+                  <PlayerOverview player={p} metrics={analytics.metrics} duels={analytics.duels} playerNames={playerNames} lang={lang} />
                 </div>
               )}
               {!analytics && !analyticsErr && (

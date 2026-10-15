@@ -77,6 +77,12 @@ def analyze_demo(demo_path: str, did: str, progress=None):
 
     trk.enter("heatmaps")
     hm = build_heatmap(ctx, rb, players, fb, replay)
+    from .heatmap3d import build_heatmap3d
+    try:
+        hm3d = build_heatmap3d(ctx, rb, fb.players)
+    except Exception as hm3d_err:
+        print(f"[{did}] heatmap3d failed: {hm3d_err}", flush=True)
+        hm3d = None
 
     trk.enter("analytics")
     from .playeranalytics import build_player_analytics, build_moments
@@ -111,6 +117,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     }
     heatmap_payload = {
         "layers": hm,
+        # player index order used by every layer's pIdx (FrameBuilder order)
+        "players": list(fb.players),
         "rounds": [{"n": r["n"], "f": r["freezeEndTick"], "e": r["endTick"],
                     "s0": r["sideTeam0"], "w": r["winnerTeam"],
                     "plant": r.get("plantTick")} for r in rb.rounds],
@@ -121,6 +129,8 @@ def analyze_demo(demo_path: str, did: str, progress=None):
     _gz_write(os.path.join(out_dir, "analysis.json.gz"), analysis)
     _gz_write(os.path.join(out_dir, "replay.json.gz"), replay_payload)
     _gz_write(os.path.join(out_dir, "heatmap.json.gz"), heatmap_payload)
+    if hm3d is not None:
+        _gz_write(os.path.join(out_dir, "heatmap3d.json.gz"), hm3d)
     _gz_write(os.path.join(out_dir, "player_analytics.json.gz"), pa)
     _gz_write(os.path.join(out_dir, "chat.json.gz"), chat_messages)
 
@@ -305,7 +315,12 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
                     "attempts": p.openingKills + p.openingDeaths,
                     "success": round(p.openingKills / (p.openingKills + p.openingDeaths) * 100, 1)
                     if (p.openingKills + p.openingDeaths) else None},
-        "trades": {"tradeKills": p.tradeKills, "tradedDeaths": p.tradedDeaths},
+        "trades": {
+            "tradeKills": p.tradeKills,
+            "tradedDeaths": p.tradedDeaths,
+            "unpunishedDeaths": max(0, deaths - p.tradedDeaths),
+            "unpunishedDeathPct": round(max(0, deaths - p.tradedDeaths) / deaths * 100, 1) if deaths else 0.0,
+        },
         "multiKills": {"2k": p.multiKills[2], "3k": p.multiKills[3],
                        "4k": p.multiKills[4], "5k": p.multiKills[5],
                        "rounds": p.multiKillRounds},
@@ -331,6 +346,7 @@ def _player_payload(p, rb, fb, ctx, all_players=None):
                      "maxM": round(max(p.killDist) * METERS_PER_UNIT, 1) if p.killDist else None,
                      "buckets": _dist_buckets(p.killDist)},
         "teamDmg": int(p.teamDmg),
+        "teamKills": p.teamKills,
         "weapons": weapons,
         "bySide": by_side,
         "series": series,
@@ -427,6 +443,12 @@ def _build_analysis(ctx, rb, fb, players, moments=None):
 
     halves = _halves(rb, ctx)
 
+    from .playeranalytics import _build_match_teamkills
+    try:
+        match_teamkills = _build_match_teamkills(ctx, rb)
+    except Exception:
+        match_teamkills = []
+
     meta = {
         "map": ctx.header.get("map_name", "?"),
         "server": ctx.header.get("server_name", ""),
@@ -449,6 +471,7 @@ def _build_analysis(ctx, rb, fb, players, moments=None):
         "halves": halves,
         "knifeRound": getattr(rb, "knife_round", None),
         "moments": moments,
+        "teamKills": match_teamkills,
         "weapons": weapon_id_table(),
     }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useParams, useSearchParams } from 'react-router-dom'
-import { api, AnalysisData, MapOverview, Moment, ReplayData, RoundData } from '../api'
+import { api, AnalysisData, Map3DData, MapOverview, Moment, ReplayData, RoundData } from '../api'
 import { useLang } from '../App'
 import { frameForTickMinus, momentsAround } from '../components/replay/MomentsPanel'
 import LeftDrawer, { DrawerTab } from '../components/replay/LeftDrawer'
@@ -41,6 +41,9 @@ export default function ReplayScreen() {
   const [nadeTrailMode, setNadeTrailMode] = useState<NadeTrailMode>('trail')
   const [nadeOff, setNadeOff] = useState<Set<number>>(new Set())
   const [level, setLevel] = useState('default')
+  const [view3d, setView3d] = useState(() => localStorage.getItem('replay3d') === '1')
+  const [hm3d, setHm3d] = useState<Map3DData | null>(null)
+  const hm3dAsked = useRef(false)
   const [leftTab, setLeftTab] = useState<DrawerTab>('events')
   const [leftOpen, setLeftOpen] = useState(true)
   const [rightOpen, setRightOpen] = useState(true)
@@ -69,6 +72,13 @@ export default function ReplayScreen() {
       .then(setOverview)
       .catch(e => setErr(e.message))
   }, [id])
+
+  // 3D voxel map surface loads lazily, only when the 3D view is actually used
+  useEffect(() => {
+    if (!view3d || !id || hm3dAsked.current) return
+    hm3dAsked.current = true
+    api.heatmap3d(id).then(setHm3d).catch(() => {})
+  }, [view3d, id])
 
   // jump to round from ?round=N URL param once replay is loaded
   useEffect(() => {
@@ -191,6 +201,7 @@ export default function ReplayScreen() {
       else if (e.key === ',') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.max(0, i - 1)] })
       else if (e.key === '.') setSpeed(s => { const i = SPEEDS.indexOf(s); return SPEEDS[Math.min(SPEEDS.length - 1, i + 1)] })
       else if (e.key === '0') setTx({ scale: 1, ox: 0, oy: 0 })
+      else if (e.key === '3') setView3d(v => { localStorage.setItem('replay3d', v ? '0' : '1'); return !v })
       else if (e.key === 'ArrowLeft') { e.preventDefault(); seekSec(-5) }
       else if (e.key === 'ArrowRight') { e.preventDefault(); seekSec(5) }
       else if (e.key === 'h' || e.key === 'H' || e.key === 'р' || e.key === 'Р') setChromeHidden(v => !v)
@@ -272,7 +283,8 @@ export default function ReplayScreen() {
     }}>
       {hasChrome && (
         <TopBar backTo={backTo} onHotkeys={() => setHotkeysOpen(true)}
-          onHideUi={() => setChromeHidden(true)} onFullscreen={toggleFullscreen}>
+          onHideUi={() => setChromeHidden(true)} onFullscreen={toggleFullscreen}
+          view3d={view3d} onToggle3d={() => setView3d(v => { localStorage.setItem('replay3d', v ? '0' : '1'); return !v })}>
           {rounds.length > 0 && (
             <RoundSwitcher
               rounds={rounds}
@@ -304,8 +316,9 @@ export default function ReplayScreen() {
           <MapCanvas
             replay={replay} analysis={analysis} overview={overview}
             frameIdx={frameIdx} tx={tx} setTx={setTx}
-            nadeTrailMode={nadeTrailMode} nadeFilter={nadeOff}
-            level={level} setLevel={setLevel}
+            nadeTrailMode={nadeTrailMode} onTrailMode={setNadeTrailMode}
+            nadeFilter={nadeOff} onToggleNade={toggleNade}
+            level={level} setLevel={setLevel} view3d={view3d} hm3d={hm3d}
           />
         </div>
 
@@ -335,8 +348,6 @@ export default function ReplayScreen() {
           hasMoments={(analysis.moments?.length ?? 0) > 0} onMoment={jumpToMoment}
           time={fmtTime(Math.floor(frameIdx))} duration={fmtTime(totalFrames - 1)}
           speed={speed} onSpeed={setSpeed}
-          nadeFilter={nadeOff} onToggleNade={toggleNade}
-          trailMode={nadeTrailMode} onTrailMode={setNadeTrailMode}
         >
           {winprob.length > 0 ? (
             <div style={{ border: '1px solid var(--border)', borderRadius: 4, overflow: 'hidden' }}>
@@ -371,7 +382,7 @@ export default function ReplayScreen() {
         </BottomBar>
       )}
 
-      {hotkeysOpen && <HotkeysModal onClose={() => setHotkeysOpen(false)} />}
+      {hotkeysOpen && <HotkeysModal onClose={() => setHotkeysOpen(false)} initialMode={view3d ? '3d' : '2d'} />}
     </div>
   )
 }

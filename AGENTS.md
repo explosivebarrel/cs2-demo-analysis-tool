@@ -4,7 +4,7 @@
 анализа демок Counter-Strike 2: статистика игроков, aim-метрики, дуэли, хитмапы,
 реплей-плеер. Ответы пользователю — по-русски, код/идентификаторы/комментарии — по-английски.
 
-Полное описание проекта: [PROJECT.md](PROJECT.md). Методология метрик (алгоритмы, пороги, упрощения): [METRICS.md](METRICS.md). Заметки прошлых сессий: [memory/](memory/).
+Полное описание проекта: [PROJECT.md](PROJECT.md). Методология метрик (алгоритмы, пороги, упрощения): [METRICS.md](METRICS.md); семантика метрик (первичный документ): [METRICS_SPEC.md](METRICS_SPEC.md). Заметки прошлых сессий: [memory/](memory/).
 
 ## Архитектура (не менять принцип)
 
@@ -31,45 +31,53 @@ Leaflet) не установлен и не используется. Не имп
 ### backend/app/
 | Файл | Назначение |
 |---|---|
-| `main.py` | FastAPI: demos CRUD, probe/analyze/status/analysis/heatmap/replay/chat, player analytics, maps, WS `/ws/demos`; job-manager (лимит параллельных анализов, reaper мёртвых воркеров, startup-зачистка осиротевших parsing-статусов) |
-| `worker.py` | CLI-воркер (`python -m app.worker <path> <id> [--probe]`), запускается subprocess'ом из API |
+| `main.py` | FastAPI: demos CRUD, fetch (suggestions), probe/analyze/status/analysis/heatmap/heatmap3d/replay/chat, player analytics + history, maps, settings, autoimport status, WS `/ws/demos`; job-manager (лимит параллельных анализов, reaper мёртвых воркеров, startup-зачистка осиротевших parsing-статусов) |
+| `worker.py` | CLI-воркер (`python -m app.worker <path> <id> [--probe]`), запускается subprocess'ом из API; heartbeat статус-файла каждые 3 с во время длинных фаз |
 | `ingest.py` | приём демок: распаковка `.zst`/`.gz` (потоковая, с лимитом), demo_id по имени_без_архивного_суффикса:размеру_распакованного → дедуп с plain `.dem`; атомарная запись |
-| `autowatch.py` | фоновый автоимпорт: watch-папки (`CS2_WATCH_DIRS`) + FACEIT-поллер (`CS2_FACEIT_API_KEY`/`CS2_FACEIT_PLAYER_ID`); первый скан только запоминает файлы, новые импортирует; колбэк в main.py → probe + авто-анализ |
-| `config.py` | пути, константы таймингов (`FRAME_SECONDS` ← `CS2_FRAME_SECONDS`), автоимпорт-env, `BENCHMARKS` (тиры weak/avg/good/elite) |
-| `storage.py` | реестр демок, status.json (атомарная запись), пути артефактов |
-| `overviews.py` | радары карт с GitHub (MurkyYT/cs2-map-icons), кэш, world→pixel |
+| `autowatch.py` | фоновый автоимпорт: watch-папки (`CS2_WATCH_DIRS`) + FACEIT-поллер (`CS2_FACEIT_API_KEY`/`CS2_FACEIT_PLAYER_ID`, open.faceit.com/data/v4 + Downloads API); окно импорта (`CS2_IMPORT_WINDOW_HOURS`), старьё окна → suggestions; колбэк в main.py → probe + авто-анализ |
+| `settings.py` | runtime-настройки: store/settings.json перекрывает env-дефолты; GET/PUT `/api/settings` (ключ write-only, маскируется); автоперезагрузка autowatch на лету |
+| `suggestions.py` | предложения «скачать и анализировать» из окна импорта (store/suggestions.json, бейдж источника) |
+| `config.py` | пути, константы таймингов (`FRAME_SECONDS` ← `CS2_FRAME_SECONDS`), автоимпорт-env, `BENCHMARKS` (тиры weak/avg/good/elite), `HM3D_SHADES` ← `CS2_HM3D_SHADES`, `RATING_WEIGHTS` |
+| `storage.py` | реестр демок, status.json (атомарная запись), пути артефактов, stage_times.json |
+| `overviews.py` | радары карт с GitHub (MurkyYT/cs2-map-icons), кэш, world→pixel, `?level=lower` |
 | `weapons.py` | канонизация названий оружия (en/ru/class); `canon_key` — ключи совпадают с именами svg в `frontend/public/icons/weapons/` |
-| `pipeline/run.py` | оркестратор: собирает все стадии, пишет 5 артефактов |
-| `pipeline/context.py` | однократная загрузка демо (events, тики с даунсемплом `config.FRAME_SECONDS` ~0.125 с, гранаты) |
+| `pipeline/run.py` | оркестратор: собирает все стадии, пишет 6 артефактов (`analysis`, `replay`, `heatmap`, `heatmap3d` при данных, `player_analytics`, `chat` — все `.json.gz`); IMP-формула дублируется здесь и в playeranalytics |
+| `pipeline/context.py` | однократная загрузка демо (events, тики с даунсемплом `config.FRAME_SECONDS` ~0.125 с, гранаты, is_airborne) |
 | `pipeline/rounds.py` | сегментация раундов, стороны, победители (эвристика!), закупы, opening kills |
-| `pipeline/replayframes.py` | кадры реплея + holds/клатчи/выживание |
-| `pipeline/players.py` | K/D/A, урон, трейды, утилити, KAST |
-| `pipeline/rating.py` | Rating 2.1 (approx), RWS, IMP |
-| `pipeline/playeranalytics.py` | дуэли с тегами ошибок, per-player impact, mapEvents; покадровые эпизоды (позиционная скорость, WASD-вывод, shots), «моменты» с preSec/durSec |
-| `pipeline/aim_mechanics.py` | reaction time, TTK, strafe, crosshair placement, reload/overshoot |
-| `pipeline/winprob.py` | кривая вероятности победы по кадрам |
-| `pipeline/heatmaps.py` | 16 слоёв хитмапов (схемы точек — в докстринге файла) |
-| `pipeline/events.py` | лента событий реплея (киллы, гранаты, бомба, shots) |
+| `pipeline/replayframes.py` | кадры реплея (payload v2) + holds (с z)/клатчи/выживание |
+| `pipeline/players.py` | K/D/A, урон, трейды (списки событий), тимкиллы, утилити, KAST (traded rounds) |
+| `pipeline/rating.py` | Rating 2.1 (approx, RATING_WEIGHTS), RWS, IMP |
+| `pipeline/playeranalytics.py` | дуэли с тегами ошибок, per-player impact, mapEvents, teamkill-эпизоды, moments (clutch/multikill/openingDeath/mistake/teamkill/swing); покадровые эпизоды (позиционная скорость VelIndex, WASD-вывод, shots), «моменты» с preSec/durSec |
+| `pipeline/aim_mechanics.py` | reaction time, TTK, выстрелы в движении, crosshair placement (угол на пике ≤25°), excellent contacts, overshoot/undershoot, reload |
+| `pipeline/winprob.py` | кривая вероятности победы по кадрам (пост-плант: киты, фьюз, активный дефьюз) |
+| `pipeline/heatmaps.py` | 16 слоёв хитмапов, у всех точек z в конце кортежа (схемы — докстринг) |
+| `pipeline/heatmap3d.py` | воксельная сетка позиций для 3D (живые/на земле/в раунде); `shades` подставляется на лету в main.py из `CS2_HM3D_SHADES` |
+| `pipeline/events.py` | лента событий реплея (киллы, гранаты, бомба, shots, вспышки с blind_duration) |
+| `pipeline/progress.py` | benchmark-driven распределение прогресс-бара по stage_times.json; `CS2_PROGRESS_WEIGHTS` |
+| `pipeline/ticksview.py` | VelIndex: скорость центральной разностью по индексу сэмплов на произвольном тике |
 
 ### frontend/src/
 | Файл | Назначение |
 |---|---|
-| `api.ts` | **единственный источник типов** + fetch-клиент; WS в DemosPage |
+| `api.ts` | **единственный источник типов** + fetch-клиент (upload через XHR с onProgress); WS в DemosPage; `Map3DData`/`HeatmapData` — типы артефактов хитмапов |
 | `App.tsx` | роутинг + 2 контекста: `useLang`, `useBenchmarks` |
 | `components/WeaponIcon.tsx` | иконка оружия/гранаты/ножа из `public/icons/weapons/*.svg` (resolveKey с алиасами; нет файла → текст). Иконки — Valve-ассеты из [Juknum/counter-strike-icons](https://github.com/Juknum/counter-strike-icons) |
-| `i18n.ts` | i18next-инициализация + фасад `t()/getLang()/setLang()`; словари в `i18n/locales/{ru,en}/*.json` по namespace (common/demos/match/player/metrics/replay/heatmaps/about), правила — `i18n/README.md` |
-| `pages/DemosPage.tsx` | список/загрузка/статусы демок (WS + fallback-поллинг) |
-| `pages/OverviewPage.tsx` | счёт, скорборд, раунды |
-| `pages/PlayerPage.tsx` | 6 вкладок игрока (компоненты в `components/player/`) |
+| `i18n.ts` | i18next-инициализация + фасад `t()/getLang()/setLang()`; словари в `i18n/locales/{ru,en}/*.json` по namespace (common/demos/match/player/metrics/replay/heatmaps/about/settings), правила — `i18n/README.md` |
+| `pages/DemosPage.tsx` | список/загрузка/статусы демок (WS + fallback-поллинг); batch upload — очередь файлов с прогресс-строками |
+| `pages/OverviewPage.tsx` | счёт, скорборд, раунды, блок тимкиллов |
+| `pages/PlayerPage.tsx` | 7 вкладок игрока (компоненты в `components/player/`, включая PlayerHistory с трендом) |
 | `pages/MetricsPage.tsx` | 21 подстраница aim/duel-метрик (switch по `:key`) |
-| `pages/HeatmapsPage.tsx` | canvas-хитмапы, `decodePoint()` послойно |
-| `pages/ReplayScreen.tsx` | полноэкранный реплей-плеер: layout TopBar/драверы/MapCanvas/BottomBar, playback, хоткеи, fullscreen; компоненты в `components/replay/` (drawFrame, MapCanvas, RoundSwitcher, WinProbGraph, EventLog, LeftDrawer, RightDrawer, NadeDropdown, HotkeysModal), константы кадров и helpers — `lib/replay.ts` |
+| `pages/HeatmapsPage.tsx` | canvas-хитмапы (2D) + переключатель 2D\|3D + 3D-контролы (Детализация, Подложка, Контрастные тайлы, Оттенки тайлов, Прозрачность карты); декодер точек и цвета слоёв — `lib/heatmapLayers.ts` |
+| `components/map3d/` | 3D-режим (свой canvas-рендер без зависимостей): `scene3d.ts` — ортографическая orbit-камера, проекция, аффинный groundMatrix радара, плоскость плотности (квантование в `shades` бакетов, альфа-ступени 0.4..1.0) + облако точек + `drawCapsule3D` (капсулы игроков); `Scene3DCanvas.tsx` — общий орбитальный канвас (хитмапы/реплей/эпизоды): pan строго по земле, yaw инвертирован; `Heatmap3DCanvas.tsx` — 3D-хитмапа (точки слоя + плоскость из `heatmap3d.json.gz`, контрастные тайлы hue+180); `drawReplay3D.ts` — 3D-сцена реплея (капсулы с сектором взгляда, ярлыки оружия/номера/HP/скорости, дуги гранат, трассеры, бомба), зеркалит выбор элементов drawFrame |
+| `pages/ReplayScreen.tsx` | полноэкранный реплей-плеер: layout TopBar/драверы/MapCanvas/BottomBar, playback, хоткеи (3 — 3D), fullscreen; heatmap3d фетчится лениво при первом включении 3D (hm3dAsked); компоненты в `components/replay/` (drawFrame, MapCanvas — 2D/3D, RoundSwitcher, WinProbGraph, EventLog, LeftDrawer, RightDrawer, NadeDropdown, HotkeysModal, MomentsPanel), константы кадров и helpers — `lib/replay.ts` |
+| `lib/heatmapLayers.ts` | цвета слоёв + `decodePoint()` — z читается по длине кортежа (легаси без z → groundZ) |
+| `lib/coords.ts` | все координатные функции (worldToCanvas, zOnLevel, lowerLevelNames) |
 | `benchmarkUtils.ts` | тиры метрик из `/api/benchmarks` |
 
 Маршруты: `/`, `/match/:id`, `/match/:id/player/:steamid[/metrics/:key]`,
-`/match/:id/heatmaps`, `/match/:id/replay`, `/about`. Реплей — отдельный экран, вход —
-кнопка «Реплей» справа в MatchNav (передаёт `state.from` для кнопки «Назад»); вкладка
-чата удалена (backend продолжает писать `chat.json.gz`).
+`/match/:id/heatmaps`, `/match/:id/replay`, `/settings`, `/about`. Реплей — отдельный
+экран, вход — кнопка «Реплей» справа в MatchNav (передаёт `state.from` для кнопки
+«Назад»); вкладка чата удалена (backend продолжает писать `chat.json.gz`).
 
 ## Команды
 
@@ -136,7 +144,9 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
 9. **Dev-режим фронта**: vite проксирует только `/api`, WS не работает — статусы приходят
    fallback-поллингом раз в 10 с. Это не баг.
 10. **Схемы точек хитмапов** — послойные (см. докстринг `heatmaps.py`); фронтовой
-    `decodePoint()` в HeatmapsPage должен соответствовать.
+    `decodePoint()` в `lib/heatmapLayers.ts` должен соответствовать. Z дописывается
+    в КОНЕЦ кортежа каждого слоя — фронт читает его по длине массива (легаси-артефакты
+    без z → fallback на уровень земли). Смена позиции/состава = сломанная совместимость.
 11. **Анализ конкурентно ограничен**: `CS2_MAX_CONCURRENT_ANALYZES` (default 1);
     лимит превышен → `POST /analyze` отвечает 429. При старте API все «parsing»/
     «probing»-статусы помечаются error «interrupted by server restart» (воркеров
@@ -171,6 +181,27 @@ MCP падает с «LockBusy» — это норм (write-lock у MCP), нич
     `max(3, min(preSec, 12))` с (SEEK_BACK_SEC) + автозапуск playback; `momentsAround`
     должна получать тот же lookahead (SEEK_BACK_SEC), иначе свежепрыгнутый момент
     считается «next» и кнопка »/« застревает на нём же. Клик по раунду/скраб — пауза.
+18. **3D-режим** (`components/map3d/`): геометрия сцены (плоскость плотности, массивы
+    точек) пересобирается ТОЛЬКО при смене режима/плотности/фильтров; движение камеры —
+    только перепроецирование (никаких пересборок/пересчётов агрегатов в onDraw).
+    Радар-подложка в 3D — аффинный `groundMatrix` (ортопроекция плоскости линейна),
+    якорь — overview pos_x/pos_y/scale, изображение 1024×1024. drawReplay3D зеркалит
+    выбор элементов drawFrame (те же окна/фейды) — менять синхронно. UI при
+    переключении 2D↔3D не меняется (слои/уровень/игроки общие). heatmap3d в реплее
+    фетчится лениво при первом включении 3D (hm3dAsked в ReplayScreen). Pan
+    (Shift/ПКМ-drag) двигает точку вращения ТОЛЬКО по земле (cz не меняется никогда),
+    горизонтальный yaw инвертирован (`cam.yaw -= dx`). `shades` тайлов: UI-слайдер
+    (HeatmapsPage `shadesNum`) → `drawDensityPlane`; серверный дефолт — env
+    `CS2_HM3D_SHADES`, вставляется на лету в `/heatmap3d` (реанализ не нужен).
+    Альфа-ступени бакетов: `alpha*(0.4+0.6*((bucket+1)/buckets))` — равномерно
+    0.4..1.0, иначе при малых shades нижний бакет уходит в черноту.
+19. **Сектор взгляда в 3D-реплее** (`drawReplay3D.sectorPiece`): контур arc band
+    обязан обходиться без самопересечений — стартовая капа идёт inner→outer
+    (`capArc(a0, -1).reverse()`); иначе nonzero fill красит пустоту БЕЗ ошибок
+    (баг не виден ни в консоли, ни в валидации точек). Куски сектора делятся по
+    depth относительно оси игрока: back рисуются до капсулы, front — после.
+    Контур перед правкой прогонять изоляционным тестом (canvas 200×200 + fill +
+    getImageData в центре полосы).
 
 ## Стиль работы
 

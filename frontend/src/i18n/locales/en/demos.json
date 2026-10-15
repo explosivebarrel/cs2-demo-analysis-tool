@@ -1,7 +1,10 @@
 {
   "notAnalyzed": "Not analyzed",
-  "dropHere": "Drop a .dem / .dem.zst / .gz file here or",
-  "chooseFile": "choose file",
+  "dropHere": "Drop .dem / .dem.zst / .gz files here or",
+  "chooseFile": "choose files",
+  "uploading": "Uploading",
+  "uploadsTitle": "Uploading files",
+  "dismissError": "Dismiss",
   "uploadErrorArchive": "Could not read file. If it's inside an archive — extract it to disk first.",
   "uploadErrorGeneric": "Upload failed",
   "srcWatch": "folder",

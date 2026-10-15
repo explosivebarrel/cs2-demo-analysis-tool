@@ -378,6 +378,15 @@ def heatmap(did: str):
     return _read_artifact(did, "heatmap.json.gz")
 
 
+@app.get("/api/demos/{did}/heatmap3d")
+def heatmap3d(did: str):
+    _find_demo(did)
+    data = _read_artifact(did, "heatmap3d.json.gz")
+    # shading levels are a runtime knob (CS2_HM3D_SHADES), applied on serve
+    data["shades"] = config.HM3D_SHADES
+    return data
+
+
 @app.get("/api/demos/{did}/replay")
 def replay(did: str):
     _find_demo(did)

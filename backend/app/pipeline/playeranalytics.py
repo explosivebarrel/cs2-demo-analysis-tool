@@ -9,8 +9,9 @@ import math
 from collections import defaultdict
 from typing import Any
 
-from .aim_mechanics import compute_aim_mechanics
-
+from .. import config
+from ..weapons import canon
+from .aim_mechanics import VelIndex, _build_vel_index, compute_aim_mechanics
 
 def _sid(v) -> str | None:
     if v is None:
@@ -28,21 +29,6 @@ def _f(v, default: float = 0.0) -> float:
 
 
 # ------------------------------------------------------------------ tick helpers
-
-def _build_vel_lookup(ticks_df, tickrate: float) -> dict:
-    """Build (tick, steamid) -> velocity (u/s) lookup from full ticks DataFrame."""
-    try:
-        pos = ticks_df[["tick", "steamid", "X", "Y"]].copy()
-        pos["steamid"] = pos["steamid"].astype(str)
-        pos = pos.sort_values(["steamid", "tick"])
-        pos["dx"] = pos.groupby("steamid")["X"].diff().fillna(0.0)
-        pos["dy"] = pos.groupby("steamid")["Y"].diff().fillna(0.0)
-        pos["dtick"] = pos.groupby("steamid")["tick"].diff().fillna(1.0).clip(lower=1)
-        pos["vel"] = (pos["dx"] ** 2 + pos["dy"] ** 2).pow(0.5) / pos["dtick"] * tickrate
-        return pos.set_index(["tick", "steamid"])["vel"].to_dict()
-    except Exception:
-        return {}
-
 
 def _build_ticks_by_tick(ticks_df) -> dict:
     """Index ticks DataFrame by tick value for O(1) frame lookups."""
@@ -162,6 +148,44 @@ def _nearest_tick(ticks_by_tick: dict, target: int, sorted_keys: list[int] | Non
     return ticks_by_tick[best]
 
 
+def _sid_tick_arrays(df, sid_col: str):
+    """Sorted (tick array, sid list) for one event frame — shot layer input."""
+    import numpy as _np
+    if df is None or not len(df):
+        return _np.empty(0, dtype="int64"), []
+    d2 = df.copy()
+    d2["sid"] = d2[sid_col].map(_sid)
+    d2 = d2[d2["sid"].notna()].sort_values("tick")
+    return d2["tick"].to_numpy(dtype="int64"), d2["sid"].tolist()
+
+
+def _episode_shots(wf_tick_arr, wf_sid_arr, hurt_tick_arr, hurt_sid_arr,
+                   t_lo: int, t_hi: int, tick: int, sids: set,
+                   tickrate: float) -> list[dict]:
+    """weapon_fire shots of the participants in the window, hit-marked."""
+    import numpy as _np
+    shots: list[dict] = []
+    if not len(wf_tick_arr):
+        return shots
+    lo = int(_np.searchsorted(wf_tick_arr, t_lo))
+    hi = int(_np.searchsorted(wf_tick_arr, t_hi, side="right"))
+    hit_window = int(tickrate * 0.15)
+    for i in range(lo, hi):
+        sid = wf_sid_arr[i]
+        if sid not in sids:
+            continue
+        st = int(wf_tick_arr[i])
+        hit = False
+        j = int(_np.searchsorted(hurt_tick_arr, st)) if len(hurt_tick_arr) else 0
+        while j < len(hurt_tick_arr) and hurt_tick_arr[j] <= st + hit_window:
+            if hurt_sid_arr[j] == sid:
+                hit = True
+                break
+            j += 1
+        shots.append({"t": round((st - tick) / tickrate * 1000), "sid": sid, "hit": hit})
+    return shots
+
+
 # ------------------------------------------------------------------ duel classifier
 
 def _compute_duel_aim_error(
@@ -242,17 +266,18 @@ def _compute_duel_aim_error(
 def _classify_duel(
     attacker_sid: str,
     frame_rows: dict,  # steamid -> row at kill tick
-    vel_lookup: dict,
+    vel_index: "VelIndex",
     kill_tick: int,
     weapon_fire_ticks: list[int],  # weapon_fire ticks for this attacker in this round
     headshot: bool,
     won: bool,
+    weapon: str = "",
 ) -> tuple[list[str], dict]:
     """
     Classify a single duel and return (error_list, context_dict).
 
     frame_rows: {steamid: row} at the kill tick.
-    vel_lookup: (tick, steamid) -> velocity.
+    vel_index: positional velocity at arbitrary event ticks.
     weapon_fire_ticks: sorted list of weapon_fire ticks for attacker.
     """
     a_row = frame_rows.get(attacker_sid)
@@ -262,7 +287,7 @@ def _classify_duel(
     # vice versa), which systematically mislabels moving_shot / shift peek
     shot_tick = max((t for t in weapon_fire_ticks if t <= kill_tick), default=None)
     vel_tick = shot_tick if shot_tick is not None else kill_tick
-    attacker_vel = round(_f(vel_lookup.get((vel_tick, attacker_sid), 0.0)), 1)
+    attacker_vel = round(vel_index.at(vel_tick, attacker_sid), 1)
 
     # attacker flash duration
     attacker_flash = 0.0
@@ -315,8 +340,12 @@ def _classify_duel(
     # error classification (attacker perspective)
     # NOTE: walking (shift peek) is deliberate play, not an error — tracked as
     # a discipline metric via shiftPeekPct, not tagged here.
+    # Moving shot: pistols and SMGs allow run-and-gun (threshold 170 u/s),
+    # rifles and snipers require counter-strafing (threshold 50 u/s).
+    _, _, cls = canon(weapon)
+    shoot_thresh = 170.0 if cls in ("pistol", "smg") else 50.0
     errors: list[str] = []
-    if attacker_vel > 50:
+    if attacker_vel > shoot_thresh:
         errors.append("moving_shot")
     # being the last one alive is a clutch situation, not an isolation mistake
     if near_ally_dist is not None and near_ally_dist > 800 and alive_allies > 0:
@@ -352,7 +381,7 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
 
     kills_df = kills_df.sort_values("tick")
 
-    vel_lookup = _build_vel_lookup(ticks_df, ctx.tickrate)
+    vel_index = _build_vel_index(ticks_df, ctx.tickrate)
     ticks_by_tick = _build_ticks_by_tick(ticks_df)
 
     # round lookup by tick — used for both kills and weapon_fire
@@ -397,41 +426,8 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             enemy_hurt_ticks.add(int(t))
 
     # all weapon_fire / hurt rows (sorted tick arrays) for episode shot layers
-    import numpy as _np2
-
-    def _sid_tick_arrays(df, sid_col: str):
-        if not len(df):
-            return _np2.empty(0, dtype="int64"), []
-        d2 = df.copy()
-        d2["sid"] = d2[sid_col].map(_sid)
-        d2 = d2[d2["sid"].notna()].sort_values("tick")
-        return d2["tick"].to_numpy(dtype="int64"), d2["sid"].tolist()
-
     wf_tick_arr, wf_sid_arr = _sid_tick_arrays(wf_df, "user_steamid")
     hurt_tick_arr, hurt_sid_arr = _sid_tick_arrays(hurt_df, "attacker_steamid")
-
-    def _episode_shots(t_lo: int, t_hi: int, tick: int, sids: set) -> list[dict]:
-        """weapon_fire shots of the duel participants in the window, hit-marked."""
-        shots: list[dict] = []
-        if not len(wf_tick_arr):
-            return shots
-        lo = int(_np2.searchsorted(wf_tick_arr, t_lo))
-        hi = int(_np2.searchsorted(wf_tick_arr, t_hi, side="right"))
-        hit_window = int(ctx.tickrate * 0.15)
-        for i in range(lo, hi):
-            sid = wf_sid_arr[i]
-            if sid not in sids:
-                continue
-            st = int(wf_tick_arr[i])
-            hit = False
-            j = int(_np2.searchsorted(hurt_tick_arr, st)) if len(hurt_tick_arr) else 0
-            while j < len(hurt_tick_arr) and hurt_tick_arr[j] <= st + hit_window:
-                if hurt_sid_arr[j] == sid:
-                    hit = True
-                    break
-                j += 1
-            shots.append({"t": round((st - tick) / ctx.tickrate * 1000), "sid": sid, "hit": hit})
-        return shots
 
     # jump ticks for this player (player_jump event)
     jump_ticks: set[int] = set()
@@ -459,9 +455,14 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             continue
 
         tick = int(k["tick"])
+        # a duel is an in-round engagement against an enemy: warmup/knife-round
+        # kills are counted nowhere else, suicides and teamkills are not duels
+        rn = _round_of(tick)
+        if rn is None or a_sid == v_sid \
+                or rb.steamid_team.get(a_sid) == rb.steamid_team.get(v_sid):
+            continue
         weapon = str(k.get("weapon", ""))
         headshot = bool(k.get("headshot"))
-        rn = _round_of(tick) or 0
         won = (a_sid == steamid)
 
         # timestamp from round start
@@ -484,14 +485,15 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                 pass
 
         # victim velocity
-        victim_vel = round(_f(vel_lookup.get((tick, v_sid), 0.0)), 1)
+        victim_vel = round(vel_index.at(tick, v_sid), 1)
 
         # classify (only meaningful when player is attacker)
         if won:
             errors, context = _classify_duel(
-                a_sid, frame_rows, vel_lookup, tick,
+                a_sid, frame_rows, vel_index, tick,
                 wf_ticks.get((steamid, rn), []),
                 headshot, won,
+                weapon=weapon,
             )
             context["victimVel"] = victim_vel
             # per-duel aim direction error: overshoot / undershoot
@@ -513,33 +515,50 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
                     if not first_hit and "missed_first" not in errors:
                         errors.append("missed_first")
                     # passive angle: player was stationary for >1.5s before first fire
-                    # (stood still in exposed position without peeking)
-                    PASSIVE_TICKS = int(ctx.tickrate * 1.5)
-                    passive_window_start = max(0, first_fire - PASSIVE_TICKS)
-                    try:
-                        atk_pre = ticks_df[
-                            (ticks_df["steamid"].astype(str) == steamid) &
-                            (ticks_df["tick"] >= passive_window_start) &
-                            (ticks_df["tick"] < first_fire)
-                        ][["tick", "X", "Y"]].sort_values("tick")
-                        if len(atk_pre) >= 3:
-                            xs = atk_pre["X"].values
-                            ys = atk_pre["Y"].values
-                            max_disp = max(
-                                ((xs[i] - xs[0]) ** 2 + (ys[i] - ys[0]) ** 2) ** 0.5
-                                for i in range(1, len(xs))
-                            )
-                            if max_disp < 40 and "passive_angle" not in errors:
-                                errors.append("passive_angle")
-                    except Exception:
-                        pass
+                    # (stood still in exposed position without peeking).
+                    # Legitimate defensive holding is excluded: CT pre-plant and T post-plant
+                    # earn angleControl, they are not penalized with passive_angle.
+                    is_defending = False
+                    if r_info is not None:
+                        player_side = r_info.get("sides", {}).get(steamid)
+                        if not player_side and rb is not None:
+                            try:
+                                player_side = rb.side_of_team(r_info, rb.team_of(steamid))
+                            except Exception:
+                                pass
+                        plant_tick = r_info.get("plantTick")
+                        if player_side == "CT":
+                            is_defending = (plant_tick is None or tick < plant_tick)
+                        elif player_side == "T":
+                            is_defending = (plant_tick is not None and tick >= plant_tick)
+
+                    if not is_defending:
+                        PASSIVE_TICKS = int(ctx.tickrate * 1.5)
+                        passive_window_start = max(0, first_fire - PASSIVE_TICKS)
+                        try:
+                            atk_pre = ticks_df[
+                                (ticks_df["steamid"].astype(str) == steamid) &
+                                (ticks_df["tick"] >= passive_window_start) &
+                                (ticks_df["tick"] < first_fire)
+                            ][["tick", "X", "Y"]].sort_values("tick")
+                            if len(atk_pre) >= 3:
+                                xs = atk_pre["X"].values
+                                ys = atk_pre["Y"].values
+                                max_disp = max(
+                                    ((xs[i] - xs[0]) ** 2 + (ys[i] - ys[0]) ** 2) ** 0.5
+                                    for i in range(1, len(xs))
+                                )
+                                if max_disp < 40 and "passive_angle" not in errors:
+                                    errors.append("passive_angle")
+                        except Exception:
+                            pass
             except Exception:
                 pass
         else:
             # player is victim — classify from victim's perspective
             a_row = frame_rows.get(a_sid)
             v_row = frame_rows.get(v_sid)
-            a_vel = round(_f(vel_lookup.get((tick, a_sid), 0.0)), 1)
+            a_vel = round(vel_index.at(tick, a_sid), 1)
             a_walking = False
             if a_row is not None:
                 try:
@@ -587,7 +606,13 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             errors: list[str] = []
             if victim_flash > 1.5:
                 errors.append("flashed")
-            if victim_vel > 50:
+            v_cls = "rifle"
+            if v_row is not None:
+                v_wname = str(v_row.get("active_weapon_name") or "")
+                if v_wname:
+                    v_cls = canon(v_wname)[2]
+            v_thresh = 170.0 if v_cls in ("pistol", "smg") else 50.0
+            if victim_vel > v_thresh:
                 errors.append("moving")
             if alive_enemies > alive_allies + 1:
                 errors.append("outnumbered")
@@ -612,10 +637,12 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
             )
             window = int(3.0 * ctx.tickrate)
             shots = _episode_shots(
+                wf_tick_arr, wf_sid_arr, hurt_tick_arr, hurt_sid_arr,
                 max(r_info["freezeEndTick"], tick - window // 2),
                 min(r_info["endTick"], tick + window // 2),
                 tick,
                 {a_sid, v_sid} - {None},
+                ctx.tickrate,
             )
         else:
             frames = []
@@ -638,6 +665,200 @@ def _build_duels(ctx, rb, fb, players: dict, steamid: str) -> list[dict]:
         })
 
     return duels
+
+
+# ------------------------------------------------------------------ teamkills
+
+def _build_teamkills(ctx, rb, steamid: str) -> list[dict]:
+    """Teamkill episodes where steamid is the attacker.
+
+    Mirrors duel episodes (frames/shots/context) so the UI drill-down works,
+    but carries no won/errors classification — a teamkill is not a duel.
+    """
+    ticks_df = ctx.ticks
+    if ticks_df is None or not len(ticks_df):
+        return []
+    kills_df = ctx.ev("player_death")
+    if not len(kills_df):
+        return []
+    kills_df = kills_df.sort_values("tick")
+
+    vel_index = _build_vel_index(ticks_df, ctx.tickrate)
+    ticks_by_tick = _build_ticks_by_tick(ticks_df)
+
+    import numpy as _np
+    fe_np = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
+    end_np = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
+    round_ns = [r["n"] for r in rb.rounds]
+
+    def _round_of(t: int):
+        i = int(_np.searchsorted(fe_np, t, side="right")) - 1
+        if i < 0 or t > end_np[i]:
+            return None
+        return round_ns[i]
+
+    wf_df = ctx.ev("weapon_fire")
+    hurt_df = ctx.ev("player_hurt")
+    wf_tick_arr, wf_sid_arr = _sid_tick_arrays(wf_df, "user_steamid")
+    hurt_tick_arr, hurt_sid_arr = _sid_tick_arrays(hurt_df, "attacker_steamid")
+
+    jump_ticks: set[int] = set()
+    jmp_df = ctx.ev("player_jump")
+    if len(jmp_df):
+        for col in ("user_steamid", "steamid"):
+            if col in jmp_df.columns:
+                for _, jrow in jmp_df[jmp_df[col].astype(str) == steamid].iterrows():
+                    jump_ticks.add(int(jrow["tick"]))
+                break
+
+    round_map = {r["n"]: r for r in rb.rounds}
+    sorted_tick_keys = sorted(ticks_by_tick.keys()) if ticks_by_tick else []
+
+    episodes: list[dict] = []
+    for _, k in kills_df.iterrows():
+        a_sid = _sid(k.get("attacker_steamid"))
+        v_sid = _sid(k.get("user_steamid"))
+        if not (a_sid and v_sid) or a_sid != steamid or a_sid == v_sid:
+            continue
+        if rb.steamid_team.get(a_sid) != rb.steamid_team.get(v_sid):
+            continue
+        tick = int(k["tick"])
+        rn = _round_of(tick)
+        if rn is None:
+            continue
+        r_info = round_map.get(rn)
+        ts = round((tick - r_info["freezeEndTick"]) / ctx.tickrate, 2) if r_info else 0.0
+
+        frame = _nearest_tick(ticks_by_tick, tick, sorted_tick_keys)
+        frame_rows: dict = {}
+        if frame is not None:
+            try:
+                for _, frow in frame.iterrows():
+                    fsid = _sid(frow.get("steamid"))
+                    if fsid:
+                        frame_rows[fsid] = frow
+            except Exception:
+                pass
+
+        attacker_vel = round(vel_index.at(tick, a_sid), 1)
+        victim_vel = round(vel_index.at(tick, v_sid), 1)
+
+        # alive counts around the killer, from the tick frame's own team nums
+        a_team = -1
+        if frame_rows.get(a_sid) is not None:
+            try:
+                a_team = int(frame_rows[a_sid].get("team_num", -1))
+            except (TypeError, ValueError):
+                pass
+        alive_allies = 0
+        alive_enemies = 0
+        near_ally_dist = None
+        vx = _f(frame_rows[v_sid]["X"]) if frame_rows.get(v_sid) is not None else 0.0
+        vy = _f(frame_rows[v_sid]["Y"]) if frame_rows.get(v_sid) is not None else 0.0
+        for sid2, r2 in frame_rows.items():
+            if sid2 in (a_sid, v_sid):
+                continue
+            try:
+                alive2 = bool(r2.get("is_alive", False))
+                team2 = int(r2.get("team_num", -1))
+            except (TypeError, ValueError):
+                continue
+            if not alive2:
+                continue
+            if team2 == a_team:
+                alive_allies += 1
+                dx = _f(r2.get("X", 0)) - vx
+                dy = _f(r2.get("Y", 0)) - vy
+                d = (dx * dx + dy * dy) ** 0.5
+                if near_ally_dist is None or d < near_ally_dist:
+                    near_ally_dist = d
+            else:
+                alive_enemies += 1
+        a_walking = False
+        if frame_rows.get(a_sid) is not None:
+            try:
+                a_walking = bool(frame_rows[a_sid].get("is_walking"))
+            except (TypeError, ValueError):
+                pass
+
+        context = {
+            "nearAllyDist": round(near_ally_dist, 1) if near_ally_dist is not None else None,
+            "flashDur": 0.0,
+            "attackerVel": attacker_vel,
+            "victimVel": victim_vel,
+            "aliveAllies": alive_allies,
+            "aliveEnemies": alive_enemies,
+            "attackerWalking": a_walking,
+        }
+
+        if r_info is not None:
+            frames = _build_duel_frames(
+                ticks_df, steamid, tick,
+                r_info["freezeEndTick"], r_info["endTick"],
+                ctx.tickrate,
+                jump_ticks=jump_ticks,
+            )
+            window = int(3.0 * ctx.tickrate)
+            shots = _episode_shots(
+                wf_tick_arr, wf_sid_arr, hurt_tick_arr, hurt_sid_arr,
+                max(r_info["freezeEndTick"], tick - window // 2),
+                min(r_info["endTick"], tick + window // 2),
+                tick,
+                {a_sid, v_sid} - {None},
+                ctx.tickrate,
+            )
+        else:
+            frames = []
+            shots = []
+
+        episodes.append({
+            "round": rn,
+            "tick": tick,
+            "timestamp": ts,
+            "attacker": a_sid,
+            "victim": v_sid,
+            "weapon": str(k.get("weapon", "")),
+            "headshot": bool(k.get("headshot")),
+            "context": context,
+            "frames": frames,
+            "shots": shots,
+        })
+
+    return episodes
+
+
+def _build_match_teamkills(ctx, rb) -> list[dict]:
+    """Match-level teamkill list (light, no frames) for the overview page."""
+    kills_df = ctx.ev("player_death")
+    if kills_df is None or not len(kills_df):
+        return []
+    kills_df = kills_df.sort_values("tick")
+
+    import numpy as _np
+    fe_np = _np.array([r["freezeEndTick"] for r in rb.rounds], dtype="int64")
+    end_np = _np.array([r["endTick"] for r in rb.rounds], dtype="int64")
+
+    out: list[dict] = []
+    for _, k in kills_df.iterrows():
+        a_sid = _sid(k.get("attacker_steamid"))
+        v_sid = _sid(k.get("user_steamid"))
+        if not (a_sid and v_sid) or a_sid == v_sid:
+            continue
+        if rb.steamid_team.get(a_sid) != rb.steamid_team.get(v_sid):
+            continue
+        tick = int(k["tick"])
+        i = int(_np.searchsorted(fe_np, tick, side="right")) - 1
+        if i < 0 or tick > end_np[i]:
+            continue
+        out.append({
+            "round": rb.rounds[i]["n"],
+            "tick": tick,
+            "attacker": a_sid,
+            "victim": v_sid,
+            "weapon": str(k.get("weapon", "")),
+            "headshot": bool(k.get("headshot")),
+        })
+    return out
 
 
 # ------------------------------------------------------------------ metrics
@@ -663,16 +884,25 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
     attacker_duels = [d for d in duels if d["won"]]
     total_duels = len(attacker_duels)
 
+    # overshoot by the duel tag — the same episodes the metrics page lists
+    overshoot_count = sum(1 for d in duels if "overshoot" in d["errors"])
+
     # shift peek is deliberate play (not an error tag) — read it from context
     shift_peek_count = sum(
         1 for d in attacker_duels if d.get("context", {}).get("attackerWalking"))
     isolated_count = sum(1 for d in duels if "isolated" in d["errors"])
 
-    trade_kill_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedKill"))
-    traded_death_rounds = sorted(n for n, pr in p.rounds.items() if pr.get("tradedDeath"))
-    # ticks of the actual trade-kill / traded-death events for precise duel matching
-    trade_kill_ticks = sorted(int(pr["tradedKill"]) for pr in p.rounds.values() if pr.get("tradedKill") and pr["tradedKill"] is not True)
-    traded_death_ticks = sorted(int(pr["tradedDeath"]) for pr in p.rounds.values() if pr.get("tradedDeath") and pr["tradedDeath"] is not True)
+    trade_kill_events = getattr(p, "tradeKillEvents", []) or []
+    traded_death_events = getattr(p, "tradedDeathEvents", []) or []
+    trade_kill_rounds = sorted({rn for rn, _ in trade_kill_events})
+    traded_death_rounds = sorted({rn for rn, _ in traded_death_events})
+    trade_kill_ticks = sorted(t for _, t in trade_kill_events)
+    traded_death_ticks = sorted(t for _, t in traded_death_events)
+
+    team_kill_events = getattr(p, "teamKillEvents", []) or []
+    team_kill_count = getattr(p, "teamKills", 0)
+    team_kill_rounds = sorted({rn for rn, _ in team_kill_events})
+    team_kill_ticks = sorted(t for _, t in team_kill_events)
 
     trade_kill_pct = round(trade_kills / total_kills * 100, 1) if total_kills else 0.0
     traded_death_pct = round(traded_deaths / total_deaths * 100, 1) if total_deaths else 0.0
@@ -695,6 +925,13 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
 
     passive_angle_count = sum(1 for d in attacker_duels if "passive_angle" in d["errors"])
 
+    unpunished_deaths = max(0, total_deaths - traded_deaths)
+    unpunished_death_pct = round(unpunished_deaths / total_deaths * 100, 1) if total_deaths else 0.0
+
+    kill_dists = getattr(p, "killDist", []) or []
+    avg_kill_dist_m = round(sum(kill_dists) / len(kill_dists) * 0.01905, 1) if kill_dists else None
+    max_kill_dist_m = round(max(kill_dists) * 0.01905, 1) if kill_dists else None
+
     return {
         "tradeKillPct": trade_kill_pct,
         "tradedDeathPct": traded_death_pct,
@@ -705,10 +942,18 @@ def _build_metrics(p, series: list[dict], duels: list[dict]) -> dict:
         "isolatedPct": isolated_pct,
         "mainProblem": main_problem,
         "passiveAngleCount": passive_angle_count,
+        "overshootCount": overshoot_count,
         "tradeKillRounds": trade_kill_rounds,
         "tradedDeathRounds": traded_death_rounds,
         "tradeKillTicks": trade_kill_ticks,
         "tradedDeathTicks": traded_death_ticks,
+        "teamKills": team_kill_count,
+        "teamKillRounds": team_kill_rounds,
+        "teamKillTicks": team_kill_ticks,
+        "unpunishedDeaths": unpunished_deaths,
+        "unpunishedDeathPct": unpunished_death_pct,
+        "killDistAvgM": avg_kill_dist_m,
+        "killDistMaxM": max_kill_dist_m,
     }
 
 
@@ -964,6 +1209,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
         for steamid in fb.players:
             result[steamid] = {
                 "duels": [],
+                "teamKills": [],
                 "metrics": {
                     "tradeKillPct": 0.0, "tradedDeathPct": 0.0,
                     "openingWinPct": 0.0, "flashEfficiency": 0.0,
@@ -972,13 +1218,15 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                     "passiveAngleCount": 0,
                     "tradeKillRounds": [], "tradedDeathRounds": [],
                     "tradeKillTicks": [], "tradedDeathTicks": [],
+                    "teamKills": 0, "teamKillRounds": [], "teamKillTicks": [],
                     "counterStrafeErrors": 0, "idealStrafePct": 0.0,
                     "firstBulletAcc": 0.0, "firstBulletShots": [],
                     "ttk_ms": 0.0,
                     "reloadErrors": 0, "angleControlCount": 0,
                     "angleControlByPhase": {"early": 0, "mid": 0, "late": 0},
                     "reactionTimeMs": 0.0, "overshootCount": 0,
-                    "excellentContacts": 0, "crosshairPlacementPct": 0.0,
+                    "excellentContacts": 0, "excellentContactTicks": [], "crosshairGoodTicks": [],
+                    "crosshairPlacementPct": 0.0,
                     "successfulReactionTimeMs": 0.0,
                     "reactionDeltas": [], "reactionDeltasHit": [],
                 },
@@ -1003,23 +1251,19 @@ def build_player_analytics(ctx, rb, fb, players: dict,
         except Exception:
             duels = []
 
+        try:
+            tk_episodes = _build_teamkills(ctx, rb, steamid)
+        except Exception:
+            tk_episodes = []
+
         # tag duel episodes that correspond to actual trade kills / traded deaths
         trade_kill_tick_set: set[int] = set()
         traded_death_tick_set: set[int] = set()
         if p is not None:
-            for pr in p.rounds.values():
-                tk = pr.get("tradedKill")
-                if tk and tk is not True:
-                    try:
-                        trade_kill_tick_set.add(int(tk))
-                    except (TypeError, ValueError):
-                        pass
-                td = pr.get("tradedDeath")
-                if td and td is not True:
-                    try:
-                        traded_death_tick_set.add(int(td))
-                    except (TypeError, ValueError):
-                        pass
+            for _, tk in getattr(p, "tradeKillEvents", []) or []:
+                trade_kill_tick_set.add(int(tk))
+            for _, td in getattr(p, "tradedDeathEvents", []) or []:
+                traded_death_tick_set.add(int(td))
         for d in duels:
             d["isTradeKill"] = d["tick"] in trade_kill_tick_set
             d["isTradedDeath"] = d["tick"] in traded_death_tick_set
@@ -1076,7 +1320,8 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "angleControlByPhase": {"early": 0, "mid": 0, "late": 0},
                 "reactionTimeMs": 0.0, "overshootCount": 0,
-                "excellentContacts": 0, "crosshairPlacementPct": 0.0,
+                "excellentContacts": 0, "excellentContactTicks": [], "crosshairGoodTicks": [],
+                "crosshairPlacementPct": 0.0,
                 "successfulReactionTimeMs": 0.0,
                 "reactionDeltas": [], "reactionDeltasHit": [],
             }
@@ -1093,13 +1338,15 @@ def build_player_analytics(ctx, rb, fb, players: dict,
                 "passiveAngleCount": 0,
                 "tradeKillRounds": [], "tradedDeathRounds": [],
                 "tradeKillTicks": [], "tradedDeathTicks": [],
+                "teamKills": 0, "teamKillRounds": [], "teamKillTicks": [],
                 "counterStrafeErrors": 0, "idealStrafePct": 0.0,
                 "firstBulletAcc": 0.0, "firstBulletShots": [],
                 "ttk_ms": 0.0,
                 "reloadErrors": 0, "angleControlCount": 0,
                 "angleControlByPhase": {"early": 0, "mid": 0, "late": 0},
                 "reactionTimeMs": 0.0, "overshootCount": 0,
-                "excellentContacts": 0, "crosshairPlacementPct": 0.0,
+                "excellentContacts": 0, "excellentContactTicks": [], "crosshairGoodTicks": [],
+                "crosshairPlacementPct": 0.0,
                 "successfulReactionTimeMs": 0.0,
                 "reactionDeltas": [], "reactionDeltasHit": [],
             }
@@ -1129,6 +1376,7 @@ def build_player_analytics(ctx, rb, fb, players: dict,
 
         result[steamid] = {
             "duels": duels,
+            "teamKills": tk_episodes,
             "metrics": metrics,
             "impact": impact,
             "mapEvents": map_events,
@@ -1147,7 +1395,7 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
     """Match-wide highlight moments for the replay player navigation.
 
     Types: clutch, multikill, openingDeath, mistake (death with error tags),
-    swing (large winprob shift inside a round). Sorted by tick, capped.
+    teamkill, swing (large winprob shift inside a round). Sorted by tick, capped.
     """
     import numpy as _np
 
@@ -1211,28 +1459,43 @@ def build_moments(ctx, rb, fb, players: dict, pa: dict, winprob: list[float],
                                 "detail": ",".join(sorted(errs)),
                                 "preSec": 1.5, "durSec": 1.5})
 
-    # winprob swings: largest single-step shift inside a round. States where
-    # the round is already decided (wp <= 0.08 / >= 0.92 — round collapse and
-    # the next-round reset) are excluded, otherwise every round boundary
-    # produces a fake 40-50% "swing"
+    # teamkills: the attacker's perspective, jump slightly earlier to see the shot
+    for sid, block in pa.items():
+        for tk in block.get("teamKills", []):
+            tick = int(tk["tick"])
+            if _round_n(tick):
+                moments.append({"type": "teamkill", "tick": tick,
+                                "round": _round_n(tick), "steamid": sid,
+                                "preSec": 2.0, "durSec": 1.5})
+
+    # winprob swings: largest shifts over a SWING_WINDOW_SEC window, strictly
+    # inside the round (frames beyond endTick already reflect the next round's
+    # reset and would fake a 40-50% "swing"). Slow momentum swings (95% <-> 5%
+    # over 20-30 s) move ~0.01 per 0.125 s frame — only a windowed difference
+    # can see them.
     if winprob and replay_ticks:
         ticks_arr = _np.array(replay_ticks, dtype="int64")
         wp = _np.array(winprob, dtype="float64")
+        w = max(2, int(round(config.SWING_WINDOW_SEC / config.FRAME_SECONDS)))
         for r in rb.rounds:
             i0 = int(_np.searchsorted(ticks_arr, r["freezeEndTick"]))
-            i1 = int(_np.searchsorted(ticks_arr, r["endTick"]))
-            if i1 - i0 < 2:
+            i1 = int(_np.searchsorted(ticks_arr, r["endTick"], side="right")) - 1
+            if i1 - i0 < w:
                 continue
-            seg = wp[i0:i1 + 1]
-            contested = (seg > 0.08) & (seg < 0.92)
-            d = _np.abs(_np.diff(seg))
-            d[~(contested[:-1] & contested[1:])] = 0
-            j = int(d.argmax())
-            if d[j] >= 0.2:
-                moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + 1]),
+            d = _np.abs(wp[i0 + w:i1 + 1] - wp[i0:i1 + 1 - w])
+            picked: list[int] = []
+            for j in _np.argsort(d)[::-1]:
+                if d[j] < 0.2 or len(picked) >= 2:
+                    break
+                # non-max suppression over 2 windows: a gradual ramp otherwise
+                # yields equal-delta windows at both of its ends
+                if all(abs(int(j) - p) >= 2 * w for p in picked):
+                    picked.append(int(j))
+            for j in sorted(picked):
+                moments.append({"type": "swing", "tick": int(ticks_arr[i0 + j + w]),
                                 "round": r["n"], "steamid": None,
                                 "detail": f"{d[j] * 100:.0f}%",
-                                "preSec": 2.5, "durSec": 2.5})
+                                "preSec": 6.0, "durSec": 2.5})
 
     moments.sort(key=lambda m: m["tick"])
     return moments[:300]

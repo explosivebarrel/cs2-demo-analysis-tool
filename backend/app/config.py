@@ -16,6 +16,11 @@ for _d in (BASE_DIR, STORE_DIR, UPLOADS_DIR, ANALYSES_DIR, STATUS_DIR, RADARS_DI
 MAX_UPLOAD_BYTES = int(os.environ.get("CS2_MAX_UPLOAD_MB", "1200")) * 1024 * 1024
 # 0 = unlimited (default): local tool — parallel analyses are allowed
 MAX_CONCURRENT_ANALYZES = int(os.environ.get("CS2_MAX_CONCURRENT_ANALYZES", "0"))
+# 3D density-plane shading levels (quantized alpha buckets); applied when the
+# heatmap3d artifact is SERVED, so changing it only needs a backend restart
+HM3D_SHADES = max(1, min(32, int(os.environ.get("CS2_HM3D_SHADES", "8"))))
+HM3D_CELL = float(os.environ.get("CS2_HM3D_CELL", "16.0"))
+HM3D_Z_STEP = float(os.environ.get("CS2_HM3D_Z_STEP", "8.0"))
 
 # --------------------------------------------------------------- auto-import
 # Watch folders: os.pathsep-separated list of dirs scanned for new demos
@@ -40,6 +45,7 @@ RADAR_FETCH_TIMEOUT = 20  # seconds
 # Frame step for the replay timeline: keep ~8 samples per second
 # (CS2_FRAME_SECONDS to override — denser frames = smoother but heavier payload).
 FRAME_SECONDS = float(os.environ.get("CS2_FRAME_SECONDS", "0.125"))
+SWING_WINDOW_SEC = 8.0         # winprob swing window when hunting replay moments
 POSITION_DENSITY_STEP = 4      # take every Nth replay frame for position heatmap
 HOLD_MIN_SECONDS = 5.0         # player counted as "holding" after this long
 HOLD_RADIUS_UNITS = 90.0       # max displacement while holding an angle

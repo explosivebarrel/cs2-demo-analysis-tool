@@ -59,6 +59,7 @@ export interface AnalysisData {
   knifeRound?: { startTick: number; freezeEndTick?: number | null; endTick: number; winner: string } | null
   weapons: Record<number, string>
   moments?: Moment[]
+  teamKills?: MatchTeamKill[]
 }
 
 export interface TeamData {
@@ -76,7 +77,7 @@ export interface PlayerData {
   dmgTaken: number; utilDmg: number; postPlantDmg: number
   rating: number; ratingParts: Record<string, number>
   opening: { kills: number; deaths: number; attempts: number; success: number | null }
-  trades: { tradeKills: number; tradedDeaths: number }
+  trades: { tradeKills: number; tradedDeaths: number; unpunishedDeaths?: number; unpunishedDeathPct?: number }
   multiKills: { '2k': number; '3k': number; '4k': number; '5k': number; rounds: number }
   clutches: { played: number; won: number; byX: Record<string, { played: number; won: number }>; list: ClutchEntry[] }
   flashes: { thrown: number; enemiesFlashed: number; blindSec: number; effective: number; friendly: number }
@@ -87,6 +88,7 @@ export interface PlayerData {
   hitgroups: Record<string, number>
   killDist: { avgM: number | null; maxM: number | null; buckets: Record<string, number> }
   teamDmg: number
+  teamKills?: number
   weapons: WeaponRow[]
   bySide: { T: SideSummary; CT: SideSummary }
   series: SeriesPoint[]
@@ -124,7 +126,22 @@ export interface HalfData { from: number; to: number; sideTeam0: string; score0:
 
 export interface HeatmapData {
   layers: Record<string, HeatPoint[]>
+  // steamid per layer pIdx (FrameBuilder order); absent in legacy artifacts
+  players?: string[]
   rounds: { n: number; f: number; e: number; s0: string; w: number; plant?: number }[]
+}
+
+// voxel position heatmap: 32u cells in the horizontal plane, 32u vertical steps
+export interface Map3DData {
+  cell: number
+  zStep: number
+  minX: number
+  minY: number
+  minZ: number
+  samples: number
+  players: string[]
+  cells: number[][]  // [ix, iy, iz, count per player...]
+  shades?: number    // density shading levels (runtime env CS2_HM3D_SHADES)
 }
 
 export interface HeatPoint {
@@ -151,7 +168,7 @@ export interface ReplayData {
   invWeapons?: Record<string, InvWeaponInfo>
   bomb: (number | null)[][]
   events: ReplayEvent[]
-  shots: number[][]  // compact: [tick, playerIdx, x, y, yaw]
+  shots: number[][]  // compact: [tick, playerIdx, x, y, yaw, pitch?]
   weapons: Record<number, WeaponInfo>
   winprob?: number[]  // ct win probability per frame [0.05, 0.95]
 }
@@ -162,7 +179,7 @@ export interface ReplayEvent {
 }
 
 export interface ShotEvent {
-  tick: number; pidx: number; x: number; y: number; yaw: number
+  tick: number; pidx: number; x: number; y: number; yaw: number; pitch?: number
 }
 
 export interface StatusData {
@@ -190,6 +207,7 @@ export interface FirstBulletShot {
 
 export interface PlayerAnalyticsData {
   duels: DuelEpisode[]
+  teamKills?: TeamKillEpisode[]
   metrics: PlayerMetrics
   impact: PlayerImpact
   mapEvents: MapEvent[]
@@ -241,6 +259,20 @@ export interface DuelEpisode {
   shots?: DuelShot[]
 }
 
+// a teamkill episode mirrors a duel episode minus the duel classification
+export type TeamKillEpisode = Omit<
+  DuelEpisode, 'won' | 'opening' | 'isTradeKill' | 'isTradedDeath' | 'errors' | 'winProb'
+>
+
+export interface MatchTeamKill {
+  round: number
+  tick: number
+  attacker: string
+  victim: string
+  weapon: string
+  headshot: boolean
+}
+
 export interface PlayerMetrics {
   tradeKillPct: number
   tradedDeathPct: number
@@ -254,6 +286,9 @@ export interface PlayerMetrics {
   tradedDeathRounds: number[]
   tradeKillTicks: number[]
   tradedDeathTicks: number[]
+  teamKills?: number
+  teamKillRounds?: number[]
+  teamKillTicks?: number[]
   // aim mechanics (Batch 2)
   counterStrafeErrors: number
   idealStrafePct: number
@@ -266,11 +301,17 @@ export interface PlayerMetrics {
   reactionTimeMs: number
   overshootCount: number
   excellentContacts: number
+  excellentContactTicks?: number[]
+  crosshairGoodTicks?: number[]
   crosshairPlacementPct: number
   successfulReactionTimeMs: number
   reactionDeltas: number[]
   reactionDeltasHit: number[]
   passiveAngleCount: number
+  unpunishedDeaths?: number
+  unpunishedDeathPct?: number
+  killDistAvgM?: number | null
+  killDistMaxM?: number | null
 }
 
 export interface PlayerImpact {
@@ -383,10 +424,25 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     }),
-  upload: (file: File): Promise<{ id: string; name: string; size: number }> => {
-    const fd = new FormData(); fd.append('file', file)
-    return req('/demos/upload', { method: 'POST', body: fd })
-  },
+  upload: (
+    file: File,
+    onProgress?: (loaded: number, total: number) => void,
+  ): Promise<{ id: string; name: string; size: number }> =>
+    new Promise((resolve, reject) => {
+      const fd = new FormData(); fd.append('file', file)
+      const xhr = new XMLHttpRequest()
+      xhr.open('POST', BASE + '/demos/upload')
+      xhr.responseType = 'json'
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) onProgress?.(e.loaded, e.total)
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response)
+        else reject(new Error(`${xhr.status} ${xhr.statusText}`))
+      }
+      xhr.onerror = () => reject(new Error('network error'))
+      xhr.send(fd)
+    }),
   analyze: (id: string): Promise<unknown> => {
     evictDemo(id)  // re-analysis invalidates cached artifacts
     return req(`/demos/${id}/analyze`, { method: 'POST' })
@@ -404,6 +460,7 @@ export const api = {
   },
   analysis: (id: string): Promise<AnalysisData> => cached(`analysis:${id}`, () => req(`/demos/${id}/analysis`)),
   heatmap: (id: string): Promise<HeatmapData> => cached(`heatmap:${id}`, () => req(`/demos/${id}/heatmap`)),
+  heatmap3d: (id: string): Promise<Map3DData> => cached(`heatmap3d:${id}`, () => req(`/demos/${id}/heatmap3d`)),
   replay: (id: string): Promise<ReplayData> => cached(`replay:${id}`, () => req(`/demos/${id}/replay`)),
   mapOverview: (map: string): Promise<MapOverview> => cached(`overview:${map}`, () => req(`/maps/${map}/overview`)),
   radarUrl: (map: string, level?: string) =>

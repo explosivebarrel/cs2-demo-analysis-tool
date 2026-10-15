@@ -19,7 +19,8 @@ if TYPE_CHECKING:
     pass
 
 # ── Tuning constants ─────────────────────────────────────────────────────────
-SHOOT_THRESHOLD = 50.0       # u/s — velocity above this = "moving while shooting"
+SHOOT_THRESHOLD = 50.0       # u/s — velocity above this = "moving while shooting" (rifles/snipers)
+SHOOT_THRESHOLD_PISTOL = 170.0 # u/s — velocity threshold for pistols and smgs (run-and-gun)
 RELOAD_SAFE_BULLETS = 5      # reloads with more bullets left than this = error
 ANGLE_HOLD_SEC = 2.0         # min seconds stationary to count as angle control
 ANGLE_MOVE_THRESHOLD = 30.0  # u/s — below this counts as "not moving"
@@ -28,7 +29,6 @@ DUEL_MERGE_SEC = 2.0         # seconds gap between separate duels
 BULLET_HIT_WINDOW_SEC = 0.15 # hurt must follow the shot within this window to
                              # count as a hit by that bullet (scales with tickrate)
 TTK_MAX_SEC = 3.0            # first shot searched up to this far before a kill
-OVERSHOOT_ANGLE_DEG = 10.0   # only count sign flips that carry past this angle
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,8 +61,66 @@ def _sid(v) -> str | None:
     return s if s and s not in ("None", "nan", "0") else None
 
 
-def _vel_at(vel_lookup: dict, tick: int, steamid: str) -> float:
-    return float(vel_lookup.get((tick, steamid), 0.0))
+def _vel_at(vel_index: "VelIndex", tick: int, steamid: str) -> float:
+    return vel_index.at(tick, steamid)
+
+
+class VelIndex:
+    """Positional velocity at arbitrary event ticks.
+
+    Tick samples sit on the downsample grid (~0.125 s), but event ticks
+    (shots, kills) are arbitrary — an exact-tick dict lookup misses ~7/8 of
+    the time and silently yields 0. Here the two samples bracketing the event
+    tick give a central difference, which is alignment-independent.
+    """
+
+    def __init__(self, ticks_df, tickrate: float):
+        self.empty = True
+        try:
+            import numpy as _np
+
+            pos = ticks_df[["tick", "steamid", "X", "Y"]].copy()
+            pos["steamid"] = pos["steamid"].astype(str)
+            pos = pos.sort_values(["steamid", "tick"])
+            self.by_sid: dict[str, tuple] = {}
+            for sid, grp in pos.groupby("steamid"):
+                self.by_sid[sid] = (
+                    grp["tick"].to_numpy(dtype="int64"),
+                    grp["X"].to_numpy(dtype=float),
+                    grp["Y"].to_numpy(dtype=float),
+                )
+            self.tickrate = float(tickrate)
+            self.empty = not self.by_sid
+            self._np = _np
+        except Exception:
+            self.empty = True
+
+    def at(self, tick: int, steamid: str, default: float = 0.0) -> float:
+        if self.empty:
+            return default
+        entry = self.by_sid.get(steamid)
+        if entry is None:
+            return default
+        t_arr, x_arr, y_arr = entry
+        import bisect
+        i = bisect.bisect_left(t_arr, tick)
+        if i == 0:
+            j0, j1 = 0, 1
+        elif i >= len(t_arr):
+            j0, j1 = len(t_arr) - 2, len(t_arr) - 1
+        else:
+            j0, j1 = i - 1, i
+        if j1 >= len(t_arr) or j1 == j0:
+            return default
+        dt = int(t_arr[j1] - t_arr[j0])
+        if dt <= 0:
+            return default
+        dist = self._np.hypot(x_arr[j1] - x_arr[j0], y_arr[j1] - y_arr[j0])
+        return float(dist / dt * self.tickrate)
+
+
+def _build_vel_index(ticks_df, tickrate: float) -> VelIndex:
+    return VelIndex(ticks_df, tickrate)
 
 
 def _nearest_tick_key(sorted_keys: list[int], target: int) -> int:
@@ -82,7 +140,7 @@ def _nearest_tick_key(sorted_keys: list[int], target: int) -> int:
 def _compute_strafe_metrics(
     wf_df,           # weapon_fire DataFrame
     kills_df,        # player_death DataFrame
-    vel_lookup: dict,
+    vel_index: VelIndex,
     steamid: str,
     tickrate: float,
 ) -> tuple[int, float]:
@@ -126,12 +184,16 @@ def _compute_strafe_metrics(
         prev = st
 
     duel_start_set = set(duel_starts)
+    from ..weapons import canon
 
     for _, row in my_wf.iterrows():
         tick = int(row["tick"])
-        vel = _vel_at(vel_lookup, tick, steamid)
+        vel = _vel_at(vel_index, tick, steamid)
+        wname = str(row.get("weapon", ""))
+        _, _, cls = canon(wname)
+        thresh = SHOOT_THRESHOLD_PISTOL if cls in ("pistol", "smg") else SHOOT_THRESHOLD
 
-        if vel > SHOOT_THRESHOLD:
+        if vel > thresh:
             errors += 1
 
         # duel-opening shots that resulted in a kill within the duel window
@@ -139,7 +201,7 @@ def _compute_strafe_metrics(
             for kt in kill_ticks:
                 if 0 <= kt - tick <= merge_ticks:
                     ideal_total += 1
-                    if vel <= SHOOT_THRESHOLD:
+                    if vel <= thresh:
                         ideal_count += 1
                     break
 
@@ -156,6 +218,7 @@ def _compute_first_bullet_acc(
     steamid: str,
     rb=None,
     tickrate: float = 64.0,
+    enemy_sids: set | None = None,
 ) -> tuple[float, list[dict]]:
     """
     % of duel-opening shots that hit an enemy.
@@ -171,13 +234,14 @@ def _compute_first_bullet_acc(
     if my_wf.empty:
         return 0.0, []
 
-    # enemy hurt ticks involving this attacker (bullet damage only)
+    # enemy hurt ticks involving this attacker (bullet damage only, enemies only)
     enemy_hurt_ticks: set[int] = set()
     if hurt_df is not None and len(hurt_df):
         ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
         ah = ah[~ah["weapon"].astype(str).map(_is_non_bullet)]
-        for t in ah["tick"]:
-            enemy_hurt_ticks.add(int(t))
+        for _, row in ah.iterrows():
+            if enemy_sids is None or _sid(row.get("user_steamid")) in enemy_sids:
+                enemy_hurt_ticks.add(int(row["tick"]))
 
     # round-of-tick lookup
     if rb is not None:
@@ -203,6 +267,8 @@ def _compute_first_bullet_acc(
     duel_first_shots: list[tuple[int, str]] = []
     prev = None
     for st, wep in shot_rows:
+        if rb is not None and _rof(st) == 0:
+            continue    # warmup / knife round — counted nowhere else
         if prev is None or (st - prev) > merge_ticks:
             duel_first_shots.append((st, str(wep)))
         prev = st
@@ -255,7 +321,8 @@ def _compute_ttk(
             delta_ms = round((kt - first_shot) / tickrate * 1000, 1)
             deltas.append(delta_ms)
 
-    return round(sum(deltas) / len(deltas), 1) if deltas else 0.0
+    import numpy as _np
+    return round(float(_np.median(deltas)), 1) if deltas else 0.0
 
 
 # ── Reload errors ────────────────────────────────────────────────────────────
@@ -410,18 +477,12 @@ def _compute_angle_control(ticks_df, steamid: str, tickrate: float, rb) -> tuple
 
 
 
-# ── Reaction time & overshoot ────────────────────────────────────────────────
+# ── Reaction time & crosshair placement ─────────────────────────────────────
 
 RT_WINDOW_SEC = 2.0     # look back up to 2s before first shot for victim motion onset
 RT_MAX_MS = 1500.0      # cap: longer values are pre-aim scenarios, not true reaction
 RT_MOTION_THRESH = 30.0 # u/s — victim speed above this = "victim is moving/peeking"
-FOV_HALF_DEG = 40.0     # half-FOV for overshoot tracking
-
-
-def _angle_diff(a: float, b: float) -> float:
-    """Signed difference a-b in degrees, wrapped to (-180, 180]."""
-    d = (a - b) % 360.0
-    return d - 360.0 if d > 180.0 else d
+CROSSHAIR_PLACEMENT_DEG = 25.0  # |yaw - bearing| at victim peek onset = good placement
 
 
 def _compute_reaction_time(
@@ -431,59 +492,66 @@ def _compute_reaction_time(
     steamid: str,
     tickrate: float,
     hurt_df=None,
-) -> tuple[float, int, float]:
+    enemy_sids: set | None = None,
+) -> tuple[float, float, list[float], list[float], float, list[int]]:
     """
-    Returns (avg_reaction_time_ms, overshoot_count, successful_reaction_time_ms).
+    Returns (avg_reaction_time_ms, successful_reaction_time_ms,
+             reaction_deltas, reaction_deltas_hit,
+             crosshair_placement_pct, crosshair_good_kill_ticks).
 
     reaction_time_ms: avg ms from when the victim started moving (peek onset)
                       to the attacker's first shot in winning duels.
-    overshoot_count: total times attacker yaw crossed past victim's bearing
-                     between peek onset and kill tick across all winning duels.
     successful_reaction_time_ms: same as reaction_time_ms but only for duels
-                     where the first bullet hit.
+                     where the first bullet hit an enemy.
+    crosshair_placement_pct: % of peeked duels where the attacker's yaw was
+                     within CROSSHAIR_PLACEMENT_DEG of the victim's bearing at
+                     the moment the victim started moving — i.e. the duel was
+                     "already taken" before the peek.
     """
     if ticks_df is None or not len(ticks_df) or kills_df is None or not len(kills_df):
-        return 0.0, 0, 0.0, [], []
+        return 0.0, 0.0, [], [], 0.0, []
 
     my_kills = kills_df[kills_df["attacker_steamid"].astype(str) == steamid]
     if my_kills.empty:
-        return 0.0, 0, 0.0, [], []
+        return 0.0, 0.0, [], [], 0.0, []
 
     if wf_df is None or not len(wf_df):
-        return 0.0, 0, 0.0, [], []
+        return 0.0, 0.0, [], [], 0.0, []
 
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
-        return 0.0, 0, 0.0, [], []
+        return 0.0, 0.0, [], [], 0.0, []
 
     # enemy hurt ticks for successful reaction time (hit on first bullet)
     enemy_hurt_ticks_rt: set[int] = set()
     if hurt_df is not None and len(hurt_df):
         ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
-        for t in ah["tick"]:
-            enemy_hurt_ticks_rt.add(int(t))
+        for _, row in ah.iterrows():
+            if enemy_sids is None or _sid(row.get("user_steamid")) in enemy_sids:
+                enemy_hurt_ticks_rt.add(int(row["tick"]))
 
     import bisect
+    import math as _math
     import numpy as _np
 
     try:
-        atk_ticks = ticks_df[ticks_df["steamid"].astype(str) == steamid][
-            ["tick", "X", "Y", "yaw"]
-        ].sort_values("tick")
-        atk_tick_arr = atk_ticks["tick"].to_numpy(dtype="int64")
-        atk_x_arr    = atk_ticks["X"].to_numpy(dtype=float)
-        atk_y_arr    = atk_ticks["Y"].to_numpy(dtype=float)
-        atk_yaw_arr  = atk_ticks["yaw"].to_numpy(dtype=float)
+        atk = ticks_df[ticks_df["steamid"].astype(str) == steamid][
+            ["tick", "X", "Y", "yaw"]].sort_values("tick")
+        atk_tick_arr = atk["tick"].to_numpy(dtype="int64")
+        atk_x_arr = atk["X"].to_numpy(dtype=float)
+        atk_y_arr = atk["Y"].to_numpy(dtype=float)
+        atk_yaw_arr = atk["yaw"].to_numpy(dtype=float)
     except Exception:
-        return 0.0, 0, 0.0
+        return 0.0, 0.0, [], [], 0.0, []
 
     wf_ticks_sorted = sorted(int(t) for t in my_wf["tick"])
     window_ticks = int(tickrate * RT_WINDOW_SEC)
-    TTK_MAX_TICKS = max(32, int(tickrate * 0.5))
+    TTK_MAX_TICKS = max(32, int(tickrate * TTK_MAX_SEC))
 
     reaction_deltas: list[float] = []
     reaction_deltas_hit: list[float] = []
-    overshoot_total = 0
+    placement_total = 0
+    placement_good: list[int] = []
 
     for _, k in my_kills.iterrows():
         kill_tick = int(k["tick"])
@@ -523,6 +591,7 @@ def _compute_reaction_time(
         # find last tick where victim's speed crossed from low to high
         # (most recent "peek onset") before first_fire_tick
         peek_onset_tick: int | None = None
+        onset_idx = -1
         for i in range(len(speeds) - 1, -1, -1):
             if speeds[i] > RT_MOTION_THRESH:
                 # walk back to find where the high-speed run started
@@ -531,12 +600,30 @@ def _compute_reaction_time(
                     j -= 1
                 # victim was moving the whole window: onset is the window start,
                 # not the shot tick (that would collapse reaction time to ~0)
-                peek_onset_tick = int(vic_tick_arr[j + 1]) if j >= 0 else int(vic_tick_arr[0])
+                onset_idx = j + 1 if j >= 0 else 0
+                peek_onset_tick = int(vic_tick_arr[onset_idx])
                 break
 
         if peek_onset_tick is None:
             # victim was stationary — attacker was pre-aiming; skip
             continue
+
+        # crosshair placement at peek onset: was the attacker already looking
+        # at the spot the victim peeked from?
+        placement_total += 1
+        try:
+            oi = bisect.bisect_right(atk_tick_arr, peek_onset_tick) - 1
+            if oi >= 0:
+                bdeg = _math.degrees(_math.atan2(
+                    vic_y_arr[onset_idx] - atk_y_arr[oi],
+                    vic_x_arr[onset_idx] - atk_x_arr[oi]))
+                d = (atk_yaw_arr[oi] - bdeg) % 360.0
+                if d > 180.0:
+                    d -= 360.0
+                if abs(d) <= CROSSHAIR_PLACEMENT_DEG:
+                    placement_good.append(kill_tick)
+        except Exception:
+            pass
 
         rt_ms = (first_fire_tick - peek_onset_tick) / tickrate * 1000.0
         if rt_ms < 0 or rt_ms > RT_MAX_MS:
@@ -549,121 +636,15 @@ def _compute_reaction_time(
         if first_hit_rt:
             reaction_deltas_hit.append(rt_ms)
 
-        # overshoot: yaw sign-changes past victim bearing from peek onset to kill
-        try:
-            oi_lo = bisect.bisect_left(atk_tick_arr, peek_onset_tick)
-            oi_hi = bisect.bisect_right(atk_tick_arr, kill_tick)
-            # victim positions around the duel window
-            full_vic = ticks_df[
-                (ticks_df["steamid"].astype(str) == v_sid) &
-                (ticks_df["tick"] >= peek_onset_tick) &
-                (ticks_df["tick"] <= kill_tick)
-            ][["tick", "X", "Y"]].sort_values("tick")
-            if full_vic.empty:
-                continue
-            fv_tick = full_vic["tick"].to_numpy(dtype="int64")
-            fv_x = full_vic["X"].to_numpy(dtype=float)
-            fv_y = full_vic["Y"].to_numpy(dtype=float)
+    placement_pct = round(len(placement_good) / placement_total * 100, 1) if placement_total else 0.0
 
-            prev_sign = None
-            prev_diff = None
-            crosses = 0
-            import math as _math
-            for oi in range(oi_lo, oi_hi):
-                if oi >= len(atk_tick_arr):
-                    break
-                t = int(atk_tick_arr[oi])
-                vi2 = bisect.bisect_left(fv_tick, t)
-                if vi2 >= len(fv_tick):
-                    vi2 = len(fv_tick) - 1
-                vx2 = fv_x[vi2] - atk_x_arr[oi]
-                vy2 = fv_y[vi2] - atk_y_arr[oi]
-                if abs(vx2) < 1e-3 and abs(vy2) < 1e-3:
-                    continue
-                bearing2 = _math.degrees(_math.atan2(vy2, vx2))
-                diff2 = _angle_diff(atk_yaw_arr[oi], bearing2)
-                sign = 1 if diff2 >= 0 else -1
-                if prev_diff is not None and abs(diff2 - prev_diff) > 180.0:
-                    # angle wrapped past ±180 (target behind): not a real flip
-                    prev_sign, prev_diff = sign, diff2
-                    continue
-                if prev_sign is not None and sign != prev_sign \
-                        and abs(diff2) > OVERSHOOT_ANGLE_DEG:
-                    # only real overshoots: the crosshair carried past the
-                    # target by more than OVERSHOOT_ANGLE_DEG (micro jitter
-                    # around the bearing is precise tracking, not a miss)
-                    crosses += 1
-                prev_sign = sign
-                prev_diff = diff2
-            overshoot_total += crosses
-        except Exception:
-            pass
-
-    avg_rt = round(sum(reaction_deltas) / len(reaction_deltas), 1) if reaction_deltas else 0.0
-    avg_rt_hit = round(sum(reaction_deltas_hit) / len(reaction_deltas_hit), 1) if reaction_deltas_hit else 0.0
-    return avg_rt, overshoot_total, avg_rt_hit, reaction_deltas, reaction_deltas_hit
-
-
-# ── Crosshair placement ───────────────────────────────────────────────────────
-
-def _compute_crosshair_placement(
-    wf_df,
-    hurt_df,
-    steamid: str,
-    tickrate: float = 64.0,
-) -> float:
-    """
-    % of duel-opening shots that landed on the head. The denominator is ALL
-    duel-opening shots (not only the ones that hit): a full miss is the main
-    symptom of bad crosshair placement and must lower the metric.
-    """
-    if wf_df is None or not len(wf_df):
-        return 0.0
-
-    my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
-    if my_wf.empty:
-        return 0.0
-    my_wf = my_wf[~my_wf["weapon"].astype(str).map(_is_non_bullet)]
-    if my_wf.empty:
-        return 0.0
-
-    ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid] if hurt_df is not None and len(hurt_df) else hurt_df
-
-    # map hurt tick -> hitgroup (1 = head in CS2)
-    hurt_map: dict[int, str] = {}
-    if ah is not None and len(ah):
-        for _, row in ah.iterrows():
-            if _is_non_bullet(row.get("weapon")):
-                continue
-            t = int(row["tick"])
-            hg = str(row.get("hitgroup", ""))
-            hurt_map[t] = hg
-
-    merge_ticks = max(32, int(DUEL_MERGE_SEC * tickrate))
-    hit_window = max(1, int(BULLET_HIT_WINDOW_SEC * tickrate))
-
-    duel_first_shots: list[int] = []
-    prev = None
-    for st in sorted(int(t) for t in my_wf["tick"]):
-        if prev is None or (st - prev) > merge_ticks:
-            duel_first_shots.append(st)
-        prev = st
-
-    if not duel_first_shots:
-        return 0.0
-
-    head_hits = 0
-    total_hits = 0
-    for st in duel_first_shots:
-        # look for a hurt event within the bullet window
-        for ht, hg in hurt_map.items():
-            if 0 <= ht - st <= hit_window:
-                total_hits += 1
-                if hg in ("1", "head", "Head"):
-                    head_hits += 1
-                break
-
-    return round(head_hits / len(duel_first_shots) * 100, 1)
+    # average from the same rounded values that get stored, so the UI's
+    # recomputation from reactionDeltas matches the reported mean exactly
+    rounded = [round(v, 1) for v in reaction_deltas]
+    rounded_hit = [round(v, 1) for v in reaction_deltas_hit]
+    avg_rt = round(sum(rounded) / len(rounded), 1) if rounded else 0.0
+    avg_rt_hit = round(sum(rounded_hit) / len(rounded_hit), 1) if rounded_hit else 0.0
+    return avg_rt, avg_rt_hit, rounded, rounded_hit, placement_pct, placement_good
 
 
 # ── Excellent contacts ────────────────────────────────────────────────────────
@@ -672,36 +653,39 @@ def _compute_excellent_contacts(
     wf_df,
     hurt_df,
     kills_df,
-    vel_lookup: dict,
+    vel_index: VelIndex,
     steamid: str,
     tickrate: float,
-) -> int:
+    enemy_sids: set | None = None,
+) -> tuple[int, list[int]]:
     """
     Count "excellent contacts": winning duels where:
       - attacker velocity <= SHOOT_THRESHOLD (was stopped)
       - first bullet of the duel hit an enemy (first shot accuracy)
+    Returns (count, kill_ticks) so the UI can list the exact episodes.
     """
     if wf_df is None or not len(wf_df):
-        return 0
+        return 0, []
     if kills_df is None or not len(kills_df):
-        return 0
+        return 0, []
 
     my_wf = wf_df[wf_df["user_steamid"].astype(str) == steamid].copy()
     if my_wf.empty:
-        return 0
+        return 0, []
 
     my_kills = kills_df[kills_df["attacker_steamid"].astype(str) == steamid]
     if my_kills.empty:
-        return 0
+        return 0, []
 
     kill_ticks: set[int] = {int(k["tick"]) for _, k in my_kills.iterrows()}
 
-    # enemy hurt ticks involving this attacker
+    # enemy hurt ticks involving this attacker (enemies only)
     enemy_hurt_ticks: set[int] = set()
     if hurt_df is not None and len(hurt_df):
         ah = hurt_df[hurt_df["attacker_steamid"].astype(str) == steamid]
-        for t in ah["tick"]:
-            enemy_hurt_ticks.add(int(t))
+        for _, row in ah.iterrows():
+            if enemy_sids is None or _sid(row.get("user_steamid")) in enemy_sids:
+                enemy_hurt_ticks.add(int(row["tick"]))
 
     all_shot_rows = sorted(
         zip(my_wf["tick"].astype(int), my_wf.get("weapon", [""] * len(my_wf))),
@@ -720,21 +704,25 @@ def _compute_excellent_contacts(
         prev = st
 
     excellent = 0
+    excellent_ticks: list[int] = []
     for st, _ in duel_first_shots:
-        # must result in a kill within the duel window
-        if not any(0 <= kt - st <= merge_ticks for kt in kill_ticks):
+        # must result in a kill within the duel window; store the KILL tick —
+        # duel episodes are keyed by kill ticks on the frontend
+        kt_match = [kt for kt in kill_ticks if 0 <= kt - st <= merge_ticks]
+        if not kt_match:
             continue
         # first bullet must hit
         hit = any(0 <= ht - st <= hit_window for ht in enemy_hurt_ticks)
         if not hit:
             continue
         # attacker must be stopped at shot tick
-        vel = _vel_at(vel_lookup, st, steamid)
+        vel = _vel_at(vel_index, st, steamid)
         if vel > SHOOT_THRESHOLD:
             continue
         excellent += 1
+        excellent_ticks.append(min(kt_match))
 
-    return excellent
+    return excellent, excellent_ticks
 
 def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     """
@@ -747,34 +735,28 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
     ticks_df = ctx.ticks
     tickrate = ctx.tickrate
 
+    # enemies of this player (for hurt-based hit checks); unknown team keeps
+    # the old all-hurts behavior
+    my_team = rb.steamid_team.get(steamid)
+    enemy_sids = {s for s, t in rb.steamid_team.items() if t != my_team}
+
     wf_df = ctx.ev("weapon_fire") if ctx.has_ev("weapon_fire") else None
     hurt_df = ctx.ev("player_hurt") if ctx.has_ev("player_hurt") else None
     kills_df = ctx.ev("player_death") if ctx.has_ev("player_death") else None
 
-    # build velocity lookup shared across sub-computations
-    vel_lookup: dict = {}
-    if ticks_df is not None and len(ticks_df):
-        try:
-            pos = ticks_df[["tick", "steamid", "X", "Y"]].copy()
-            pos["steamid"] = pos["steamid"].astype(str)
-            pos = pos.sort_values(["steamid", "tick"])
-            pos["dx"] = pos.groupby("steamid")["X"].diff().fillna(0.0)
-            pos["dy"] = pos.groupby("steamid")["Y"].diff().fillna(0.0)
-            pos["dtick"] = pos.groupby("steamid")["tick"].diff().fillna(1.0).clip(lower=1)
-            pos["vel"] = (pos["dx"] ** 2 + pos["dy"] ** 2).pow(0.5) / pos["dtick"] * tickrate
-            vel_lookup = pos.set_index(["tick", "steamid"])["vel"].to_dict()
-        except Exception:
-            vel_lookup = {}
+    # build velocity index shared across sub-computations
+    vel_index = VelIndex(ticks_df, tickrate)
 
     try:
         cs_errors, ideal_pct = _compute_strafe_metrics(
-            wf_df, kills_df, vel_lookup, steamid, tickrate
+            wf_df, kills_df, vel_index, steamid, tickrate
         )
     except Exception:
         cs_errors, ideal_pct = 0, 0.0
 
     try:
-        first_bullet, first_bullet_shots = _compute_first_bullet_acc(wf_df, hurt_df, kills_df, steamid, rb, tickrate)
+        first_bullet, first_bullet_shots = _compute_first_bullet_acc(
+            wf_df, hurt_df, kills_df, steamid, rb, tickrate, enemy_sids)
     except Exception:
         first_bullet, first_bullet_shots = 0.0, []
 
@@ -794,24 +776,18 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         angle_ctrl, angle_ctrl_by_phase = 0, {"early": 0, "mid": 0, "late": 0}
 
     try:
-        reaction_time_ms, overshoot_count, successful_reaction_time_ms, rt_deltas, rt_deltas_hit = _compute_reaction_time(
-            ticks_df, wf_df, kills_df, steamid, tickrate, hurt_df
-        )
+        (reaction_time_ms, successful_reaction_time_ms, rt_deltas, rt_deltas_hit,
+         placement_pct, placement_good) = _compute_reaction_time(
+            ticks_df, wf_df, kills_df, steamid, tickrate, hurt_df, enemy_sids)
     except Exception:
-        reaction_time_ms, overshoot_count, successful_reaction_time_ms = 0.0, 0, 0.0
-        rt_deltas, rt_deltas_hit = [], []
+        reaction_time_ms, successful_reaction_time_ms = 0.0, 0.0
+        placement_pct, placement_good = 0.0, []
 
     try:
-        excellent_contacts = _compute_excellent_contacts(
-            wf_df, hurt_df, kills_df, vel_lookup, steamid, tickrate
-        )
+        excellent_contacts, excellent_ticks = _compute_excellent_contacts(
+            wf_df, hurt_df, kills_df, vel_index, steamid, tickrate, enemy_sids)
     except Exception:
-        excellent_contacts = 0
-
-    try:
-        crosshair_placement = _compute_crosshair_placement(wf_df, hurt_df, steamid, tickrate)
-    except Exception:
-        crosshair_placement = 0.0
+        excellent_contacts, excellent_ticks = 0, []
 
     return {
         "counterStrafeErrors": cs_errors,
@@ -823,10 +799,11 @@ def compute_aim_mechanics(ctx, rb, steamid: str) -> dict:
         "angleControlCount": angle_ctrl,
         "angleControlByPhase": angle_ctrl_by_phase,
         "reactionTimeMs": reaction_time_ms,
-        "overshootCount": overshoot_count,
         "excellentContacts": excellent_contacts,
-        "crosshairPlacementPct": crosshair_placement,
+        "excellentContactTicks": excellent_ticks,
+        "crosshairPlacementPct": placement_pct,
+        "crosshairGoodTicks": placement_good,
         "successfulReactionTimeMs": successful_reaction_time_ms,
-        "reactionDeltas": [round(v, 1) for v in rt_deltas],
-        "reactionDeltasHit": [round(v, 1) for v in rt_deltas_hit],
+        "reactionDeltas": rt_deltas,
+        "reactionDeltasHit": rt_deltas_hit,
     }

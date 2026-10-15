@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { PlayerMetrics, DuelEpisode } from '../../api'
+import { PlayerMetrics, DuelEpisode, PlayerData } from '../../api'
 import { useBenchmarks } from '../../App'
 import { getTier, TIER_COLORS, tierLabel, formatTierTooltip } from '../../benchmarkUtils'
 import { t } from '../../i18n'
@@ -125,13 +125,14 @@ function ProbBar({ label, value, color }: { label: string; value: number; color:
 }
 
 interface Props {
+  player?: PlayerData
   metrics: PlayerMetrics
   duels: DuelEpisode[]
   playerNames: Record<string, string>
   lang: 'ru' | 'en'
 }
 
-export default function PlayerOverview({ metrics, duels, playerNames, lang }: Props) {
+export default function PlayerOverview({ player, metrics, duels, playerNames, lang }: Props) {
   const { id, steamid } = useParams<{ id: string; steamid: string }>()
   const nav = useNavigate()
   const [drillDownDuels, setDrillDownDuels] = useState<DuelEpisode[] | null>(null)
@@ -219,6 +220,18 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             sub={t('player:overview.lostDuelsSub')}
             onClick={() => goMetric('lostDuels')}
           />
+          <MetricCard
+            label={t('player:overview.teamKills')}
+            value={String(metrics.teamKills ?? 0)}
+            sub={t('player:overview.teamKillsSub')}
+            onClick={() => goMetric('teamKills')}
+          />
+          <MetricCard
+            label={t('player:overview.unpunishedDeaths')}
+            value={((metrics.unpunishedDeathPct ?? player?.trades?.unpunishedDeathPct ?? 0)).toFixed(1) + '%'}
+            sub={`${metrics.unpunishedDeaths ?? player?.trades?.unpunishedDeaths ?? 0} ${t('player:overview.unpunishedDeathsSub')}`}
+            higherIsBetter={false}
+          />
         </div>
       </div>
 
@@ -271,7 +284,9 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
           <MetricCard
             label={t('player:overview.firstBulletAcc')}
             value={(metrics.firstBulletAcc ?? 0).toFixed(1) + '%'}
-            sub={t('player:overview.firstBulletAccSub')}
+            sub={metrics.firstBulletAcc != null
+              ? `${(100 - metrics.firstBulletAcc).toFixed(1)}% ${lang === 'ru' ? 'промахов' : 'missed'}`
+              : t('player:overview.firstBulletAccSub')}
             benchmarkKey="firstBulletAcc" benchmarkValue={metrics.firstBulletAcc} lang={lang}
             color={(metrics.firstBulletAcc ?? 0) >= 40 ? 'var(--green)' : undefined}
             onClick={() => goMetric('firstBulletAcc')}
@@ -359,6 +374,19 @@ export default function PlayerOverview({ metrics, duels, playerNames, lang }: Pr
             benchmarkKey="passiveAngleCount" benchmarkValue={metrics.passiveAngleCount ?? 0} lang={lang}
             higherIsBetter={false}
             onClick={() => goMetric('passiveAngle')}
+          />
+          <MetricCard
+            label={t('player:overview.killDist')}
+            value={
+              (metrics.killDistAvgM ?? player?.killDist?.avgM) != null
+                ? `${(metrics.killDistAvgM ?? player?.killDist?.avgM)!.toFixed(1)} ${lang === 'ru' ? 'м' : 'm'}`
+                : '—'
+            }
+            sub={
+              (metrics.killDistMaxM ?? player?.killDist?.maxM) != null
+                ? `${t('player:overview.killDistSub')} ${(metrics.killDistMaxM ?? player?.killDist?.maxM)!.toFixed(1)} ${lang === 'ru' ? 'м' : 'm'}`
+                : undefined
+            }
           />
         </div>
       </div>

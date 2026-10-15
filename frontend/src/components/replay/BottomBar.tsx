@@ -1,13 +1,11 @@
 import { ReactNode } from 'react'
 import { t } from '../../i18n'
 import { SPEEDS } from '../../lib/replay'
-import { NadeTrailMode } from './drawFrame'
-import NadeDropdown from './NadeDropdown'
 
-/** Full-width bottom bar: playback controls, nade dropdown, speeds + timeline (children). */
+/** Full-width bottom bar: playback controls, speeds + timeline (children). */
 export default function BottomBar({
   playing, onPlayPause, onSeekSec, hasMoments, onMoment, time, duration,
-  speed, onSpeed, nadeFilter, onToggleNade, trailMode, onTrailMode, children,
+  speed, onSpeed, children,
 }: {
   playing: boolean
   onPlayPause: () => void
@@ -18,10 +16,6 @@ export default function BottomBar({
   duration: string
   speed: number
   onSpeed: (s: number) => void
-  nadeFilter: Set<number>
-  onToggleNade: (g: number) => void
-  trailMode: NadeTrailMode
-  onTrailMode: (m: NadeTrailMode) => void
   children: ReactNode
 }) {
   return (
@@ -43,7 +37,6 @@ export default function BottomBar({
         <span style={{ fontSize: 12, color: 'var(--text2)', minWidth: 40 }}>{time}</span>
         <span style={{ fontSize: 12, color: 'var(--text2)' }}>/ {duration}</span>
         <div className="flex items-center gap-8" style={{ marginLeft: 'auto', flexWrap: 'wrap' }}>
-          <NadeDropdown nadeFilter={nadeFilter} onToggle={onToggleNade} trailMode={trailMode} onTrailMode={onTrailMode} />
           <span style={{ fontSize: 12, color: 'var(--text2)' }}>{t('speed')}</span>
           {SPEEDS.map(s => (
             <button key={s} className={speed === s ? 'btn-primary' : 'btn-ghost'}

@@ -69,6 +69,7 @@
   "round": "Round",
   "reason": "Reason",
   "winner": "Winner",
+  "teamKills": "Team Kills",
   "buy": "Buy",
   "plant": "Plant",
   "eco": "Eco",
@@ -129,5 +130,17 @@
   },
   "footer": {
     "note": "CS2 Demo Analyzer · self-hosted Counter-Strike 2 demo analytics · AGPL-3.0"
-  }
+  },
+  "diff": "+/-",
+  "openingDuels": "OK/OD",
+  "ratingBreakdown": "Rating 2.1 breakdown",
+  "ratingKill": "Kills (30%)",
+  "ratingSurvival": "Survival (25%)",
+  "ratingDamage": "Damage (20%)",
+  "ratingKast": "KAST (15%)",
+  "ratingImpact": "Impact (10%)",
+  "avgKillDist": "Combat distance",
+  "avgKillDistSub": "avg kill distance",
+  "tkBadge": "TK",
+  "tkTooltip": "Teamkills in match: {{count}}"
 }

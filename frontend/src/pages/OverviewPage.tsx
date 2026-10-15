@@ -4,6 +4,8 @@ import { api, AnalysisData, PlayerData, RoundData } from '../api'
 import { t } from '../i18n'
 import { useLang } from '../App'
 import MatchNav from '../components/MatchNav'
+import WeaponIcon from '../components/WeaponIcon'
+import RatingTooltip from '../components/RatingTooltip'
 
 function ScoreBoard({ data, id }: { data: AnalysisData; id: string }) {
   useLang()
@@ -71,18 +73,32 @@ function Scoreboard({ data, id }: { data: AnalysisData; id: string }) {
     { key: 'rating', label: t('rating') },
     { key: 'kills', label: t('kills') },
     { key: 'deaths', label: t('deaths') },
+    { key: 'diff', label: t('diff') },
     { key: 'assists', label: t('assists') },
     { key: 'kd', label: t('kd') },
+    { key: 'opening', label: t('openingDuels') },
     { key: 'adr', label: t('adr') },
     { key: 'kast', label: t('kast') },
     { key: 'hsPct', label: t('hs') },
   ]
 
   const sorted = [...data.players].sort((a, b) => {
-    const av = (a as unknown as Record<string, unknown>)[sortCol] ?? 0
-    const bv = (b as unknown as Record<string, unknown>)[sortCol] ?? 0
-    if (typeof av === 'string') return sortDir * av.localeCompare(bv as string)
-    return sortDir * ((av as number) - (bv as number))
+    let av: number | string = 0
+    let bv: number | string = 0
+    if (sortCol === 'diff') {
+      av = a.kills - a.deaths
+      bv = b.kills - b.deaths
+    } else if (sortCol === 'opening') {
+      av = (a.opening?.kills ?? 0) - (a.opening?.deaths ?? 0)
+      bv = (b.opening?.kills ?? 0) - (b.opening?.deaths ?? 0)
+    } else {
+      av = (a as unknown as Record<string, unknown>)[sortCol] as number | string ?? 0
+      bv = (b as unknown as Record<string, unknown>)[sortCol] as number | string ?? 0
+    }
+    if (typeof av === 'string' && typeof bv === 'string') {
+      return sortDir * av.localeCompare(bv)
+    }
+    return sortDir * (Number(av) - Number(bv))
   })
 
   return (
@@ -98,23 +114,46 @@ function Scoreboard({ data, id }: { data: AnalysisData; id: string }) {
           </tr>
         </thead>
         <tbody>
-          {sorted.map(p => (
-            <tr key={p.steamid} style={{ cursor: 'pointer' }} onClick={() => nav(`/match/${id}/player/${p.steamid}`)}>
-              <td>
-                <span className={`tag tag-${p.firstSide}`} style={{ marginRight: 6 }}>{p.firstSide}</span>
-                {p.name}
-                {p.clan && <span className="text-muted text-sm" style={{ marginLeft: 6 }}>[{p.clan}]</span>}
-              </td>
-              <td style={{ fontWeight: 700, color: 'var(--accent)' }}>{p.rating.toFixed(2)}</td>
-              <td>{p.kills}</td>
-              <td>{p.deaths}</td>
-              <td>{p.assists}</td>
-              <td>{p.kd.toFixed(2)}</td>
-              <td>{p.adr.toFixed(1)}</td>
-              <td>{p.kast.toFixed(1)}%</td>
-              <td>{p.hsPct !== null ? p.hsPct.toFixed(1) + '%' : '—'}</td>
-            </tr>
-          ))}
+          {sorted.map(p => {
+            const diff = p.kills - p.deaths
+            const opK = p.opening?.kills ?? 0
+            const opD = p.opening?.deaths ?? 0
+            const tkCount = p.teamKills ?? data.teamKills?.filter(tk => tk.attacker === p.steamid).length ?? 0
+            return (
+              <tr key={p.steamid} style={{ cursor: 'pointer' }} onClick={() => nav(`/match/${id}/player/${p.steamid}`)}>
+                <td>
+                  <span className={`tag tag-${p.firstSide}`} style={{ marginRight: 6 }}>{p.firstSide}</span>
+                  {p.name}
+                  {p.clan && <span className="text-muted text-sm" style={{ marginLeft: 6 }}>[{p.clan}]</span>}
+                  {tkCount > 0 && (
+                    <span
+                      className="tag tag-red"
+                      style={{ marginLeft: 6, fontSize: 10, cursor: 'help' }}
+                      title={t('tkTooltip', { count: tkCount })}
+                    >
+                      ⚠️ {tkCount} {t('tkBadge')}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  <RatingTooltip rating={p.rating} parts={p.ratingParts} />
+                </td>
+                <td>{p.kills}</td>
+                <td>{p.deaths}</td>
+                <td style={{ fontWeight: 600, color: diff > 0 ? 'var(--green)' : diff < 0 ? 'var(--red)' : 'var(--text2)' }}>
+                  {diff > 0 ? `+${diff}` : diff}
+                </td>
+                <td>{p.assists}</td>
+                <td>{p.kd.toFixed(2)}</td>
+                <td style={{ fontWeight: 600, color: opK > opD ? 'var(--green)' : opK < opD ? 'var(--red)' : 'var(--text2)' }}>
+                  {opK}-{opD}
+                </td>
+                <td>{p.adr.toFixed(1)}</td>
+                <td>{p.kast.toFixed(1)}%</td>
+                <td>{p.hsPct !== null ? p.hsPct.toFixed(1) + '%' : '—'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
@@ -185,6 +224,38 @@ function RoundsTable({ data }: { data: AnalysisData }) {
   )
 }
 
+function TeamKillsCard({ data }: { data: AnalysisData }) {
+  useLang()
+  const tks = data.teamKills ?? []
+  if (!tks.length) return null
+  const nameOf = (sid: string) =>
+    data.players.find(p => p.steamid === sid)?.name ?? sid.slice(-6)
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <div style={{ fontWeight: 700, marginBottom: 10 }}>
+        {t('teamKills')} <span style={{ color: '#e8a33d' }}>{tks.length}</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {tks.map((tk, i) => (
+          <div key={i} style={{
+            display: 'flex', alignItems: 'center', gap: 10, fontSize: 12,
+            background: 'var(--bg3)', borderRadius: 6, padding: '6px 10px',
+          }}>
+            <span style={{ color: 'var(--text2)', minWidth: 28 }}>R{tk.round}</span>
+            <span style={{ fontWeight: 600, color: '#e8a33d' }}>{nameOf(tk.attacker)}</span>
+            <span style={{ color: 'var(--text2)' }}>→</span>
+            <span>{nameOf(tk.victim)}</span>
+            <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text2)' }}>
+              <WeaponIcon id={tk.weapon.replace(/^weapon_/, '')} name={tk.weapon.replace(/^weapon_/, '')} size={13} />
+              {tk.headshot && <img src="/icons/weapons/icon_headshot.svg" alt="HS" width={13} height={13} />}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export default function OverviewPage() {
   useLang()
   const { id } = useParams<{ id: string }>()
@@ -223,6 +294,7 @@ export default function OverviewPage() {
       <MatchNav id={id!} players={data.players} />
       <ScoreBoard data={data} id={id!} />
       <Scoreboard data={data} id={id!} />
+      <TeamKillsCard data={data} />
       <RoundsTable data={data} />
     </div>
   )

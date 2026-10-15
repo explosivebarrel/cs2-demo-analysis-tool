@@ -11,9 +11,15 @@
   "hotPause": "Pause / Play",
   "hotZoom": "Zoom",
   "hotPan": "Pan",
+  "hotOrbit": "Orbit camera",
+  "hotPan3d": "Pan (move target point)",
+  "hotReset3d": "Reset camera view",
+  "mode2d": "2D Mode",
+  "mode3d": "3D Mode",
   "hotSeek": "Jump ±5 seconds",
   "hotMoments": "Previous / next moment",
   "hotReset": "Reset zoom",
+  "view3dHotkey": "3D view",
   "hotUi": "Hide / show UI",
   "hotFullscreen": "Fullscreen",
   "back": "Back",
@@ -100,5 +106,12 @@
     "prev": "Previous moment",
     "next": "Next moment",
     "empty": "No moments"
-  }
+  },
+  "settings3d": "3D Settings",
+  "mapGround": "Map Ground",
+  "densityGrid": "Density Grid",
+  "detail": "Detail",
+  "shades": "Tile Shades",
+  "resetCam": "Reset Camera",
+  "close": "Close"
 }
